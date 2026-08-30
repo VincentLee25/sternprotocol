@@ -11,8 +11,9 @@ const oracleKeys = (process.env.ORACLE_PRIVATE_KEYS || "")
 
 module.exports = {
   solidity: {
-    version: "0.8.20",
+    version: "0.8.24",
     settings: {
+      evmVersion: "cancun",
       viaIR: true,
       optimizer: {
         enabled: true,

@@ -3,6 +3,15 @@ const path = require("path");
 const { ethers } = require("ethers");
 const { config, requireConfig } = require("./config");
 
+const MILESTONES = {
+  none: 0,
+  inspected: 1,
+  shipped: 2,
+  arrivedcleared: 3,
+  arrived_cleared: 3,
+  arrivedCleared: 3
+};
+
 function loadAbi() {
   const artifactPath = path.resolve(
     __dirname,
@@ -23,98 +32,88 @@ function getProvider() {
   return new ethers.JsonRpcProvider(config.rpcUrl);
 }
 
-function getOracleWallets(provider) {
+function getVerifierWallets(provider) {
   requireConfig(["oraclePrivateKeys"]);
   return config.oraclePrivateKeys.map((key) => new ethers.Wallet(key, provider));
+}
+
+function getArbiterWallet(provider) {
+  requireConfig(["arbiterPrivateKey"]);
+  return new ethers.Wallet(config.arbiterPrivateKey, provider);
 }
 
 function getContract(signerOrProvider) {
   return new ethers.Contract(config.contractAddress, loadAbi(), signerOrProvider);
 }
 
-// Each consortium member submits its own attestation. `dissentIndex` (demo
-// harness) makes that oracle report the negated vector — the contract's
-// consensus outvotes it and slashes its bond. The dissenter reports first so
-// consensus finalizes on the last honest attestation.
-async function submitOracleVerification(contractId, verification, dissentIndex) {
+function normalizeMilestone(milestone) {
+  const key = String(milestone || "").replace(/[\s-]/g, "_");
+  const value = MILESTONES[key] ?? MILESTONES[key.toLowerCase()];
+  if (value === undefined) {
+    const error = new Error(`Unknown milestone: ${milestone}`);
+    error.statusCode = 400;
+    throw error;
+  }
+  return value;
+}
+
+function pickVerifier(wallets, milestone) {
+  const index = normalizeMilestone(milestone) - 1;
+  if (index < 0 || index >= wallets.length) {
+    const error = new Error(`No verifier key configured for milestone ${milestone}`);
+    error.statusCode = 400;
+    throw error;
+  }
+  return wallets[index];
+}
+
+function milestonePassed(milestone, verification) {
+  const normalized = normalizeMilestone(milestone);
+  if (normalized === MILESTONES.inspected) return verification.vgmMatch === true && verification.inspectionPassed === true;
+  if (normalized === MILESTONES.shipped) return verification.aisDeparted === true;
+  if (normalized === MILESTONES.arrivedcleared) return verification.ceisaApproved === true;
+  return true;
+}
+
+async function submitMilestoneProof(contractId, milestone, proofCid, verification) {
   const provider = getProvider();
-  const wallets = getOracleWallets(provider);
+  const wallets = getVerifierWallets(provider);
+  const wallet = pickVerifier(wallets, milestone);
+  const contract = getContract(wallet);
+  const passed = milestonePassed(milestone, verification);
+  const payload = ethers.AbiCoder.defaultAbiCoder().encode(["bool"], [passed]);
 
-  const ordered = wallets.map((wallet, index) => ({ wallet, index }));
-  if (Number.isInteger(dissentIndex) && dissentIndex >= 0 && dissentIndex < ordered.length) {
-    ordered.sort((a, b) => (a.index === dissentIndex ? -1 : b.index === dissentIndex ? 1 : 0));
-  }
-
-  const attestations = [];
-
-  for (const { wallet, index } of ordered) {
-    const dissent = index === dissentIndex;
-    const vector = dissent
-      ? [
-          !verification.vgmMatch,
-          !verification.aisDeparted,
-          !verification.ceisaApproved,
-          !verification.eblCidValid,
-          !verification.inspectionPassed
-        ]
-      : [
-          verification.vgmMatch,
-          verification.aisDeparted,
-          verification.ceisaApproved,
-          verification.eblCidValid,
-          verification.inspectionPassed
-        ];
-
-    const contract = getContract(wallet);
-    let tx;
-    try {
-      tx = await contract.submitAttestation(contractId, ...vector);
-    } catch (error) {
-      const reason = error.reason || error.shortMessage || error.message || "";
-      if (/escrow not verifiable/i.test(reason)) {
-        // Quorum was already reached and the escrow finalized from an earlier
-        // attestation in this same batch (2-of-3 can settle before every
-        // oracle has submitted) — nothing left for the remaining oracles to do.
-        break;
-      }
-      throw error;
-    }
-    const receipt = await tx.wait();
-    attestations.push({
-      oracle: wallet.address,
-      oracleIndex: index,
-      dissent,
-      transactionHash: receipt.hash,
-      blockNumber: receipt.blockNumber
-    });
-  }
-
-  if (attestations.length === 0) {
-    return { transactionHash: null, blockNumber: null, attestations, alreadyFinalized: true };
-  }
-
-  const last = attestations[attestations.length - 1];
+  const tx = await contract.submitMilestoneProof(contractId, normalizeMilestone(milestone), proofCid, payload);
+  const receipt = await tx.wait();
   return {
-    transactionHash: last.transactionHash,
-    blockNumber: last.blockNumber,
-    attestations
+    transactionHash: receipt.hash,
+    blockNumber: receipt.blockNumber,
+    verifier: wallet.address,
+    milestone,
+    automatedCheckPassed: passed
   };
 }
 
-async function openDispute(contractId) {
+async function raiseDispute(contractId, contestedMilestone = "none") {
   const provider = getProvider();
-  const [wallet] = getOracleWallets(provider);
-  const tx = await getContract(wallet).openDispute(contractId);
+  const [wallet] = getVerifierWallets(provider);
+  const tx = await getContract(wallet).raiseDispute(contractId, normalizeMilestone(contestedMilestone));
   const receipt = await tx.wait();
   return { transactionHash: receipt.hash, blockNumber: receipt.blockNumber };
 }
 
-async function resolveDispute(contractId, releaseToExporter) {
+async function resolveDispute(contractId, options = {}) {
   const provider = getProvider();
-  const [wallet] = getOracleWallets(provider);
-  const tx = await getContract(wallet).voteDisputeResolution(contractId, Boolean(releaseToExporter));
+  const wallet = getArbiterWallet(provider);
+  const tx = await getContract(wallet).resolveDispute(
+    contractId,
+    Boolean(options.releaseToExporter),
+    options.reasoningCid || "bafy-dispute-reason-demo",
+    Boolean(options.slashVerifier),
+    Boolean(options.bondFrivolous)
+  );
   const receipt = await tx.wait();
   return { transactionHash: receipt.hash, blockNumber: receipt.blockNumber };
 }
 
-module.exports = { submitOracleVerification, openDispute, resolveDispute };
+module.exports = { submitMilestoneProof, raiseDispute, resolveDispute, normalizeMilestone };

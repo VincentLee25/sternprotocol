@@ -1,69 +1,65 @@
 const hre = require("hardhat");
 
-// Confirmation depth: Polygon has ~5s deterministic finality (Heimdall v2);
-// the depth is a circuit-breaker knob. Local demos use a low depth so release
-// feels immediate; raise via REQUIRED_CONFIRMATIONS for cautious deployments.
-const DEFAULT_CONFIRMATIONS = 5;
-const DEFAULT_QUORUM = 2;
-const DEFAULT_BOND_ETH = "1";
+const CHALLENGE_WINDOW_SECONDS = 6 * 60 * 60;
+const TIMELOCK_DURATION_SECONDS = 24 * 60 * 60;
+const DISPUTE_BOND_BPS = 300;
+const SLASH_BPS = 5000;
+const DEMO_BALANCE_IDRT = "150000000.00";
 
 async function main() {
   const signers = await hre.ethers.getSigners();
   const deployer = signers[0];
   const isLocalNetwork = hre.network.name === "hardhat" || hre.network.name === "localhost";
+  const verifierSigners = isLocalNetwork ? [signers[1], signers[4], signers[5]] : signers.slice(1, 4);
 
-  // Oracle consortium: three independent verifiers, playing Sucofindo / SGS / Port
-  // Authority. Locally we reuse Hardhat's 20 pre-funded dev accounts (#1, #4, #5 —
-  // #2/#3 stay reserved for the exporter/arbiter demo identities). On any other
-  // network (e.g. Amoy) there are no free dev accounts, so the oracle signers come
-  // from ORACLE_PRIVATE_KEYS via hardhat.config.js's `accounts` array instead —
-  // signers[0] is the deployer (DEPLOYER_PRIVATE_KEY), signers[1..] are the oracles.
-  const oracleSigners = isLocalNetwork ? [signers[1], signers[4], signers[5]] : signers.slice(1);
-
-  if (oracleSigners.length < 3 || oracleSigners.some((signer) => !signer)) {
+  if (verifierSigners.length < 3 || verifierSigners.some((signer) => !signer)) {
     throw new Error(
-      `Need 3 oracle signers, found ${oracleSigners.filter(Boolean).length}. ` +
-        "Set ORACLE_PRIVATE_KEYS in .env to 3 comma-separated private keys " +
-        "(distinct testnet wallets — reused later by the oracle gateway)."
+      `Need 3 verifier signers, found ${verifierSigners.filter(Boolean).length}. ` +
+        "Set ORACLE_PRIVATE_KEYS in .env to 3 comma-separated verifier private keys."
     );
   }
-  oracleSigners.length = 3;
 
-  const confirmations = Number(process.env.REQUIRED_CONFIRMATIONS || DEFAULT_CONFIRMATIONS);
-  const quorum = Number(process.env.ORACLE_QUORUM || DEFAULT_QUORUM);
-  const bond = hre.ethers.parseEther(process.env.ORACLE_BOND_ETH || DEFAULT_BOND_ETH);
-
-  if (!Number.isInteger(confirmations) || confirmations < 1) {
-    throw new Error(`REQUIRED_CONFIRMATIONS must be a positive integer, got: ${process.env.REQUIRED_CONFIRMATIONS}`);
-  }
-  if (!Number.isInteger(quorum) || quorum < 1 || quorum > oracleSigners.length) {
-    throw new Error(`ORACLE_QUORUM must be between 1 and ${oracleSigners.length}, got: ${process.env.ORACLE_QUORUM}`);
-  }
+  const IDRTDemo = await hre.ethers.getContractFactory("IDRTDemo");
+  const idrt = await IDRTDemo.deploy(deployer.address);
+  await idrt.waitForDeployment();
 
   const SternEscrow = await hre.ethers.getContractFactory("SternEscrow");
   const sternEscrow = await SternEscrow.deploy(
+    await idrt.getAddress(),
     deployer.address,
-    oracleSigners.map((signer) => signer.address),
-    quorum,
-    bond,
-    confirmations
+    Number(process.env.CHALLENGE_WINDOW_SECONDS || CHALLENGE_WINDOW_SECONDS),
+    Number(process.env.TIMELOCK_DURATION_SECONDS || TIMELOCK_DURATION_SECONDS),
+    Number(process.env.DISPUTE_BOND_BPS || DISPUTE_BOND_BPS),
+    Number(process.env.SLASH_BPS || SLASH_BPS)
   );
   await sternEscrow.waitForDeployment();
 
-  for (const oracle of oracleSigners) {
-    await (await sternEscrow.connect(oracle).postBond({ value: bond })).wait();
+  const roles = [
+    [await sternEscrow.ROLE_QUALITY_AUDITOR(), "ROLE_QUALITY_AUDITOR"],
+    [await sternEscrow.ROLE_LOGISTICS(), "ROLE_LOGISTICS"],
+    [await sternEscrow.ROLE_CUSTOMS(), "ROLE_CUSTOMS"]
+  ];
+  const minBond = await sternEscrow.MIN_VERIFIER_BOND();
+  const demoBalance = hre.ethers.parseUnits(process.env.DEMO_BALANCE_IDRT || DEMO_BALANCE_IDRT, 2);
+
+  for (let i = 0; i < verifierSigners.length; i++) {
+    const verifier = verifierSigners[i];
+    const [role, label] = roles[i];
+    await (await sternEscrow.grantVerifierRole(role, verifier.address)).wait();
+    await (await idrt.mint(verifier.address, demoBalance)).wait();
+    await (await idrt.connect(verifier).approve(await sternEscrow.getAddress(), minBond)).wait();
+    await (await sternEscrow.connect(verifier).postVerifierBond()).wait();
+    console.log(`${label}: ${verifier.address} (IDRT bond posted)`);
   }
 
+  console.log("IDRTDemo deployed to:", await idrt.getAddress());
   console.log("SternEscrow deployed to:", await sternEscrow.getAddress());
-  console.log("Owner:", deployer.address);
-  console.log("Oracle consortium (quorum %d-of-%d, bond %s ETH each):", quorum, oracleSigners.length, hre.ethers.formatEther(bond));
-  oracleSigners.forEach((signer, index) => console.log(`  Oracle #${index}: ${signer.address} (bond posted)`));
-  console.log("Required confirmations:", confirmations);
-  console.log(
-    isLocalNetwork
-      ? "Gateway env: set ORACLE_PRIVATE_KEYS to the comma-separated private keys of accounts #1, #4, #5."
-      : "Gateway env: ORACLE_PRIVATE_KEYS already holds these 3 keys — reuse the same .env value for the gateway."
-  );
+  console.log("Admin:", deployer.address);
+  console.log("Challenge window seconds:", await sternEscrow.challengeWindowSeconds());
+  console.log("Timelock duration seconds:", await sternEscrow.timelockDurationSeconds());
+  console.log("Dispute bond bps:", await sternEscrow.disputeBondBps());
+  console.log("Slash bps:", await sternEscrow.slashBps());
+  console.log("Verifier min bond:", hre.ethers.formatUnits(minBond, 2), "IDRT-demo");
 }
 
 main().catch((error) => {

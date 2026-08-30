@@ -20,7 +20,16 @@ import { CURRENCY_LABEL } from "../lib/currency.js";
 import { CONSORTIUM, ORACLE_QUORUM, defaultConsortium } from "../lib/oracles.js";
 import { actorById, shortAddress } from "../lib/actors.js";
 
-const STATE_LABELS = ["Pending", "Verified", "Completed", "Refunded", "Disputed"];
+const STATE_LABELS = [
+  "Created",
+  "Inspected",
+  "Shipped",
+  "ArrivedCleared",
+  "TimelockActive",
+  "Disputed",
+  "Completed",
+  "Refunded"
+];
 
 const CHECKS = [
   { key: "vgm", field: "vgmMatch", label: "VGM match", source: "Port IoT · gate-in", failDetail: "Container mass mismatch at gate-in" },
@@ -54,7 +63,6 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
   const consortium = isChain ? chainOracles || [] : escrow.consortium || defaultConsortium();
 
   const grossValue = Number(escrow.value) || 0;
-  const platformFee = grossValue * 0.005;
 
   useEffect(() => {
     setMessage(null);
@@ -66,14 +74,14 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
     (async () => {
       try {
         const contract = await getBrowserContract({ requireSigner: false });
-        const [confirmations, eligible, chainEscrow] = await Promise.all([
-          contract.requiredConfirmations(),
+        const [timelock, eligible, chainEscrow] = await Promise.all([
+          contract.timelockDurationSeconds(),
           contract.isReleaseEligible(escrow.id),
           contract.getEscrow(escrow.id)
         ]);
-        setChainMeta({ confirmations: Number(confirmations), eligible });
+        setChainMeta({ timelock: Number(timelock), eligible });
         applyChainEscrow(chainEscrow);
-        await Promise.all([loadChainOracles(contract), loadChainExtension(contract, chainEscrow)]);
+        await loadChainOracles(contract);
       } catch {
         setChainMeta(null);
       }
@@ -105,10 +113,7 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
 
   async function loadChainExtension(contract, chainEscrow) {
     try {
-      const [pending, proposer] = await Promise.all([
-        contract.pendingDeadline(escrow.id),
-        contract.extensionProposer(escrow.id)
-      ]);
+      const [pending, proposer] = [0n, ethers.ZeroAddress];
       const pendingMs = Number(pending) * 1000;
       if (!pendingMs) {
         onUpdate(escrow.id, (current) => ({ ...current, pendingExtension: null }));
@@ -116,9 +121,9 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
       }
       const proposerLower = String(proposer).toLowerCase();
       const label =
-        proposerLower === String(chainEscrow.importerAddress).toLowerCase()
+        proposerLower === String(chainEscrow.importer).toLowerCase()
           ? "importer"
-          : proposerLower === String(chainEscrow.exporterAddress).toLowerCase()
+          : proposerLower === String(chainEscrow.exporter).toLowerCase()
             ? "exporter"
             : shortAddress(proposer);
       onUpdate(escrow.id, (current) => ({
@@ -136,21 +141,20 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
 
   async function loadChainOracles(contract) {
     try {
-      const [addrs, bonds, slashes] = await contract.getOracles();
+      const milestoneIds = [1, 2, 3];
       const rows = await Promise.all(
-        addrs.map(async (address, index) => {
-          const [attestation, wasSlashed] = await Promise.all([
-            contract.getAttestation(escrow.id, address),
-            contract.slashedFor(escrow.id, address)
-          ]);
+        milestoneIds.map(async (milestone, index) => {
+          const proof = await contract.getMilestoneProof(escrow.id, milestone);
+          const slashes = proof.verifier === ethers.ZeroAddress ? 0n : await contract.verifierSlashCount(proof.verifier);
+          const bond = proof.verifier === ethers.ZeroAddress ? 0n : await contract.verifierBonds(proof.verifier);
           return {
-            address,
+            address: proof.verifier,
             name: CONSORTIUM[index]?.name || `Oracle ${index + 1}`,
             descr: CONSORTIUM[index]?.descr || "",
-            bond: Number(bonds[index]) / 1e18,
-            slashes: Number(slashes[index]),
-            attested: attestation.submitted,
-            slashed: wasSlashed
+            bond: Number(bond) / 100,
+            slashes: Number(slashes),
+            attested: proof.submitted,
+            slashed: Number(slashes) > 0
           };
         })
       );
@@ -162,22 +166,11 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
 
   function applyChainEscrow(chainEscrow) {
     const state = STATE_LABELS[Number(chainEscrow.state)] || "Pending";
-    const v = chainEscrow.verification;
     onUpdate(escrow.id, (current) => ({
       ...current,
       state,
-      deadline: new Date(Number(chainEscrow.deadline) * 1000).toISOString(),
-      value: String(Number(chainEscrow.contractValue) / 1e18 || current.value),
-      verification:
-        Number(v.submittedAtBlock) > 0
-          ? {
-              vgmMatch: v.vgmMatch,
-              aisDeparted: v.aisDeparted,
-              ceisaApproved: v.ceisaApproved,
-              eblCidValid: v.eblCidValid,
-              inspectionPassed: v.inspectionPassed
-            }
-          : current.verification
+      deadline: new Date(Number(chainEscrow.globalDeadline) * 1000).toISOString(),
+      value: String(Number(chainEscrow.contractValue) / 100 || current.value)
     }));
     return state;
   }
@@ -191,7 +184,7 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
     ]);
     const state = applyChainEscrow(chainEscrow);
     setChainMeta((meta) => (meta ? { ...meta, eligible } : meta));
-    await Promise.all([loadChainOracles(contract), loadChainExtension(contract, chainEscrow)]);
+      await loadChainOracles(contract);
     return state;
   }
 
@@ -375,7 +368,7 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
   async function release() {
     if (isChain) {
       const contract = await getBrowserContract();
-      const tx = await contract.releaseEscrow(escrow.id);
+      const tx = await contract.releasePayment(escrow.id);
       const receipt = await tx.wait();
       await syncChain();
       ok(`Funds released to exporter (tx ${receipt.hash.slice(0, 10)}…).`);
@@ -419,7 +412,7 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
   async function openDispute() {
     if (isChain) {
       const contract = await getBrowserContract();
-      const tx = await contract.openDispute(escrow.id);
+      const tx = await contract.raiseDispute(escrow.id, 0);
       await tx.wait();
       await syncChain();
       ok("Dispute opened — funds frozen until a 2-of-3 vote.");
@@ -443,7 +436,7 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
   async function vote(releaseToExporter) {
     if (isChain) {
       const contract = await getBrowserContract();
-      const tx = await contract.voteDisputeResolution(escrow.id, releaseToExporter);
+      const tx = await contract.resolveDispute(escrow.id, releaseToExporter, "bafy-dispute-reason-demo", false, false);
       await tx.wait();
       await syncChain();
       ok(`Vote cast: ${releaseToExporter ? "release to exporter" : "refund to importer"}.`);
@@ -582,9 +575,9 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
             </p>
           </div>
           <div className="hidden sm:block">
-            <p className="text-2xs uppercase tracking-widest text-paper-faint">Net to exporter</p>
+            <p className="text-2xs uppercase tracking-widest text-paper-faint">Exporter receives</p>
             <p className="font-mono text-sm text-paper-dim">
-              {(grossValue - platformFee).toLocaleString()} {CURRENCY_LABEL}
+              {grossValue.toLocaleString()} {CURRENCY_LABEL}
             </p>
           </div>
         </div>
@@ -617,11 +610,11 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
               <p>
                 Confirmation depth:{" "}
                 <span className="font-mono text-paper-dim">
-                  {chainMeta ? `${chainMeta.confirmations} blocks` : "5 blocks (local default)"}
+                  {chainMeta ? `${Math.round(chainMeta.timelock / 3600)}h timelock` : "24h timelock"}
                 </span>
               </p>
               <p className="mt-1">
-                Circuit-breaker on top of Polygon's ~5s deterministic finality.
+                Settlement can take up to three 6h challenge windows plus the final timelock.
               </p>
             </div>
           </div>

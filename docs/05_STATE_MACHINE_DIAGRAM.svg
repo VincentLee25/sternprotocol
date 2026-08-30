@@ -1,0 +1,108 @@
+<svg width="680" height="760" viewBox="0 0 680 760" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>State machine lengkap STERN dengan semua jalur dispute, timeout, dan refund</title>
+<desc>Diagram lengkap menunjukkan jalur utama Created ke Completed, dispute per-milestone dengan bond, timeout per-milestone ke refund, timelock 24 jam dengan dispute umum, dan global deadline safety valve</desc>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#666" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</marker>
+</defs>
+<style>
+.node{stroke-width:1.5}
+.th{font:600 15px sans-serif;fill:#fff}
+.ts{font:400 12px sans-serif;fill:#e2e2e2}
+.arr{stroke:#888;stroke-width:1.5;fill:none}
+.purple{fill:#4c3d99;stroke:#6a56c9}
+.coral{fill:#8a3a2e;stroke:#c2503e}
+.gray{fill:#3a3a3a;stroke:#606060}
+.amber{fill:#8a6a1e;stroke:#c2952e}
+.green{fill:#1e6b4f;stroke:#2e9c73}
+.red{fill:#7a1f1f;stroke:#b23434}
+</style>
+
+<rect x="240" y="30" width="200" height="56" rx="8" class="node purple"/>
+<text class="th" x="340" y="50" text-anchor="middle">Created</text>
+<text class="ts" x="340" y="68" text-anchor="middle">Importer locks funds</text>
+
+<line x1="340" y1="86" x2="340" y2="114" class="arr" marker-end="url(#arrow)"/>
+
+<rect x="240" y="116" width="200" height="56" rx="8" class="node purple"/>
+<text class="th" x="340" y="136" text-anchor="middle">Inspected</text>
+<text class="ts" x="340" y="154" text-anchor="middle">Surveyor proof, 6h window</text>
+
+<line x1="440" y1="144" x2="478" y2="144" class="arr" marker-end="url(#arrow)"/>
+<text class="ts" x="484" y="130">dispute</text>
+<line x1="240" y1="144" x2="202" y2="144" class="arr" marker-end="url(#arrow)"/>
+<text class="ts" x="60" y="130">timeout</text>
+
+<rect x="480" y="116" width="150" height="56" rx="8" class="node coral"/>
+<text class="th" x="555" y="136" text-anchor="middle">Disputed</text>
+<text class="ts" x="555" y="154" text-anchor="middle">Bond + arbiter rules</text>
+
+<rect x="40" y="116" width="160" height="56" rx="8" class="node gray"/>
+<text class="th" x="120" y="136" text-anchor="middle">Refunded</text>
+<text class="ts" x="120" y="154" text-anchor="middle">Importer reclaims</text>
+
+<line x1="340" y1="172" x2="340" y2="200" class="arr" marker-end="url(#arrow)"/>
+
+<rect x="240" y="202" width="200" height="56" rx="8" class="node purple"/>
+<text class="th" x="340" y="222" text-anchor="middle">Shipped</text>
+<text class="ts" x="340" y="240" text-anchor="middle">Logistics eBL, 6h window</text>
+
+<line x1="440" y1="230" x2="478" y2="230" class="arr" marker-end="url(#arrow)"/>
+<line x1="240" y1="230" x2="202" y2="230" class="arr" marker-end="url(#arrow)"/>
+<text class="ts" x="484" y="216">dispute</text>
+<text class="ts" x="60" y="216">timeout</text>
+
+<rect x="480" y="202" width="150" height="56" rx="8" class="node coral"/>
+<text class="ts" x="555" y="230" text-anchor="middle">-&gt; Disputed</text>
+<rect x="40" y="202" width="160" height="56" rx="8" class="node gray"/>
+<text class="ts" x="120" y="230" text-anchor="middle">-&gt; Refunded</text>
+
+<line x1="340" y1="258" x2="340" y2="286" class="arr" marker-end="url(#arrow)"/>
+
+<rect x="240" y="288" width="200" height="56" rx="8" class="node purple"/>
+<text class="th" x="340" y="308" text-anchor="middle">ArrivedCleared</text>
+<text class="ts" x="340" y="326" text-anchor="middle">Customs proof, 6h window</text>
+
+<line x1="440" y1="316" x2="478" y2="316" class="arr" marker-end="url(#arrow)"/>
+<line x1="240" y1="316" x2="202" y2="316" class="arr" marker-end="url(#arrow)"/>
+<text class="ts" x="484" y="302">dispute</text>
+<text class="ts" x="60" y="302">timeout</text>
+
+<rect x="480" y="288" width="150" height="56" rx="8" class="node coral"/>
+<text class="ts" x="555" y="316" text-anchor="middle">-&gt; Disputed</text>
+<rect x="40" y="288" width="160" height="56" rx="8" class="node gray"/>
+<text class="ts" x="120" y="316" text-anchor="middle">-&gt; Refunded</text>
+
+<line x1="340" y1="344" x2="340" y2="372" class="arr" marker-end="url(#arrow)"/>
+
+<rect x="240" y="374" width="200" height="56" rx="8" class="node amber"/>
+<text class="th" x="340" y="394" text-anchor="middle">TimelockActive</text>
+<text class="ts" x="340" y="412" text-anchor="middle">24h challenge window</text>
+
+<line x1="440" y1="402" x2="478" y2="402" class="arr" marker-end="url(#arrow)"/>
+<text class="ts" x="484" y="388">dispute</text>
+<rect x="480" y="374" width="150" height="56" rx="8" class="node coral"/>
+<text class="ts" x="555" y="402" text-anchor="middle">-&gt; Disputed</text>
+
+<line x1="340" y1="430" x2="340" y2="458" class="arr" marker-end="url(#arrow)"/>
+
+<rect x="240" y="460" width="200" height="56" rx="8" class="node green"/>
+<text class="th" x="340" y="480" text-anchor="middle">Completed</text>
+<text class="ts" x="340" y="498" text-anchor="middle">Funds released to exporter</text>
+
+<line x1="555" y1="172" x2="555" y2="374" stroke="#888" stroke-width="0.5" stroke-dasharray="3 3" fill="none"/>
+<text class="ts" x="565" y="270" transform="rotate(90 565 270)" text-anchor="middle">semua dispute masuk state sama</text>
+
+<line x1="340" y1="518" x2="340" y2="560" class="arr" marker-end="url(#arrow)"/>
+
+<rect x="140" y="562" width="400" height="90" rx="12" class="node red"/>
+<text class="th" x="160" y="586">Global deadline (safety valve, semua state)</text>
+<text class="ts" x="160" y="608">Jika proses macet di STATE MANAPUN melewati</text>
+<text class="ts" x="160" y="626">globalDeadline -&gt; importer bisa klaim Refunded</text>
+
+<line x1="340" y1="652" x2="340" y2="680" class="arr" marker-end="url(#arrow)"/>
+<rect x="140" y="682" width="400" height="56" rx="8" class="node gray"/>
+<text class="th" x="340" y="702" text-anchor="middle">Refunded (via global deadline)</text>
+<text class="ts" x="340" y="720" text-anchor="middle">Terlepas dari state terakhir apa</text>
+</svg>

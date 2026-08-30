@@ -1,4 +1,4 @@
-// Display unit for the demo. On-chain value stays native local-chain ETH;
-// production settlement targets Rupiah Digital / tokenized bank deposits.
 export const CURRENCY_LABEL = "IDRT-demo";
-export const CURRENCY_CAPTION = "Demo unit: 1 IDRT-demo = 1 local chain unit. Production: Rupiah Digital / tokenized deposit.";
+export const CURRENCY_DECIMALS = 2;
+export const CURRENCY_CAPTION =
+  "Demo unit: IDRT-demo uses 2 decimals and is transferred as an ERC-20 token, not native POL/ETH.";

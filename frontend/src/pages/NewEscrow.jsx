@@ -2,8 +2,8 @@ import { useMemo, useState } from "react";
 import { ethers } from "ethers";
 import { ArrowLeft, FileCheck2, Loader2, Lock, Paperclip } from "lucide-react";
 import Field, { inputClass } from "../components/Field.jsx";
-import { getBrowserContract } from "../lib/contract.js";
-import { CURRENCY_CAPTION, CURRENCY_LABEL } from "../lib/currency.js";
+import { getBrowserContract, getBrowserIdrtContract } from "../lib/contract.js";
+import { CURRENCY_CAPTION, CURRENCY_DECIMALS, CURRENCY_LABEL } from "../lib/currency.js";
 import { formatBytes, hashFileToCid } from "../lib/ebl.js";
 import { validateEscrowForm } from "../lib/validate.js";
 
@@ -75,14 +75,23 @@ export default function NewEscrow({ role, isOnChainReady, onCreated, onBack }) {
       if (isOnChainReady) {
         source = "chain";
         const contract = await getBrowserContract();
+        const contractAddress = await contract.getAddress();
+        const tokenAddress = await contract.idrtToken();
+        const idrt = await getBrowserIdrtContract(tokenAddress);
+        const amount = ethers.parseUnits(form.value, CURRENCY_DECIMALS);
+        const allowance = await idrt.allowance(await idrt.runner.getAddress(), contractAddress);
+        if (allowance < amount) {
+          const approveTx = await idrt.approve(contractAddress, amount);
+          await approveTx.wait();
+        }
         const tx = await contract.createEscrow(
           form.exporter,
           form.arbiter,
           document_.cid,
+          amount,
           deadlineSeconds,
           form.commodity.trim(),
-          form.containerRef.trim().toUpperCase(),
-          { value: ethers.parseEther(form.value) }
+          form.containerRef.trim().toUpperCase()
         );
         const receipt = await tx.wait();
         txHash = receipt.hash;
@@ -112,7 +121,7 @@ export default function NewEscrow({ role, isOnChainReady, onCreated, onBack }) {
         fileSize: document_.size,
         deadline: new Date(form.deadline).toISOString(),
         createdAt: new Date().toISOString(),
-        state: "Pending",
+        state: "Created",
         verification: null,
         votes: { importer: null, exporter: null, arbiter: null },
         pendingExtension: null,
@@ -121,7 +130,7 @@ export default function NewEscrow({ role, isOnChainReady, onCreated, onBack }) {
             time: new Date().toISOString(),
             actor: role,
             event: isOnChainReady
-              ? `locked ${form.value} ${CURRENCY_LABEL} on-chain (tx ${txHash?.slice(0, 10)}…)`
+            ? `locked ${form.value} ${CURRENCY_LABEL} on-chain (tx ${txHash?.slice(0, 10)}…)`
               : `locked ${form.value} ${CURRENCY_LABEL} in escrow (mock session)`
           }
         ]
@@ -315,10 +324,10 @@ export default function NewEscrow({ role, isOnChainReady, onCreated, onBack }) {
           </h2>
           <dl className="space-y-2.5 text-xs">
             <SummaryRow label="Deposit" value={`${grossValue.toLocaleString()} ${CURRENCY_LABEL}`} mono />
-            <SummaryRow label="Platform fee (0.5%, indicative)" value={`${(grossValue * 0.005).toLocaleString()} ${CURRENCY_LABEL}`} mono />
-            <SummaryRow label="Release condition" value="5/5 oracle checks + confirmation depth" />
+            <SummaryRow label="Platform fee" value="Not charged by contract" />
+            <SummaryRow label="Release condition" value="3 milestones + timelock" />
             <SummaryRow label="Refund path" value="Importer, after deadline" />
-            <SummaryRow label="Dispute path" value="2-of-3 votes incl. arbiter" />
+            <SummaryRow label="Dispute path" value="Arbiter decision + IDRT bond" />
           </dl>
 
           <button

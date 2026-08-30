@@ -13,6 +13,7 @@ const config = {
   port: Number(process.env.PORT || 4000),
   rpcUrl: process.env.RPC_URL,
   oraclePrivateKeys,
+  arbiterPrivateKey: process.env.ARBITER_PRIVATE_KEY,
   contractAddress: process.env.CONTRACT_ADDRESS
 };
 
@@ -29,6 +30,7 @@ function requireConfig(keys) {
       .map((key) => {
         if (key === "rpcUrl") return "RPC_URL";
         if (key === "oraclePrivateKeys") return "ORACLE_PRIVATE_KEYS (or ORACLE_PRIVATE_KEY)";
+        if (key === "arbiterPrivateKey") return "ARBITER_PRIVATE_KEY";
         if (key === "contractAddress") return "CONTRACT_ADDRESS";
         return key;
       })

@@ -1,346 +1,321 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-contract SternEscrow is Ownable, Pausable, ReentrancyGuard {
+contract SternEscrow is AccessControl, Pausable, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    bytes32 public constant ROLE_QUALITY_AUDITOR = keccak256("ROLE_QUALITY_AUDITOR");
+    bytes32 public constant ROLE_LOGISTICS = keccak256("ROLE_LOGISTICS");
+    bytes32 public constant ROLE_CUSTOMS = keccak256("ROLE_CUSTOMS");
+    bytes32 public constant ROLE_KEEPER = keccak256("ROLE_KEEPER");
+
+    uint256 public constant MIN_VERIFIER_BOND = 10_000_00;
+    uint256 public constant MAX_SLASH_STRIKES = 3;
+    uint256 public constant SLASH_AGGRIEVED_BPS = 7000;
+    uint256 public constant SLASH_TREASURY_BPS = 3000;
+
+    enum Milestone {
+        None,
+        Inspected,
+        Shipped,
+        ArrivedCleared
+    }
+
     enum State {
-        Pending,
-        Verified,
+        Created,
+        Inspected,
+        Shipped,
+        ArrivedCleared,
+        TimelockActive,
+        Disputed,
         Completed,
-        Refunded,
-        Disputed
+        Refunded
     }
 
-    struct Verification {
-        bool vgmMatch;
-        bool aisDeparted;
-        bool ceisaApproved;
-        bool eblCidValid;
-        bool inspectionPassed;
-        uint256 submittedAtBlock;
-    }
-
-    struct OracleAttestation {
+    struct MilestoneProof {
         bool submitted;
-        bool vgmMatch;
-        bool aisDeparted;
-        bool ceisaApproved;
-        bool eblCidValid;
-        bool inspectionPassed;
+        address verifier;
+        string proofCid;
+        uint256 submittedAtBlock;
+        uint256 challengeDeadline;
     }
 
     struct Escrow {
         uint256 contractValue;
-        address payable exporterAddress;
-        address payable importerAddress;
-        address arbiterAddress;
-        string eBLCID;
-        uint256 deadline;
-        uint256 createdBlock;
+        address importer;
+        address exporter;
+        address arbiter;
+        string documentCid;
         string commodity;
         string containerRef;
+        uint256 globalDeadline;
+        uint256 createdAt;
         State state;
-        Verification verification;
-        uint8 releaseApprovals;
-        uint8 refundApprovals;
+        uint256 timelockReleaseAt;
+        mapping(Milestone => MilestoneProof) proofs;
     }
 
-    // Confirmation depth before release, set once at deployment. Polygon PoS has
-    // ~5s deterministic finality since Heimdall v2; this acts as an optional
-    // circuit-breaker for finality-lag incidents, not the primary finality source.
-    uint256 public immutable requiredConfirmations;
+    struct EscrowView {
+        uint256 contractValue;
+        address importer;
+        address exporter;
+        address arbiter;
+        string documentCid;
+        string commodity;
+        string containerRef;
+        uint256 globalDeadline;
+        uint256 createdAt;
+        State state;
+        uint256 timelockReleaseAt;
+    }
 
-    // Oracle consortium: verification requires agreement from `oracleQuorum`
-    // independent bonded oracles. The oracle set is fixed at deployment — the
-    // operator cannot swap verifiers after the fact.
-    uint256 public immutable oracleQuorum;
-    uint256 public immutable oracleBond;
-    uint256 public constant SLASH_BPS = 5000; // 50% of remaining bond per deviation
+    struct DisputeRecord {
+        bool open;
+        address raisedBy;
+        uint256 bondAmount;
+        Milestone disputedMilestone;
+        address resolvedVerifier;
+        string reasoningCid;
+        bool releaseToExporter;
+    }
 
-    address[] private oracleList;
-    mapping(address => bool) public isOracle;
-    mapping(address => uint256) public oracleBonds;
-    mapping(address => uint256) public oracleSlashCount;
-    uint256 public treasury;
-
+    IERC20 public immutable idrtToken;
+    IERC20Permit public immutable idrtPermitToken;
+    address public treasuryAddress;
+    uint256 public immutable challengeWindowSeconds;
+    uint256 public immutable timelockDurationSeconds;
+    uint256 public immutable disputeBondBps;
+    uint256 public immutable slashBps;
     uint256 public nextEscrowId;
 
     mapping(uint256 => Escrow) private escrows;
-    mapping(uint256 => mapping(address => bool)) public disputeVoted;
-    mapping(uint256 => uint256) public pendingDeadline;
-    mapping(uint256 => address) public extensionProposer;
-    mapping(uint256 => mapping(address => OracleAttestation)) private attestations;
-    mapping(uint256 => mapping(address => bool)) public slashedFor;
+    mapping(uint256 => DisputeRecord) private disputes;
+    mapping(address => uint256) public verifierBonds;
+    mapping(address => uint256) public verifierSlashCount;
 
-    event OracleBonded(address indexed oracle, uint256 amount, uint256 totalBond);
-    event AttestationSubmitted(
-        uint256 indexed escrowId,
-        address indexed oracle,
-        bool vgmMatch,
-        bool aisDeparted,
-        bool ceisaApproved,
-        bool eblCidValid,
-        bool inspectionPassed
-    );
-    event OracleSlashed(uint256 indexed escrowId, address indexed oracle, uint256 amount);
-    event TreasuryWithdrawn(address indexed to, uint256 amount);
     event EscrowCreated(
         uint256 indexed escrowId,
         address indexed importer,
         address indexed exporter,
         address arbiter,
         uint256 value,
-        string eBLCID,
-        string commodity,
-        string containerRef,
-        uint256 deadline
+        string documentCid,
+        uint256 globalDeadline
     );
-    event OracleVerificationSubmitted(
+    event MilestoneVerified(
         uint256 indexed escrowId,
-        bool vgmMatch,
-        bool aisDeparted,
-        bool ceisaApproved,
-        bool eblCidValid,
-        bool inspectionPassed
+        Milestone milestone,
+        address indexed verifier,
+        string proofCid,
+        uint256 challengeDeadline
     );
-    event FundsReleased(uint256 indexed escrowId, address indexed exporter, uint256 amount);
+    event TimelockStarted(uint256 indexed escrowId, uint256 releaseAt);
+    event PaymentReleased(uint256 indexed escrowId, address indexed exporter, uint256 amount);
     event Refunded(uint256 indexed escrowId, address indexed importer, uint256 amount);
-    event DisputeOpened(uint256 indexed escrowId, address indexed openedBy);
-    event DisputeVote(uint256 indexed escrowId, address indexed voter, bool releaseToExporter);
-    event DisputeResolved(uint256 indexed escrowId, bool releasedToExporter);
-    event EBLTransferred(uint256 indexed escrowId, string eBLCID, address indexed newHolder);
-    event DeadlineExtensionProposed(uint256 indexed escrowId, address indexed proposer, uint256 newDeadline);
-    event DeadlineExtended(uint256 indexed escrowId, uint256 newDeadline);
-
-    modifier onlyBondedOracle() {
-        require(isOracle[msg.sender], "not consortium oracle");
-        require(oracleBonds[msg.sender] >= oracleBond, "oracle bond required");
-        _;
-    }
+    event DisputeRaised(
+        uint256 indexed escrowId,
+        address indexed raisedBy,
+        Milestone contestedMilestone,
+        uint256 bondAmount
+    );
+    event DisputeResolved(
+        uint256 indexed escrowId,
+        bool releasedToExporter,
+        string reasoningCid,
+        bool verifierSlashed
+    );
+    event VerifierSlashed(
+        uint256 indexed escrowId,
+        address indexed verifier,
+        uint256 amountSlashed,
+        address indexed compensatedTo
+    );
+    event VerifierBondPosted(address indexed verifier, uint256 amount, uint256 totalBond);
+    event VerifierRoleRevoked(address indexed verifier, bytes32 role, string reason);
 
     modifier escrowExists(uint256 escrowId) {
-        require(escrows[escrowId].importerAddress != address(0), "escrow not found");
+        require(escrows[escrowId].importer != address(0), "escrow not found");
         _;
     }
 
     constructor(
-        address initialOwner,
-        address[] memory initialOracles,
-        uint256 quorum,
-        uint256 bondAmount,
-        uint256 confirmations
-    ) Ownable(initialOwner) {
-        require(initialOwner != address(0), "owner zero address");
-        require(quorum >= 1, "quorum required");
-        require(initialOracles.length >= quorum, "not enough oracles for quorum");
-        require(bondAmount > 0, "bond required");
-        require(confirmations > 0, "confirmations required");
+        address idrtTokenAddress,
+        address admin,
+        uint256 challengeWindowSeconds_,
+        uint256 timelockDurationSeconds_,
+        uint256 disputeBondBps_,
+        uint256 slashBps_
+    ) {
+        require(idrtTokenAddress != address(0), "token zero address");
+        require(admin != address(0), "admin zero address");
+        require(challengeWindowSeconds_ > 0, "challenge window required");
+        require(timelockDurationSeconds_ > 0, "timelock required");
+        require(disputeBondBps_ <= 10_000, "invalid dispute bps");
+        require(slashBps_ <= 10_000, "invalid slash bps");
 
-        for (uint256 i = 0; i < initialOracles.length; i++) {
-            address oracle = initialOracles[i];
-            require(oracle != address(0), "oracle zero address");
-            require(!isOracle[oracle], "duplicate oracle");
-            isOracle[oracle] = true;
-            oracleList.push(oracle);
-        }
+        idrtToken = IERC20(idrtTokenAddress);
+        idrtPermitToken = IERC20Permit(idrtTokenAddress);
+        treasuryAddress = admin;
+        challengeWindowSeconds = challengeWindowSeconds_;
+        timelockDurationSeconds = timelockDurationSeconds_;
+        disputeBondBps = disputeBondBps_;
+        slashBps = slashBps_;
 
-        oracleQuorum = quorum;
-        oracleBond = bondAmount;
-        requiredConfirmations = confirmations;
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
     }
 
-    function postBond() external payable {
-        require(isOracle[msg.sender], "not consortium oracle");
-        require(msg.value > 0, "bond value required");
-        oracleBonds[msg.sender] += msg.value;
-        emit OracleBonded(msg.sender, msg.value, oracleBonds[msg.sender]);
+    function grantVerifierRole(bytes32 role, address account) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(_isVerifierRole(role), "invalid verifier role");
+        grantRole(role, account);
+    }
+
+    function revokeVerifierRole(bytes32 role, address account) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(_isVerifierRole(role), "invalid verifier role");
+        revokeRole(role, account);
+    }
+
+    function pause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _pause();
+    }
+
+    function unpause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _unpause();
+    }
+
+    function setTreasuryAddress(address newTreasury) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(newTreasury != address(0), "treasury zero address");
+        treasuryAddress = newTreasury;
+    }
+
+    function postVerifierBond() external nonReentrant {
+        require(_hasVerifierRole(msg.sender), "verifier role required");
+        uint256 currentBond = verifierBonds[msg.sender];
+        require(currentBond < MIN_VERIFIER_BOND, "bond already sufficient");
+        _postVerifierBond(MIN_VERIFIER_BOND - currentBond);
+    }
+
+    function postVerifierBond(uint256 amount) external nonReentrant {
+        require(_hasVerifierRole(msg.sender), "verifier role required");
+        require(amount > 0, "bond amount required");
+        _postVerifierBond(amount);
     }
 
     function createEscrow(
-        address payable exporterAddress,
-        address arbiterAddress,
-        string calldata eBLCID,
-        uint256 deadline,
+        address exporter,
+        address arbiter,
+        string calldata documentCid,
+        uint256 contractValue,
+        uint256 globalDeadline,
         string calldata commodity,
         string calldata containerRef
-    ) external payable whenNotPaused nonReentrant returns (uint256 escrowId) {
-        require(msg.value > 0, "escrow value required");
-        require(exporterAddress != address(0), "exporter zero address");
-        require(arbiterAddress != address(0), "arbiter zero address");
-        require(deadline > block.timestamp, "deadline must be future");
-        require(bytes(eBLCID).length > 0, "eBL CID required");
-        require(bytes(containerRef).length > 0, "container ref required");
-
-        escrowId = nextEscrowId++;
-        escrows[escrowId] = Escrow({
-            contractValue: msg.value,
-            exporterAddress: exporterAddress,
-            importerAddress: payable(msg.sender),
-            arbiterAddress: arbiterAddress,
-            eBLCID: eBLCID,
-            deadline: deadline,
-            createdBlock: block.number,
-            commodity: commodity,
-            containerRef: containerRef,
-            state: State.Pending,
-            verification: Verification({
-                vgmMatch: false,
-                aisDeparted: false,
-                ceisaApproved: false,
-                eblCidValid: false,
-                inspectionPassed: false,
-                submittedAtBlock: 0
-            }),
-            releaseApprovals: 0,
-            refundApprovals: 0
-        });
-
-        emit EscrowCreated(
-            escrowId,
+    ) external whenNotPaused nonReentrant returns (uint256 escrowId) {
+        escrowId = _createEscrow(
             msg.sender,
-            exporterAddress,
-            arbiterAddress,
-            msg.value,
-            eBLCID,
+            exporter,
+            arbiter,
+            documentCid,
+            contractValue,
+            globalDeadline,
             commodity,
-            containerRef,
-            deadline
+            containerRef
         );
     }
 
-    function submitAttestation(
-        uint256 escrowId,
-        bool vgmMatch,
-        bool aisDeparted,
-        bool ceisaApproved,
-        bool eblCidValid,
-        bool inspectionPassed
-    ) external onlyBondedOracle whenNotPaused nonReentrant escrowExists(escrowId) {
-        Escrow storage escrow = escrows[escrowId];
-        require(escrow.state == State.Pending || escrow.state == State.Verified, "escrow not verifiable");
-
-        attestations[escrowId][msg.sender] = OracleAttestation({
-            submitted: true,
-            vgmMatch: vgmMatch,
-            aisDeparted: aisDeparted,
-            ceisaApproved: ceisaApproved,
-            eblCidValid: eblCidValid,
-            inspectionPassed: inspectionPassed
-        });
-
-        emit AttestationSubmitted(
-            escrowId,
+    function createEscrowWithPermit(
+        address exporter,
+        address arbiter,
+        string calldata documentCid,
+        uint256 contractValue,
+        uint256 globalDeadline,
+        string calldata commodity,
+        string calldata containerRef,
+        uint256 permitDeadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external whenNotPaused nonReentrant returns (uint256 escrowId) {
+        idrtPermitToken.permit(msg.sender, address(this), contractValue, permitDeadline, v, r, s);
+        escrowId = _createEscrow(
             msg.sender,
-            vgmMatch,
-            aisDeparted,
-            ceisaApproved,
-            eblCidValid,
-            inspectionPassed
+            exporter,
+            arbiter,
+            documentCid,
+            contractValue,
+            globalDeadline,
+            commodity,
+            containerRef
         );
-
-        _tryFinalize(escrowId);
     }
 
-    function _tryFinalize(uint256 escrowId) private {
+    function submitMilestoneProof(
+        uint256 escrowId,
+        Milestone milestone,
+        string calldata proofCid,
+        bytes calldata automatedCheckPayload
+    ) external whenNotPaused nonReentrant escrowExists(escrowId) {
         Escrow storage escrow = escrows[escrowId];
+        bytes32 requiredRole = _roleForMilestone(milestone);
 
-        uint256 submittedCount;
-        uint256[5] memory trueCounts;
+        require(hasRole(requiredRole, msg.sender), "verifier role mismatch");
+        require(verifierBonds[msg.sender] >= MIN_VERIFIER_BOND, "verifier bond required");
+        require(verifierSlashCount[msg.sender] < MAX_SLASH_STRIKES, "verifier revoked by slashing");
+        require(bytes(proofCid).length > 0, "proof CID required");
+        require(_automatedCheckPassed(automatedCheckPayload), "automated gate failed");
 
-        for (uint256 i = 0; i < oracleList.length; i++) {
-            OracleAttestation storage att = attestations[escrowId][oracleList[i]];
-            if (!att.submitted) continue;
-            submittedCount++;
-            if (att.vgmMatch) trueCounts[0]++;
-            if (att.aisDeparted) trueCounts[1]++;
-            if (att.ceisaApproved) trueCounts[2]++;
-            if (att.eblCidValid) trueCounts[3]++;
-            if (att.inspectionPassed) trueCounts[4]++;
+        if (milestone == Milestone.Inspected) {
+            require(escrow.state == State.Created, "invalid milestone order");
+        } else if (milestone == Milestone.Shipped) {
+            require(escrow.state == State.Inspected, "invalid milestone order");
+            require(block.timestamp > escrow.proofs[Milestone.Inspected].challengeDeadline, "challenge window open");
+        } else if (milestone == Milestone.ArrivedCleared) {
+            require(escrow.state == State.Shipped, "invalid milestone order");
+            require(block.timestamp > escrow.proofs[Milestone.Shipped].challengeDeadline, "challenge window open");
+        } else {
+            revert("invalid milestone");
         }
 
-        if (submittedCount < oracleQuorum) return;
-
-        bool[5] memory consensus;
-        for (uint256 i = 0; i < 5; i++) {
-            if (trueCounts[i] >= oracleQuorum) {
-                consensus[i] = true;
-            } else if (submittedCount - trueCounts[i] >= oracleQuorum) {
-                consensus[i] = false;
-            } else {
-                return; // check undecided — wait for more attestations
-            }
-        }
-
-        escrow.verification = Verification({
-            vgmMatch: consensus[0],
-            aisDeparted: consensus[1],
-            ceisaApproved: consensus[2],
-            eblCidValid: consensus[3],
-            inspectionPassed: consensus[4],
-            submittedAtBlock: block.number
+        uint256 challengeDeadline = block.timestamp + challengeWindowSeconds;
+        escrow.proofs[milestone] = MilestoneProof({
+            submitted: true,
+            verifier: msg.sender,
+            proofCid: proofCid,
+            submittedAtBlock: block.number,
+            challengeDeadline: challengeDeadline
         });
+        escrow.state = State(uint8(milestone));
 
-        emit OracleVerificationSubmitted(
-            escrowId,
-            consensus[0],
-            consensus[1],
-            consensus[2],
-            consensus[3],
-            consensus[4]
+        emit MilestoneVerified(escrowId, milestone, msg.sender, proofCid, challengeDeadline);
+    }
+
+    function initiateTimelock(uint256 escrowId) external whenNotPaused escrowExists(escrowId) {
+        Escrow storage escrow = escrows[escrowId];
+        require(escrow.state == State.ArrivedCleared, "not arrived cleared");
+        require(
+            block.timestamp > escrow.proofs[Milestone.ArrivedCleared].challengeDeadline,
+            "challenge window open"
         );
 
-        _slashDeviants(escrowId, consensus);
-
-        if (_allConditionsMet(escrow) && escrow.state == State.Pending) {
-            escrow.state = State.Verified;
-        }
-
-        if (_isReleaseEligible(escrow)) {
-            _release(escrowId);
-        }
+        escrow.state = State.TimelockActive;
+        escrow.timelockReleaseAt = block.timestamp + timelockDurationSeconds;
+        emit TimelockStarted(escrowId, escrow.timelockReleaseAt);
     }
 
-    function _slashDeviants(uint256 escrowId, bool[5] memory consensus) private {
-        for (uint256 i = 0; i < oracleList.length; i++) {
-            address oracle = oracleList[i];
-            OracleAttestation storage att = attestations[escrowId][oracle];
-            if (!att.submitted || slashedFor[escrowId][oracle]) continue;
-
-            bool deviates = att.vgmMatch != consensus[0]
-                || att.aisDeparted != consensus[1]
-                || att.ceisaApproved != consensus[2]
-                || att.eblCidValid != consensus[3]
-                || att.inspectionPassed != consensus[4];
-            if (!deviates) continue;
-
-            slashedFor[escrowId][oracle] = true;
-            oracleSlashCount[oracle]++;
-
-            uint256 bond = oracleBonds[oracle];
-            uint256 amount = (bond * SLASH_BPS) / 10000;
-            if (amount > 0) {
-                oracleBonds[oracle] = bond - amount;
-                treasury += amount;
-            }
-
-            emit OracleSlashed(escrowId, oracle, amount);
-        }
-    }
-
-    function releaseEscrow(uint256 escrowId)
+    function releasePayment(uint256 escrowId)
         external
         whenNotPaused
         nonReentrant
         escrowExists(escrowId)
     {
         Escrow storage escrow = escrows[escrowId];
-        require(escrow.state != State.Completed, "escrow already completed");
-        require(escrow.state != State.Refunded, "escrow already refunded");
-        require(escrow.state != State.Disputed, "escrow disputed");
-        require(_isReleaseEligible(escrow), "conditions not met");
+        require(escrow.state == State.TimelockActive, "timelock not active");
+        require(block.timestamp >= escrow.timelockReleaseAt, "timelock not elapsed");
         _release(escrowId);
     }
 
@@ -351,140 +326,179 @@ contract SternEscrow is Ownable, Pausable, ReentrancyGuard {
         escrowExists(escrowId)
     {
         Escrow storage escrow = escrows[escrowId];
-        require(msg.sender == escrow.importerAddress, "only importer");
+        require(msg.sender == escrow.importer, "only importer");
         require(escrow.state != State.Completed, "escrow already completed");
         require(escrow.state != State.Refunded, "escrow already refunded");
-        require(block.timestamp > escrow.deadline, "deadline not passed");
+        require(block.timestamp > escrow.globalDeadline, "global deadline not passed");
+
+        DisputeRecord storage dispute = disputes[escrowId];
+        if (dispute.open && dispute.bondAmount > 0) {
+            uint256 bondAmount = dispute.bondAmount;
+            dispute.bondAmount = 0;
+            idrtToken.safeTransfer(dispute.raisedBy, bondAmount);
+        }
+        dispute.open = false;
+
         _refund(escrowId);
     }
 
-    function openDispute(uint256 escrowId) external whenNotPaused escrowExists(escrowId) {
-        Escrow storage escrow = escrows[escrowId];
-        require(escrow.state == State.Pending || escrow.state == State.Verified, "cannot dispute");
-        require(_isParty(escrow, msg.sender), "not escrow party");
-        escrow.state = State.Disputed;
-        _clearPendingExtension(escrowId);
-        emit DisputeOpened(escrowId, msg.sender);
-    }
-
-    function voteDisputeResolution(uint256 escrowId, bool releaseToExporter)
+    function raiseDispute(uint256 escrowId, Milestone contestedMilestone)
         external
         whenNotPaused
         nonReentrant
         escrowExists(escrowId)
     {
         Escrow storage escrow = escrows[escrowId];
-        require(escrow.state == State.Disputed, "escrow not disputed");
-        require(_isParty(escrow, msg.sender), "not escrow party");
-        require(!disputeVoted[escrowId][msg.sender], "already voted");
+        require(msg.sender == escrow.importer || msg.sender == escrow.exporter, "not escrow party");
+        require(escrow.state != State.Completed, "escrow already completed");
+        require(escrow.state != State.Refunded, "escrow already refunded");
+        require(escrow.state != State.Disputed, "escrow already disputed");
 
-        disputeVoted[escrowId][msg.sender] = true;
+        if (contestedMilestone == Milestone.None) {
+            require(escrow.state == State.TimelockActive, "general dispute only in timelock");
+            require(block.timestamp < escrow.timelockReleaseAt, "timelock elapsed");
+        } else {
+            MilestoneProof storage proof = escrow.proofs[contestedMilestone];
+            require(proof.submitted, "milestone proof missing");
+            require(block.timestamp <= proof.challengeDeadline, "challenge window closed");
+        }
+
+        uint256 bondAmount = (escrow.contractValue * disputeBondBps) / 10_000;
+        require(bondAmount > 0, "dispute bond too small");
+
+        idrtToken.safeTransferFrom(msg.sender, address(this), bondAmount);
+        disputes[escrowId] = DisputeRecord({
+            open: true,
+            raisedBy: msg.sender,
+            bondAmount: bondAmount,
+            disputedMilestone: contestedMilestone,
+            resolvedVerifier: address(0),
+            reasoningCid: "",
+            releaseToExporter: false
+        });
+        escrow.state = State.Disputed;
+
+        emit DisputeRaised(escrowId, msg.sender, contestedMilestone, bondAmount);
+    }
+
+    function resolveDispute(
+        uint256 escrowId,
+        bool releaseToExporter,
+        string calldata reasoningCid,
+        bool slashVerifier,
+        bool bondFrivolous
+    ) external whenNotPaused nonReentrant escrowExists(escrowId) {
+        Escrow storage escrow = escrows[escrowId];
+        DisputeRecord storage dispute = disputes[escrowId];
+        require(msg.sender == escrow.arbiter, "only arbiter");
+        require(escrow.state == State.Disputed && dispute.open, "escrow not disputed");
+        require(bytes(reasoningCid).length > 0, "reasoning CID required");
+        require(!(bondFrivolous && slashVerifier), "frivolous cannot slash verifier");
+
+        address resolvedVerifier;
+        if (slashVerifier) {
+            resolvedVerifier = _slashVerifier(escrowId, dispute.disputedMilestone);
+        }
+
+        uint256 disputeBond = dispute.bondAmount;
+        dispute.bondAmount = 0;
+        dispute.open = false;
+        dispute.reasoningCid = reasoningCid;
+        dispute.releaseToExporter = releaseToExporter;
+        dispute.resolvedVerifier = resolvedVerifier;
 
         if (releaseToExporter) {
-            escrow.releaseApprovals += 1;
-        } else {
-            escrow.refundApprovals += 1;
-        }
-
-        emit DisputeVote(escrowId, msg.sender, releaseToExporter);
-
-        if (escrow.releaseApprovals >= 2) {
             _release(escrowId);
-            emit DisputeResolved(escrowId, true);
-        } else if (escrow.refundApprovals >= 2) {
+        } else {
             _refund(escrowId);
-            emit DisputeResolved(escrowId, false);
         }
+
+        if (disputeBond > 0) {
+            idrtToken.safeTransfer(bondFrivolous ? escrow.exporter : dispute.raisedBy, disputeBond);
+        }
+
+        emit DisputeResolved(escrowId, releaseToExporter, reasoningCid, slashVerifier);
     }
 
-    function proposeDeadlineExtension(uint256 escrowId, uint256 newDeadline)
+    function getEscrow(uint256 escrowId) external view escrowExists(escrowId) returns (EscrowView memory) {
+        Escrow storage escrow = escrows[escrowId];
+        return EscrowView({
+            contractValue: escrow.contractValue,
+            importer: escrow.importer,
+            exporter: escrow.exporter,
+            arbiter: escrow.arbiter,
+            documentCid: escrow.documentCid,
+            commodity: escrow.commodity,
+            containerRef: escrow.containerRef,
+            globalDeadline: escrow.globalDeadline,
+            createdAt: escrow.createdAt,
+            state: escrow.state,
+            timelockReleaseAt: escrow.timelockReleaseAt
+        });
+    }
+
+    function getMilestoneProof(uint256 escrowId, Milestone milestone)
         external
-        whenNotPaused
+        view
         escrowExists(escrowId)
+        returns (MilestoneProof memory)
     {
-        Escrow storage escrow = escrows[escrowId];
-        require(escrow.state == State.Pending || escrow.state == State.Verified, "escrow not amendable");
-        require(
-            msg.sender == escrow.importerAddress || msg.sender == escrow.exporterAddress,
-            "only importer or exporter"
-        );
-        require(newDeadline > escrow.deadline, "must extend deadline");
-
-        pendingDeadline[escrowId] = newDeadline;
-        extensionProposer[escrowId] = msg.sender;
-        emit DeadlineExtensionProposed(escrowId, msg.sender, newDeadline);
+        return escrows[escrowId].proofs[milestone];
     }
 
-    function approveDeadlineExtension(uint256 escrowId) external whenNotPaused escrowExists(escrowId) {
-        Escrow storage escrow = escrows[escrowId];
-        require(escrow.state == State.Pending || escrow.state == State.Verified, "escrow not amendable");
-        require(
-            msg.sender == escrow.importerAddress || msg.sender == escrow.exporterAddress,
-            "only importer or exporter"
-        );
-
-        uint256 newDeadline = pendingDeadline[escrowId];
-        require(newDeadline != 0, "no pending extension");
-        require(msg.sender != extensionProposer[escrowId], "proposer cannot approve");
-
-        escrow.deadline = newDeadline;
-        _clearPendingExtension(escrowId);
-        emit DeadlineExtended(escrowId, newDeadline);
-    }
-
-    function pause() external onlyOwner {
-        _pause();
-    }
-
-    function unpause() external onlyOwner {
-        _unpause();
-    }
-
-    function withdrawTreasury() external onlyOwner nonReentrant {
-        uint256 amount = treasury;
-        require(amount > 0, "treasury empty");
-        treasury = 0;
-        (bool sent, ) = payable(owner()).call{value: amount}("");
-        require(sent, "treasury transfer failed");
-        emit TreasuryWithdrawn(owner(), amount);
-    }
-
-    function getEscrow(uint256 escrowId) external view escrowExists(escrowId) returns (Escrow memory) {
-        return escrows[escrowId];
+    function getDispute(uint256 escrowId)
+        external
+        view
+        escrowExists(escrowId)
+        returns (DisputeRecord memory)
+    {
+        return disputes[escrowId];
     }
 
     function isReleaseEligible(uint256 escrowId) external view escrowExists(escrowId) returns (bool) {
-        return _isReleaseEligible(escrows[escrowId]);
+        Escrow storage escrow = escrows[escrowId];
+        return escrow.state == State.TimelockActive && block.timestamp >= escrow.timelockReleaseAt;
     }
 
-    function getOracles()
-        external
-        view
-        returns (address[] memory addrs, uint256[] memory bonds, uint256[] memory slashes)
-    {
-        uint256 count = oracleList.length;
-        addrs = new address[](count);
-        bonds = new uint256[](count);
-        slashes = new uint256[](count);
-        for (uint256 i = 0; i < count; i++) {
-            addrs[i] = oracleList[i];
-            bonds[i] = oracleBonds[oracleList[i]];
-            slashes[i] = oracleSlashCount[oracleList[i]];
-        }
+    function _createEscrow(
+        address importer,
+        address exporter,
+        address arbiter,
+        string calldata documentCid,
+        uint256 contractValue,
+        uint256 globalDeadline,
+        string calldata commodity,
+        string calldata containerRef
+    ) private returns (uint256 escrowId) {
+        require(exporter != address(0), "exporter zero address");
+        require(arbiter != address(0), "arbiter zero address");
+        require(contractValue > 0, "contract value required");
+        require(globalDeadline > block.timestamp, "global deadline must be future");
+        require(bytes(documentCid).length > 0, "document CID required");
+        require(bytes(containerRef).length > 0, "container ref required");
+
+        escrowId = nextEscrowId++;
+        Escrow storage escrow = escrows[escrowId];
+        escrow.contractValue = contractValue;
+        escrow.importer = importer;
+        escrow.exporter = exporter;
+        escrow.arbiter = arbiter;
+        escrow.documentCid = documentCid;
+        escrow.commodity = commodity;
+        escrow.containerRef = containerRef;
+        escrow.globalDeadline = globalDeadline;
+        escrow.createdAt = block.timestamp;
+        escrow.state = State.Created;
+
+        idrtToken.safeTransferFrom(importer, address(this), contractValue);
+
+        emit EscrowCreated(escrowId, importer, exporter, arbiter, contractValue, documentCid, globalDeadline);
     }
 
-    function getAttestation(uint256 escrowId, address oracle)
-        external
-        view
-        escrowExists(escrowId)
-        returns (OracleAttestation memory)
-    {
-        return attestations[escrowId][oracle];
-    }
-
-    function _clearPendingExtension(uint256 escrowId) private {
-        delete pendingDeadline[escrowId];
-        delete extensionProposer[escrowId];
+    function _postVerifierBond(uint256 amount) private {
+        verifierBonds[msg.sender] += amount;
+        idrtToken.safeTransferFrom(msg.sender, address(this), amount);
+        emit VerifierBondPosted(msg.sender, amount, verifierBonds[msg.sender]);
     }
 
     function _release(uint256 escrowId) private {
@@ -495,13 +509,9 @@ contract SternEscrow is Ownable, Pausable, ReentrancyGuard {
         uint256 amount = escrow.contractValue;
         escrow.contractValue = 0;
         escrow.state = State.Completed;
-        _clearPendingExtension(escrowId);
+        idrtToken.safeTransfer(escrow.exporter, amount);
 
-        (bool sent, ) = escrow.exporterAddress.call{value: amount}("");
-        require(sent, "exporter transfer failed");
-
-        emit FundsReleased(escrowId, escrow.exporterAddress, amount);
-        emit EBLTransferred(escrowId, escrow.eBLCID, escrow.importerAddress);
+        emit PaymentReleased(escrowId, escrow.exporter, amount);
     }
 
     function _refund(uint256 escrowId) private {
@@ -512,30 +522,71 @@ contract SternEscrow is Ownable, Pausable, ReentrancyGuard {
         uint256 amount = escrow.contractValue;
         escrow.contractValue = 0;
         escrow.state = State.Refunded;
-        _clearPendingExtension(escrowId);
+        idrtToken.safeTransfer(escrow.importer, amount);
 
-        (bool sent, ) = escrow.importerAddress.call{value: amount}("");
-        require(sent, "importer transfer failed");
-
-        emit Refunded(escrowId, escrow.importerAddress, amount);
+        emit Refunded(escrowId, escrow.importer, amount);
     }
 
-    function _isReleaseEligible(Escrow storage escrow) private view returns (bool) {
-        return _allConditionsMet(escrow) && block.number >= escrow.createdBlock + requiredConfirmations;
+    function _slashVerifier(uint256 escrowId, Milestone disputedMilestone) private returns (address verifier) {
+        require(disputedMilestone != Milestone.None, "no verifier to slash");
+
+        Escrow storage escrow = escrows[escrowId];
+        MilestoneProof storage proof = escrow.proofs[disputedMilestone];
+        verifier = proof.verifier;
+        require(verifier != address(0), "verifier not found");
+
+        uint256 slashAmount = (verifierBonds[verifier] * slashBps) / 10_000;
+        require(slashAmount > 0, "slash amount zero");
+
+        verifierBonds[verifier] -= slashAmount;
+        verifierSlashCount[verifier] += 1;
+
+        address compensatedTo = escrow.importer;
+        uint256 compensation = (slashAmount * SLASH_AGGRIEVED_BPS) / 10_000;
+        uint256 treasuryShare = slashAmount - compensation;
+
+        idrtToken.safeTransfer(compensatedTo, compensation);
+        idrtToken.safeTransfer(treasuryAddress, treasuryShare);
+
+        emit VerifierSlashed(escrowId, verifier, slashAmount, compensatedTo);
+
+        if (verifierSlashCount[verifier] >= MAX_SLASH_STRIKES) {
+            _revokeVerifierRoles(verifier);
+        }
     }
 
-    function _allConditionsMet(Escrow storage escrow) private view returns (bool) {
-        Verification storage verification = escrow.verification;
-        return verification.vgmMatch
-            && verification.aisDeparted
-            && verification.ceisaApproved
-            && verification.eblCidValid
-            && verification.inspectionPassed;
+    function _revokeVerifierRoles(address verifier) private {
+        _revokeVerifierRoleIfHeld(verifier, ROLE_QUALITY_AUDITOR);
+        _revokeVerifierRoleIfHeld(verifier, ROLE_LOGISTICS);
+        _revokeVerifierRoleIfHeld(verifier, ROLE_CUSTOMS);
     }
 
-    function _isParty(Escrow storage escrow, address account) private view returns (bool) {
-        return account == escrow.importerAddress
-            || account == escrow.exporterAddress
-            || account == escrow.arbiterAddress;
+    function _revokeVerifierRoleIfHeld(address verifier, bytes32 role) private {
+        if (hasRole(role, verifier)) {
+            _revokeRole(role, verifier);
+            emit VerifierRoleRevoked(verifier, role, "3x slashed, auto circuit-breaker");
+        }
+    }
+
+    function _roleForMilestone(Milestone milestone) private pure returns (bytes32) {
+        if (milestone == Milestone.Inspected) return ROLE_QUALITY_AUDITOR;
+        if (milestone == Milestone.Shipped) return ROLE_LOGISTICS;
+        if (milestone == Milestone.ArrivedCleared) return ROLE_CUSTOMS;
+        revert("invalid milestone");
+    }
+
+    function _isVerifierRole(bytes32 role) private pure returns (bool) {
+        return role == ROLE_QUALITY_AUDITOR || role == ROLE_LOGISTICS || role == ROLE_CUSTOMS;
+    }
+
+    function _hasVerifierRole(address account) private view returns (bool) {
+        return hasRole(ROLE_QUALITY_AUDITOR, account)
+            || hasRole(ROLE_LOGISTICS, account)
+            || hasRole(ROLE_CUSTOMS, account);
+    }
+
+    function _automatedCheckPassed(bytes calldata automatedCheckPayload) private pure returns (bool) {
+        require(automatedCheckPayload.length > 0, "automated gate payload required");
+        return abi.decode(automatedCheckPayload, (bool));
     }
 }

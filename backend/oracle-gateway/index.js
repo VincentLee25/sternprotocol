@@ -2,8 +2,8 @@ const express = require("express");
 const cors = require("cors");
 const { getMockStatus } = require("./oracleService");
 const {
-  submitOracleVerification,
-  openDispute,
+  submitMilestoneProof,
+  raiseDispute,
   resolveDispute
 } = require("./contractService");
 const { config } = require("./config");
@@ -31,9 +31,29 @@ app.post("/submit-oracle/:contractId", async (req, res, next) => {
   try {
     const body = req.body || {};
     const status = getMockStatus(req.params.contractId, body);
-    const dissentIndex = Number.isInteger(body.dissentIndex) ? body.dissentIndex : undefined;
-    const result = await submitOracleVerification(req.params.contractId, status.verification, dissentIndex);
+    const result = await submitMilestoneProof(
+      req.params.contractId,
+      body.milestone || "inspected",
+      body.proofCid || body.eblCid || "bafybeiproofdemo",
+      status.verification
+    );
     res.json({ status, result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/milestones/:contractId/submit", async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const status = getMockStatus(req.params.contractId, body);
+    const result = await submitMilestoneProof(
+      req.params.contractId,
+      body.milestone,
+      body.proofCid,
+      status.verification
+    );
+    res.json({ status: "verified", automatedCheck: status.verification, result });
   } catch (error) {
     next(error);
   }
@@ -41,7 +61,7 @@ app.post("/submit-oracle/:contractId", async (req, res, next) => {
 
 app.post("/open-dispute/:contractId", async (req, res, next) => {
   try {
-    const result = await openDispute(req.params.contractId);
+    const result = await raiseDispute(req.params.contractId, req.body?.contestedMilestone || "none");
     res.json({ contractId: req.params.contractId, result });
   } catch (error) {
     next(error);
@@ -50,7 +70,7 @@ app.post("/open-dispute/:contractId", async (req, res, next) => {
 
 app.post("/resolve-dispute/:contractId", async (req, res, next) => {
   try {
-    const result = await resolveDispute(req.params.contractId, req.body?.releaseToExporter);
+    const result = await resolveDispute(req.params.contractId, req.body || {});
     res.json({ contractId: req.params.contractId, result });
   } catch (error) {
     next(error);

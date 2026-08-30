@@ -2,10 +2,17 @@ import { ethers } from "ethers";
 import dotenv from "dotenv";
 dotenv.config();
 
-const ABI = [
-  "function postBond() external payable",
-  "function oracleBonds(address) view returns (uint256)",
-  "function oracleBond() view returns (uint256)"
+const ESCROW_ABI = [
+  "function MIN_VERIFIER_BOND() view returns (uint256)",
+  "function verifierBonds(address) view returns (uint256)",
+  "function postVerifierBond() external",
+  "function idrtToken() view returns (address)"
+];
+
+const ERC20_ABI = [
+  "function allowance(address owner,address spender) view returns (uint256)",
+  "function approve(address spender,uint256 amount) returns (bool)",
+  "function decimals() view returns (uint8)"
 ];
 
 async function main() {
@@ -14,55 +21,59 @@ async function main() {
   );
   const contractAddress = process.env.CONTRACT_ADDRESS;
 
-  // Split berdasarkan koma
-  const rawKeys = process.env.ORACLE_PRIVATE_KEYS || "";
-  const privateKeys = rawKeys
-    .split(",")
-    .map((k) => k.trim())
-    .filter(Boolean);
-
-  if (privateKeys.length === 0) {
-    console.error("❌ ORACLE_PRIVATE_KEYS tidak ditemukan di .env!");
+  if (!contractAddress) {
+    console.error("CONTRACT_ADDRESS tidak ditemukan di .env");
     process.exit(1);
   }
 
-  console.log(`Terdeteksi ${privateKeys.length} Oracle Private Keys dari .env.`);
+  const privateKeys = (process.env.ORACLE_PRIVATE_KEYS || "")
+    .split(",")
+    .map((key) => key.trim())
+    .filter(Boolean);
+
+  if (privateKeys.length === 0) {
+    console.error("ORACLE_PRIVATE_KEYS tidak ditemukan di .env");
+    process.exit(1);
+  }
+
+  console.log(`Terdeteksi ${privateKeys.length} verifier private keys dari .env.`);
 
   for (let i = 0; i < privateKeys.length; i++) {
-    let key = privateKeys[i];
-    // Pastikan private key punya prefix '0x' agar ethers.js tidak throw error
-    if (!key.startsWith("0x")) {
-      key = "0x" + key;
-    }
-
+    const key = privateKeys[i].startsWith("0x") ? privateKeys[i] : `0x${privateKeys[i]}`;
     const wallet = new ethers.Wallet(key, provider);
-    const contract = new ethers.Contract(contractAddress, ABI, wallet);
+    const escrow = new ethers.Contract(contractAddress, ESCROW_ABI, wallet);
+    const idrtAddress = await escrow.idrtToken();
+    const idrt = new ethers.Contract(idrtAddress, ERC20_ABI, wallet);
+    const decimals = await idrt.decimals();
 
-    console.log(`\n==================================================`);
-    console.log(`[Oracle ${i + 1}] Address: ${wallet.address}`);
+    console.log(`\n[Verifier ${i + 1}] Address: ${wallet.address}`);
 
     try {
-      const minBond = await contract.oracleBond();
-      const currentBond = await contract.oracleBonds(wallet.address);
+      const minBond = await escrow.MIN_VERIFIER_BOND();
+      const currentBond = await escrow.verifierBonds(wallet.address);
 
-      console.log(`Syarat Minimal Bond : ${ethers.formatEther(minBond)} POL`);
-      console.log(`Bond Saat Ini        : ${ethers.formatEther(currentBond)} POL`);
+      console.log(`Syarat Minimal Bond : ${ethers.formatUnits(minBond, decimals)} IDRT-demo`);
+      console.log(`Bond Saat Ini        : ${ethers.formatUnits(currentBond, decimals)} IDRT-demo`);
 
       if (currentBond >= minBond) {
-        console.log(`✅ Oracle ${i + 1} SUDAH punya bond yang cukup. Skip!`);
+        console.log(`Verifier ${i + 1} sudah punya bond yang cukup. Skip.`);
         continue;
       }
 
-      const amountToPost = minBond - currentBond;
-      console.log(`⏳ Menyetor ${ethers.formatEther(amountToPost)} POL dari wallet ke postBond()...`);
+      const allowance = await idrt.allowance(wallet.address, contractAddress);
+      const needed = minBond - currentBond;
+      if (allowance < needed) {
+        console.log(`Approve ${ethers.formatUnits(needed, decimals)} IDRT-demo untuk bond...`);
+        await (await idrt.approve(contractAddress, needed)).wait();
+      }
 
-      const tx = await contract.postBond({ value: amountToPost });
+      console.log(`Menyetor ${ethers.formatUnits(needed, decimals)} IDRT-demo ke postVerifierBond()...`);
+      const tx = await escrow.postVerifierBond();
       console.log(`Tx sent: ${tx.hash}. Menunggu konfirmasi...`);
       await tx.wait();
-
-      console.log(`🎉 SUCCESS! Oracle ${i + 1} (${wallet.address}) berhasil diposting bond-nya.`);
+      console.log(`SUCCESS: verifier ${i + 1} berhasil post IDRT bond.`);
     } catch (err) {
-      console.error(`❌ Gagal postBond untuk Oracle ${i + 1}:`, err.message);
+      console.error(`Gagal postVerifierBond untuk verifier ${i + 1}:`, err.message);
     }
   }
 }
