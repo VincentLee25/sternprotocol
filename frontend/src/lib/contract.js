@@ -27,6 +27,10 @@ export const sternEscrowAbi = [
   "function releasePayment(uint256 escrowId)",
   "function claimRefund(uint256 escrowId)",
   "function raiseDispute(uint256 escrowId,uint8 contestedMilestone)",
+  "function proposeDeadlineExtension(uint256 escrowId,uint256 newDeadline)",
+  "function approveDeadlineExtension(uint256 escrowId)",
+  "function pendingDeadline(uint256 escrowId) view returns (uint256)",
+  "function extensionProposer(uint256 escrowId) view returns (address)",
   "function resolveDispute(uint256 escrowId,bool releaseToExporter,string reasoningCid,bool slashVerifier,bool bondFrivolous)",
   "function getEscrow(uint256 escrowId) view returns ((uint256 contractValue,address importer,address exporter,address arbiter,string documentCid,string commodity,string containerRef,uint256 globalDeadline,uint256 createdAt,uint8 state,uint256 timelockReleaseAt))"
 ];

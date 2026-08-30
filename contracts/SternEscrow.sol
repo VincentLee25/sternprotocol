@@ -97,6 +97,8 @@ contract SternEscrow is AccessControl, Pausable, ReentrancyGuard {
 
     mapping(uint256 => Escrow) private escrows;
     mapping(uint256 => DisputeRecord) private disputes;
+    mapping(uint256 => uint256) public pendingDeadline;
+    mapping(uint256 => address) public extensionProposer;
     mapping(address => uint256) public verifierBonds;
     mapping(address => uint256) public verifierSlashCount;
 
@@ -139,6 +141,8 @@ contract SternEscrow is AccessControl, Pausable, ReentrancyGuard {
     );
     event VerifierBondPosted(address indexed verifier, uint256 amount, uint256 totalBond);
     event VerifierRoleRevoked(address indexed verifier, bytes32 role, string reason);
+    event DeadlineExtensionProposed(uint256 indexed escrowId, address indexed proposer, uint256 newDeadline);
+    event DeadlineExtended(uint256 indexed escrowId, uint256 newDeadline);
 
     modifier escrowExists(uint256 escrowId) {
         require(escrows[escrowId].importer != address(0), "escrow not found");
@@ -367,6 +371,7 @@ contract SternEscrow is AccessControl, Pausable, ReentrancyGuard {
         require(bondAmount > 0, "dispute bond too small");
 
         idrtToken.safeTransferFrom(msg.sender, address(this), bondAmount);
+        _clearPendingExtension(escrowId);
         disputes[escrowId] = DisputeRecord({
             open: true,
             raisedBy: msg.sender,
@@ -379,6 +384,43 @@ contract SternEscrow is AccessControl, Pausable, ReentrancyGuard {
         escrow.state = State.Disputed;
 
         emit DisputeRaised(escrowId, msg.sender, contestedMilestone, bondAmount);
+    }
+
+    function proposeDeadlineExtension(uint256 escrowId, uint256 newDeadline)
+        external
+        whenNotPaused
+        escrowExists(escrowId)
+    {
+        Escrow storage escrow = escrows[escrowId];
+        require(escrow.state != State.Completed, "escrow already completed");
+        require(escrow.state != State.Refunded, "escrow already refunded");
+        require(escrow.state != State.Disputed, "escrow disputed");
+        require(msg.sender == escrow.importer || msg.sender == escrow.exporter, "not escrow party");
+        require(newDeadline > escrow.globalDeadline, "must extend deadline");
+
+        pendingDeadline[escrowId] = newDeadline;
+        extensionProposer[escrowId] = msg.sender;
+        emit DeadlineExtensionProposed(escrowId, msg.sender, newDeadline);
+    }
+
+    function approveDeadlineExtension(uint256 escrowId)
+        external
+        whenNotPaused
+        escrowExists(escrowId)
+    {
+        Escrow storage escrow = escrows[escrowId];
+        require(escrow.state != State.Completed, "escrow already completed");
+        require(escrow.state != State.Refunded, "escrow already refunded");
+        require(escrow.state != State.Disputed, "escrow disputed");
+        require(msg.sender == escrow.importer || msg.sender == escrow.exporter, "not escrow party");
+
+        uint256 newDeadline = pendingDeadline[escrowId];
+        require(newDeadline != 0, "no pending extension");
+        require(msg.sender != extensionProposer[escrowId], "proposer cannot approve");
+
+        escrow.globalDeadline = newDeadline;
+        _clearPendingExtension(escrowId);
+        emit DeadlineExtended(escrowId, newDeadline);
     }
 
     function resolveDispute(
@@ -509,6 +551,7 @@ contract SternEscrow is AccessControl, Pausable, ReentrancyGuard {
         uint256 amount = escrow.contractValue;
         escrow.contractValue = 0;
         escrow.state = State.Completed;
+        _clearPendingExtension(escrowId);
         idrtToken.safeTransfer(escrow.exporter, amount);
 
         emit PaymentReleased(escrowId, escrow.exporter, amount);
@@ -522,6 +565,7 @@ contract SternEscrow is AccessControl, Pausable, ReentrancyGuard {
         uint256 amount = escrow.contractValue;
         escrow.contractValue = 0;
         escrow.state = State.Refunded;
+        _clearPendingExtension(escrowId);
         idrtToken.safeTransfer(escrow.importer, amount);
 
         emit Refunded(escrowId, escrow.importer, amount);
@@ -566,6 +610,11 @@ contract SternEscrow is AccessControl, Pausable, ReentrancyGuard {
             _revokeRole(role, verifier);
             emit VerifierRoleRevoked(verifier, role, "3x slashed, auto circuit-breaker");
         }
+    }
+
+    function _clearPendingExtension(uint256 escrowId) private {
+        delete pendingDeadline[escrowId];
+        delete extensionProposer[escrowId];
     }
 
     function _roleForMilestone(Milestone milestone) private pure returns (bytes32) {

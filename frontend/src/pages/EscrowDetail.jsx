@@ -81,7 +81,7 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
         ]);
         setChainMeta({ timelock: Number(timelock), eligible });
         applyChainEscrow(chainEscrow);
-        await loadChainOracles(contract);
+        await Promise.all([loadChainOracles(contract), loadChainExtension(contract, chainEscrow)]);
       } catch {
         setChainMeta(null);
       }
@@ -113,7 +113,10 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
 
   async function loadChainExtension(contract, chainEscrow) {
     try {
-      const [pending, proposer] = [0n, ethers.ZeroAddress];
+      const [pending, proposer] = await Promise.all([
+        contract.pendingDeadline(escrow.id),
+        contract.extensionProposer(escrow.id)
+      ]);
       const pendingMs = Number(pending) * 1000;
       if (!pendingMs) {
         onUpdate(escrow.id, (current) => ({ ...current, pendingExtension: null }));
@@ -184,7 +187,7 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
     ]);
     const state = applyChainEscrow(chainEscrow);
     setChainMeta((meta) => (meta ? { ...meta, eligible } : meta));
-      await loadChainOracles(contract);
+      await Promise.all([loadChainOracles(contract), loadChainExtension(contract, chainEscrow)]);
     return state;
   }
 

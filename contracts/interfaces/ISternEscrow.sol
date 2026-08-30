@@ -88,6 +88,8 @@ interface ISternEscrow {
     function releasePayment(uint256 escrowId) external;
     function claimRefund(uint256 escrowId) external;
     function raiseDispute(uint256 escrowId, Milestone contestedMilestone) external;
+    function proposeDeadlineExtension(uint256 escrowId, uint256 newDeadline) external;
+    function approveDeadlineExtension(uint256 escrowId) external;
     function resolveDispute(
         uint256 escrowId,
         bool releaseToExporter,
@@ -99,5 +101,7 @@ interface ISternEscrow {
     function getMilestoneProof(uint256 escrowId, Milestone milestone) external view returns (MilestoneProof memory);
     function getDispute(uint256 escrowId) external view returns (DisputeRecord memory);
     function isReleaseEligible(uint256 escrowId) external view returns (bool);
+    function pendingDeadline(uint256 escrowId) external view returns (uint256);
+    function extensionProposer(uint256 escrowId) external view returns (address);
     function nextEscrowId() external view returns (uint256);
 }

@@ -224,6 +224,54 @@ describe("SternEscrow phase 0", function () {
     expect((await ctx.escrow.getEscrow(escrowId)).state).to.equal(State.Refunded);
   });
 
+  it("extends the global deadline when importer and exporter both approve", async function () {
+    const ctx = await deployFixture();
+    const { escrowId, deadline } = await createEscrow(ctx);
+    const newDeadline = deadline + 3 * 24 * 60 * 60;
+
+    await expect(ctx.escrow.connect(ctx.exporter).proposeDeadlineExtension(escrowId, newDeadline))
+      .to.emit(ctx.escrow, "DeadlineExtensionProposed")
+      .withArgs(escrowId, ctx.exporter.address, newDeadline);
+
+    expect(await ctx.escrow.pendingDeadline(escrowId)).to.equal(newDeadline);
+    expect(await ctx.escrow.extensionProposer(escrowId)).to.equal(ctx.exporter.address);
+
+    await expect(ctx.escrow.connect(ctx.importer).approveDeadlineExtension(escrowId))
+      .to.emit(ctx.escrow, "DeadlineExtended")
+      .withArgs(escrowId, newDeadline);
+
+    const view = await ctx.escrow.getEscrow(escrowId);
+    expect(view.globalDeadline).to.equal(newDeadline);
+    expect(await ctx.escrow.pendingDeadline(escrowId)).to.equal(0);
+    expect(await ctx.escrow.extensionProposer(escrowId)).to.equal(ethers.ZeroAddress);
+  });
+
+  it("rejects invalid amendment approvals and clears pending extension on dispute", async function () {
+    const ctx = await deployFixture();
+    const { escrowId, deadline } = await createEscrow(ctx);
+
+    await expect(
+      ctx.escrow.connect(ctx.outsider).proposeDeadlineExtension(escrowId, deadline + 1000)
+    ).to.be.revertedWith("not escrow party");
+
+    await expect(
+      ctx.escrow.connect(ctx.exporter).proposeDeadlineExtension(escrowId, deadline - 1)
+    ).to.be.revertedWith("must extend deadline");
+
+    await ctx.escrow.connect(ctx.exporter).proposeDeadlineExtension(escrowId, deadline + 1000);
+
+    await expect(ctx.escrow.connect(ctx.exporter).approveDeadlineExtension(escrowId))
+      .to.be.revertedWith("proposer cannot approve");
+
+    await ctx.escrow.connect(ctx.quality).submitMilestoneProof(escrowId, Milestone.Inspected, "bafyinspection", PROOF_OK);
+    await ctx.escrow.connect(ctx.importer).raiseDispute(escrowId, Milestone.Inspected);
+
+    expect(await ctx.escrow.pendingDeadline(escrowId)).to.equal(0);
+    expect(await ctx.escrow.extensionProposer(escrowId)).to.equal(ethers.ZeroAddress);
+    await expect(ctx.escrow.connect(ctx.importer).approveDeadlineExtension(escrowId))
+      .to.be.revertedWith("escrow disputed");
+  });
+
   it("auto-revokes verifier roles after three slashes", async function () {
     const ctx = await deployFixture();
 
