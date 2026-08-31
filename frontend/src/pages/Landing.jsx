@@ -54,7 +54,7 @@ export default function Landing({ onNavigate, onEnter }) {
                   onClick={onEnter}
                   className="flex cursor-pointer items-center gap-2 rounded-full bg-teal px-6 py-3 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-[#4E7F91]"
                 >
-                  Open the workspace
+                  Open workspace
                   <ArrowRight size={15} aria-hidden="true" />
                 </button>
                 <span className="rounded-full border border-alabaster/25 px-6 py-3 text-[13px] font-medium text-alabaster">
