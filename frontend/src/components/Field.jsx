@@ -3,26 +3,26 @@ export default function Field({ label, htmlFor, required, error, hint, children 
     <div>
       <label
         htmlFor={htmlFor}
-        className="mb-1.5 block text-2xs font-medium uppercase tracking-widest text-paper-dim"
+        className="mb-2 block font-mono text-2xs font-medium uppercase text-ink-faint"
       >
         {label}
-        {required ? <span className="ml-1 text-state-fail">*</span> : null}
+        {required ? <span className="ml-1 text-state-disputed">*</span> : null}
       </label>
       {children}
       {error ? (
-        <p role="alert" className="mt-1.5 text-xs text-state-fail">
+        <p role="alert" className="mt-2 font-serif text-xs text-state-disputed">
           {error}
         </p>
       ) : hint ? (
-        <p className="mt-1.5 text-xs text-paper-faint">{hint}</p>
+        <p className="mt-2 font-serif text-xs text-ink-dim">{hint}</p>
       ) : null}
     </div>
   );
 }
 
 export const inputClass = (hasError) =>
-  `w-full rounded border bg-ink-950 px-3 py-2.5 text-sm text-paper placeholder:text-paper-faint transition-colors duration-150 focus:outline-none ${
+  `w-full rounded-panel border bg-white px-3.5 py-2.5 text-sm text-navy placeholder:text-ink-faint transition-colors duration-150 focus:outline-none ${
     hasError
-      ? "border-state-fail/60 focus:border-state-fail"
-      : "border-ink-700 hover:border-ink-600 focus:border-brass-400"
+      ? "border-state-disputed/60 focus:border-state-disputed"
+      : "border-sky hover:border-teal/40 focus:border-teal"
   }`;
