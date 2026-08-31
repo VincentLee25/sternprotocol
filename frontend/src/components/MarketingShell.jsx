@@ -1,4 +1,5 @@
 import CredentialsFooter from "./CredentialsFooter.jsx";
+import sternLogo from "../assets/stern-logo.png";
 
 const NAV = [
   { id: "instrument", label: "Instrument" },
@@ -14,10 +15,10 @@ export default function MarketingShell({ current, onNavigate, onEnter, children 
           <button
             type="button"
             onClick={() => onNavigate("landing")}
-            className="cursor-pointer text-lg font-semibold tracking-[0.14em]"
+            className="cursor-pointer"
             aria-label="STERN home"
           >
-            STERN
+            <img src={sternLogo} alt="STERN" className="h-6 w-auto" />
           </button>
           <div className="hidden gap-8 text-sm md:flex">
             {NAV.map((item) => (
