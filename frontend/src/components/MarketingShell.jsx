@@ -1,9 +1,9 @@
 import CredentialsFooter from "./CredentialsFooter.jsx";
 
 const NAV = [
-  { id: "instrument", label: "The instrument" },
-  { id: "settlement", label: "How settlement works" },
-  { id: "oracles", label: "Oracles" }
+  { id: "instrument", label: "Instrument" },
+  { id: "settlement", label: "Settlement" },
+  { id: "oracles", label: "Oracle" }
 ];
 
 export default function MarketingShell({ current, onNavigate, onEnter, children }) {
