@@ -1,25 +1,15 @@
-// Demo identities mapped to the standard Hardhat accounts used by the deploy
-// script and DEMO_FILL_EXAMPLE.md. In wallet mode the connected MetaMask
-// account is authoritative; these define who the UI is "acting as".
+// Demo identities used by the sidebar's role switcher — kept in sync with
+// the seeded escrow's parties/verifiers in mockRegistry.js so permission
+// checks resolve correctly out of the box.
+import { DEMO_PARTIES, VERIFIERS } from "./mockRegistry.js";
+
 export const ACTORS = [
-  {
-    id: "importer",
-    label: "Importer",
-    org: "Hamburg Coffee Buyer GmbH",
-    address: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
-  },
-  {
-    id: "exporter",
-    label: "Exporter",
-    org: "UMKM Kopi Gayo, Aceh",
-    address: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
-  },
-  {
-    id: "arbiter",
-    label: "Arbiter",
-    org: "Surveyor / Inspection body",
-    address: "0x90F79bf6EB2c4f870365E785982E1f101E93b906"
-  }
+  { id: "importer", label: "Importer", org: "Hamburg Coffee Buyer GmbH", address: DEMO_PARTIES.importer },
+  { id: "exporter", label: "Exporter", org: "UMKM Kopi Gayo, Aceh", address: DEMO_PARTIES.exporter },
+  { id: "arbiter", label: "Arbiter", org: "Independent dispute arbiter", address: DEMO_PARTIES.arbiter },
+  { id: "verifier-inspected", label: VERIFIERS[0].name, org: "Quality auditor", address: VERIFIERS[0].address, milestone: "inspected" },
+  { id: "verifier-shipped", label: VERIFIERS[1].name, org: "Logistics / shipping line", address: VERIFIERS[1].address, milestone: "shipped" },
+  { id: "verifier-arrivedCleared", label: VERIFIERS[2].name, org: "Customs broker", address: VERIFIERS[2].address, milestone: "arrivedCleared" }
 ];
 
 export function actorById(id) {
