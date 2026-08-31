@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronsUpDown, FilePlus2, LayoutList, RadioTower, RotateCcw } from "lucide-react";
 import { ACTORS, actorById, shortAddress } from "../lib/actors.js";
 import { getHealth } from "../lib/api.js";
-import sternLogo from "../assets/stern-logo-navy.png";
+import sternLogo from "../assets/stern-logo.png";
 
 const NAV = [
   { id: "overview", label: "Escrows", icon: LayoutList },
@@ -53,7 +53,7 @@ export default function Sidebar({ view, onNavigate, role, onRoleChange, onResetD
         className="cursor-pointer px-5 py-5 text-left"
         aria-label="STERN home"
       >
-        <img src={sternLogo} alt="STERN" className="h-5 w-auto" />
+        <img src={sternLogo} alt="STERN" className="h-5 w-auto invert" />
         <span className="mt-0.5 block font-mono text-2xs uppercase text-teal">
           Settlement engine
         </span>
