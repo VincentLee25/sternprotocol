@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FileCheck2, ShieldCheck, Zap } from "lucide-react";
 import PortPlate from "../components/PortPlate.jsx";
 import { postAuthSession } from "../lib/mockBackend.js";
+import sternLogo from "../assets/stern-logo.png";
 
 const FEATURES = [
   { icon: ShieldCheck, text: "Milestone-verified settlement — Sucofindo, the shipping line, and customs each sign off before funds move" },
@@ -33,7 +34,7 @@ export default function Login({ onAuthenticated }) {
           <PortPlate />
         </div>
         <div className="relative flex h-full flex-col justify-between p-12">
-          <span className="text-lg font-semibold tracking-[0.14em] text-alabaster">STERN</span>
+          <img src={sternLogo} alt="STERN" className="h-6 w-auto" />
 
           <div className="max-w-md">
             <span className="mb-5 block font-mono text-2xs uppercase tracking-macro text-[#7FA9BC]">
@@ -61,7 +62,7 @@ export default function Login({ onAuthenticated }) {
       <div className="flex items-center justify-center bg-beige p-8">
         <div className="w-full max-w-sm">
           <div className="mb-8 lg:hidden">
-            <span className="text-lg font-semibold tracking-[0.14em] text-navy">STERN</span>
+            <img src={sternLogo} alt="STERN" className="h-6 w-auto invert" />
           </div>
 
           <h2 className="text-[26px] font-medium tracking-display text-navy">Sign in to continue</h2>

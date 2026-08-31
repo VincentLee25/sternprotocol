@@ -4,11 +4,14 @@ import Landing from "./pages/Landing.jsx";
 import Instrument from "./pages/Instrument.jsx";
 import Settlement from "./pages/Settlement.jsx";
 import Oracles from "./pages/Oracles.jsx";
+import Login from "./pages/Login.jsx";
 import Overview from "./pages/Overview.jsx";
 import NewEscrow from "./pages/NewEscrow.jsx";
 import EscrowDetail from "./pages/EscrowDetail.jsx";
+import { signOut } from "./lib/mockBackend.js";
 
 export default function App() {
+  const [user, setUser] = useState(null);
   const [role, setRole] = useState("importer");
   const [view, setView] = useState({ name: "landing" });
   const [escrows, setEscrows] = useState([]);
@@ -58,6 +61,12 @@ export default function App() {
     setView({ name: "overview" });
   }, []);
 
+  const handleSignOut = useCallback(() => {
+    signOut();
+    setUser(null);
+    setView({ name: "landing" });
+  }, []);
+
   const activeEscrow = useMemo(
     () => (view.name === "escrow" ? escrows.find((escrow) => escrow.id === view.id) : null),
     [view, escrows]
@@ -73,9 +82,20 @@ export default function App() {
       <div className="h-dvh overflow-y-auto">
         <MarketingPage
           onNavigate={(name) => setView({ name })}
-          onEnter={() => setView({ name: "overview" })}
+          onEnter={() => setView({ name: user ? "overview" : "login" })}
         />
       </div>
+    );
+  }
+
+  if (view.name === "login" || !user) {
+    return (
+      <Login
+        onAuthenticated={(authedUser) => {
+          setUser(authedUser);
+          setView({ name: "overview" });
+        }}
+      />
     );
   }
 
@@ -87,6 +107,7 @@ export default function App() {
         role={role}
         onRoleChange={setRole}
         onResetDemo={resetDemo}
+        onSignOut={handleSignOut}
         isOnChainReady={isOnChainReady}
       />
 

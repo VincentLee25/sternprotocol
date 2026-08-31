@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronsUpDown, FilePlus2, LayoutList, RadioTower, RotateCcw } from "lucide-react";
+import { ChevronsUpDown, FilePlus2, LayoutList, LogOut, RadioTower, RotateCcw } from "lucide-react";
 import { ACTORS, actorById, shortAddress } from "../lib/actors.js";
 import { getHealth } from "../lib/api.js";
 import sternLogo from "../assets/stern-logo.png";
@@ -9,7 +9,7 @@ const NAV = [
   { id: "create", label: "New escrow", icon: FilePlus2 }
 ];
 
-export default function Sidebar({ view, onNavigate, role, onRoleChange, onResetDemo, isOnChainReady }) {
+export default function Sidebar({ view, onNavigate, role, onRoleChange, onResetDemo, onSignOut, isOnChainReady }) {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [oracleOnline, setOracleOnline] = useState(null);
   const switcherRef = useRef(null);
@@ -157,6 +157,17 @@ export default function Sidebar({ view, onNavigate, role, onRoleChange, onResetD
                 >
                   <RotateCcw size={13} aria-hidden="true" />
                   Reset demo data
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSignOut();
+                    setSwitcherOpen(false);
+                  }}
+                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-ink-dim transition-colors duration-150 hover:bg-beige hover:text-navy"
+                >
+                  <LogOut size={13} aria-hidden="true" />
+                  Sign out
                 </button>
               </div>
             </div>
