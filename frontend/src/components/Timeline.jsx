@@ -1,4 +1,5 @@
 import { Check, Scale, Undo2 } from "lucide-react";
+import { lifecycleStep } from "../lib/escrowState.js";
 
 const MAIN_STEPS = [
   { key: "Pending", label: "Funds locked", detail: "Importer deposit held by the contract" },
@@ -9,7 +10,7 @@ const MAIN_STEPS = [
 export default function Timeline({ state }) {
   const isDisputed = state === "Disputed";
   const isRefunded = state === "Refunded";
-  const activeIndex = MAIN_STEPS.findIndex((step) => step.key === state);
+  const activeIndex = lifecycleStep(state);
 
   function stepStatus(index) {
     if (isDisputed || isRefunded) return index === 0 ? "done" : "off";
@@ -30,45 +31,45 @@ export default function Timeline({ state }) {
               <span
                 aria-hidden="true"
                 className={`absolute left-[11px] top-6 h-[calc(100%-1.25rem)] w-px ${
-                  status === "done" ? "bg-brass-400/50" : "bg-ink-700"
+                  status === "done" ? "bg-state-attested/50" : "bg-sky"
                 }`}
               />
             ) : null}
             <span
               className={`relative z-10 grid h-6 w-6 shrink-0 place-items-center rounded-full border font-mono text-2xs ${
                 status === "done"
-                  ? "border-brass-400/60 bg-brass-400/15 text-brass-400"
+                  ? "border-state-attested bg-state-attested text-white"
                   : status === "current"
-                    ? "border-brass-400 bg-brass-400 text-ink-950"
-                    : "border-ink-700 bg-ink-900 text-paper-faint"
+                    ? "border-state-pending bg-state-pending text-white"
+                    : "border-sky bg-white text-ink-faint"
               }`}
             >
               {status === "done" ? <Check size={12} aria-hidden="true" /> : index + 1}
             </span>
             <div className="min-w-0 pt-0.5">
               <p
-                className={`text-xs font-medium ${
-                  status === "off" ? "text-paper-faint" : "text-paper"
+                className={`text-sm font-medium ${
+                  status === "off" ? "text-ink-faint" : "text-navy"
                 }`}
               >
                 {step.label}
               </p>
-              <p className="text-2xs text-paper-faint">{step.detail}</p>
+              <p className="font-serif text-xs text-ink-dim">{step.detail}</p>
             </div>
           </li>
         );
       })}
 
       {isDisputed ? (
-        <li className="mt-1 flex items-center gap-2 rounded border border-state-warn/40 bg-state-warn/10 px-2.5 py-2 text-xs text-state-warn">
-          <Scale size={13} aria-hidden="true" />
-          Disputed — funds frozen until a 2-of-3 party vote resolves it
+        <li className="mt-1 flex items-center gap-2 rounded-panel bg-state-pending/10 px-3 py-2.5 font-serif text-sm text-state-pending">
+          <Scale size={13} aria-hidden="true" className="shrink-0" />
+          Disputed: funds frozen until a 2-of-3 party vote resolves it
         </li>
       ) : null}
       {isRefunded ? (
-        <li className="mt-1 flex items-center gap-2 rounded border border-ink-600 bg-ink-800 px-2.5 py-2 text-xs text-paper-dim">
-          <Undo2 size={13} aria-hidden="true" />
-          Refunded — escrow value returned to the importer
+        <li className="mt-1 flex items-center gap-2 rounded-panel bg-sky/40 px-3 py-2.5 font-serif text-sm text-ink-dim">
+          <Undo2 size={13} aria-hidden="true" className="shrink-0" />
+          Refunded: escrow value returned to the importer
         </li>
       ) : null}
     </ol>

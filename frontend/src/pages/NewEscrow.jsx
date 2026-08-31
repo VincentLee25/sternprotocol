@@ -150,35 +150,34 @@ export default function NewEscrow({ role, isOnChainReady, onCreated, onBack }) {
   const grossValue = Number(form.value) || 0;
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="mx-auto max-w-[1180px]">
       <button
         type="button"
         onClick={onBack}
-        className="mb-4 flex cursor-pointer items-center gap-1.5 text-xs text-paper-dim transition-colors duration-150 hover:text-paper"
+        className="mb-4 flex cursor-pointer items-center gap-1.5 text-sm text-teal transition-colors duration-150 hover:text-navy"
       >
-        <ArrowLeft size={13} aria-hidden="true" />
+        <ArrowLeft size={14} aria-hidden="true" />
         Back to escrows
       </button>
 
       <header className="mb-6">
-        <h1 className="text-xl font-semibold tracking-tight text-paper">New escrow</h1>
-        <p className="mt-0.5 text-sm text-paper-dim">
-          You are acting as the <span className="capitalize text-brass-300">{role}</span> — the party
-          that deposits funds. {isOnChainReady ? "This will send a real transaction to the local chain." : "No wallet detected: the escrow is created in local mock state."}
+        <p className="font-mono text-2xs uppercase text-ink-faint">Deed of conditional settlement</p>
+        <h1 className="mt-1.5 text-[32px] font-medium leading-none tracking-display text-navy">New escrow</h1>
+        <p className="mt-2.5 max-w-[62ch] font-serif text-[15px] leading-relaxed text-teal">
+          You are acting as the <span className="capitalize text-teal">{role}</span> — the party that deposits funds. {isOnChainReady ? "This will send a real transaction to the local chain." : "No wallet detected: the escrow is created in local mock state."}
         </p>
       </header>
 
       {role !== "importer" ? (
-        <div className="mb-5 rounded border border-state-warn/40 bg-state-warn/10 px-3.5 py-2.5 text-xs text-state-warn">
-          Only the importer deposits funds. Switch the session to Importer (bottom-left) — on-chain,
-          the depositing wallet becomes the importer automatically.
+        <div className="mb-5 rounded-panel bg-state-pending/10 px-4 py-3 font-serif text-sm text-state-pending">
+          Only the importer deposits funds. Switch the session to Importer in the sidebar. On-chain, the depositing wallet becomes the importer automatically.
         </div>
       ) : null}
 
-      <form onSubmit={onSubmit} noValidate className="grid gap-5 lg:grid-cols-[1fr_320px]">
+      <form onSubmit={onSubmit} noValidate className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-5">
-          <section className="rounded border border-ink-700 bg-ink-900 p-4">
-            <h2 className="mb-4 text-2xs font-semibold uppercase tracking-widest text-paper-dim">
+          <section className="rounded-doc bg-white p-6 shadow-card">
+            <h2 className="mb-4 font-mono text-2xs uppercase text-ink-faint">
               Counterparties
             </h2>
             <div className="space-y-4">
@@ -211,8 +210,8 @@ export default function NewEscrow({ role, isOnChainReady, onCreated, onBack }) {
             </div>
           </section>
 
-          <section className="rounded border border-ink-700 bg-ink-900 p-4">
-            <h2 className="mb-4 text-2xs font-semibold uppercase tracking-widest text-paper-dim">
+          <section className="rounded-doc bg-white p-6 shadow-card">
+            <h2 className="mb-4 font-mono text-2xs uppercase text-ink-faint">
               Shipment terms
             </h2>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -266,63 +265,63 @@ export default function NewEscrow({ role, isOnChainReady, onCreated, onBack }) {
                 />
               </Field>
             </div>
-            <p className="mt-3 text-2xs text-paper-faint">{CURRENCY_CAPTION}</p>
+            <p className="mt-3 text-2xs text-ink-faint">{CURRENCY_CAPTION}</p>
           </section>
 
-          <section className="rounded border border-ink-700 bg-ink-900 p-4">
-            <h2 className="mb-1 text-2xs font-semibold uppercase tracking-widest text-paper-dim">
+          <section className="rounded-doc bg-white p-6 shadow-card">
+            <h2 className="mb-1 font-mono text-2xs uppercase text-ink-faint">
               e-BL document
             </h2>
-            <p className="mb-3 text-xs text-paper-faint">
+            <p className="mb-3 text-xs text-ink-faint">
               The file is hashed locally (SHA-256) into a content identifier. The contract stores the
               CID — anyone holding the same document can verify it matches.
             </p>
             <label
-              className={`flex cursor-pointer items-center gap-3 rounded border border-dashed px-3.5 py-3 transition-colors duration-150 ${
+              className={`flex cursor-pointer items-center gap-3 rounded-panel border border-dashed px-3.5 py-3 transition-colors duration-150 ${
                 showError("document")
-                  ? "border-state-fail/60"
-                  : "border-ink-600 hover:border-brass-400/60"
+                  ? "border-state-disputed/60"
+                  : "border-sky hover:border-teal/50"
               }`}
             >
               <input type="file" onChange={onFileChange} className="sr-only" />
               {document_ ? (
-                <FileCheck2 size={16} className="shrink-0 text-state-ok" aria-hidden="true" />
+                <FileCheck2 size={16} className="shrink-0 text-state-attested" aria-hidden="true" />
               ) : (
-                <Paperclip size={16} className="shrink-0 text-paper-faint" aria-hidden="true" />
+                <Paperclip size={16} className="shrink-0 text-ink-faint" aria-hidden="true" />
               )}
               <span className="min-w-0">
                 {hashing ? (
-                  <span className="text-xs text-paper-dim">Hashing document…</span>
+                  <span className="text-xs text-teal">Hashing document…</span>
                 ) : document_ ? (
                   <>
-                    <span className="block truncate text-xs font-medium text-paper">
+                    <span className="block truncate text-xs font-medium text-navy">
                       {document_.fileName}{" "}
-                      <span className="text-paper-faint">({formatBytes(document_.size)})</span>
+                      <span className="text-ink-faint">({formatBytes(document_.size)})</span>
                     </span>
-                    <span className="block truncate font-mono text-2xs text-brass-300">
+                    <span className="block truncate font-mono text-2xs text-teal">
                       {document_.cid}
                     </span>
                   </>
                 ) : (
-                  <span className="text-xs text-paper-dim">
+                  <span className="text-xs text-teal">
                     Choose the bill of lading file (any format)
                   </span>
                 )}
               </span>
             </label>
             {showError("document") ? (
-              <p role="alert" className="mt-1.5 text-xs text-state-fail">
+              <p role="alert" className="mt-1.5 text-xs text-state-disputed">
                 {errors.document}
               </p>
             ) : null}
           </section>
         </div>
 
-        <aside className="h-fit rounded border border-ink-700 bg-ink-900 p-4 lg:sticky lg:top-6">
-          <h2 className="mb-4 text-2xs font-semibold uppercase tracking-widest text-paper-dim">
+        <aside className="h-fit rounded-doc bg-white p-6 shadow-card lg:sticky lg:top-6">
+          <h2 className="mb-4 font-mono text-2xs uppercase text-ink-faint">
             Review &amp; lock
           </h2>
-          <dl className="space-y-2.5 text-xs">
+          <dl className="space-y-0">
             <SummaryRow label="Deposit" value={`${grossValue.toLocaleString()} ${CURRENCY_LABEL}`} mono />
             <SummaryRow label="Platform fee" value="Not charged by contract" />
             <SummaryRow label="Release condition" value="3 milestones + timelock" />
@@ -333,7 +332,7 @@ export default function NewEscrow({ role, isOnChainReady, onCreated, onBack }) {
           <button
             type="submit"
             disabled={submitting || hashing}
-            className="mt-5 flex w-full cursor-pointer items-center justify-center gap-2 rounded bg-brass-400 px-4 py-2.5 text-sm font-semibold text-ink-950 transition-colors duration-150 hover:bg-brass-300 disabled:cursor-not-allowed disabled:opacity-40"
+            className="mt-6 flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-navy px-4 py-3 text-sm font-medium text-beige transition-colors duration-150 hover:bg-teal disabled:cursor-not-allowed disabled:opacity-40"
           >
             {submitting ? (
               <Loader2 size={15} className="animate-spin" aria-hidden="true" />
@@ -344,12 +343,12 @@ export default function NewEscrow({ role, isOnChainReady, onCreated, onBack }) {
           </button>
 
           {attemptedSubmit && !valid ? (
-            <p role="alert" className="mt-3 text-xs text-state-fail">
+            <p role="alert" className="mt-3 font-serif text-sm text-state-disputed">
               Fix the highlighted fields before locking funds.
             </p>
           ) : null}
           {submitError ? (
-            <p role="alert" className="mt-3 break-words text-xs text-state-fail">
+            <p role="alert" className="mt-3 break-words font-serif text-sm text-state-disputed">
               {submitError}
             </p>
           ) : null}
@@ -359,11 +358,12 @@ export default function NewEscrow({ role, isOnChainReady, onCreated, onBack }) {
   );
 }
 
-function SummaryRow({ label, value, mono }) {
+function SummaryRow({ label, value }) {
   return (
-    <div className="flex items-start justify-between gap-3">
-      <dt className="text-paper-faint">{label}</dt>
-      <dd className={`text-right text-paper ${mono ? "font-mono" : ""}`}>{value}</dd>
+    <div className="flex items-baseline gap-2.5 py-2.5">
+      <dt className="whitespace-nowrap font-serif text-[15px] text-teal">{label}</dt>
+      <span className="leader h-1 min-w-[16px] flex-1 -translate-y-[3px]" aria-hidden="true" />
+      <dd className="text-right font-mono text-xs font-medium tabular-nums text-navy">{value}</dd>
     </div>
   );
 }

@@ -1,12 +1,16 @@
 import { useCallback, useMemo, useState } from "react";
 import Sidebar from "./components/Sidebar.jsx";
+import Landing from "./pages/Landing.jsx";
+import Instrument from "./pages/Instrument.jsx";
+import Settlement from "./pages/Settlement.jsx";
+import Oracles from "./pages/Oracles.jsx";
 import Overview from "./pages/Overview.jsx";
 import NewEscrow from "./pages/NewEscrow.jsx";
 import EscrowDetail from "./pages/EscrowDetail.jsx";
 
 export default function App() {
   const [role, setRole] = useState("importer");
-  const [view, setView] = useState({ name: "overview" });
+  const [view, setView] = useState({ name: "landing" });
   const [escrows, setEscrows] = useState([]);
 
   const hasContractAddress = Boolean(import.meta.env.VITE_CONTRACT_ADDRESS);
@@ -59,8 +63,24 @@ export default function App() {
     [view, escrows]
   );
 
+  // Marketing surface. Shares the dark chrome and the credentials footer; the
+  // workspace flow below is untouched by it.
+  const MARKETING = { landing: Landing, instrument: Instrument, settlement: Settlement, oracles: Oracles };
+  const MarketingPage = MARKETING[view.name];
+
+  if (MarketingPage) {
+    return (
+      <div className="h-dvh overflow-y-auto">
+        <MarketingPage
+          onNavigate={(name) => setView({ name })}
+          onEnter={() => setView({ name: "overview" })}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-dvh overflow-hidden bg-ink-950 text-paper">
+    <div className="flex h-dvh overflow-hidden bg-beige text-navy">
       <Sidebar
         view={view.name}
         onNavigate={(name) => setView({ name })}

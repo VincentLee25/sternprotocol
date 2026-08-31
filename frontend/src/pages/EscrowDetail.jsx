@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
-  CalendarClock,
   Check,
   ChevronDown,
-  CircleDashed,
   Loader2,
   Scale,
   Undo2,
@@ -19,17 +17,7 @@ import { getBrowserContract } from "../lib/contract.js";
 import { CURRENCY_LABEL } from "../lib/currency.js";
 import { CONSORTIUM, ORACLE_QUORUM, defaultConsortium } from "../lib/oracles.js";
 import { actorById, shortAddress } from "../lib/actors.js";
-
-const STATE_LABELS = [
-  "Created",
-  "Inspected",
-  "Shipped",
-  "ArrivedCleared",
-  "TimelockActive",
-  "Disputed",
-  "Completed",
-  "Refunded"
-];
+import { stateFromIndex, formatEscrowId } from "../lib/escrowState.js";
 
 const CHECKS = [
   { key: "vgm", field: "vgmMatch", label: "VGM match", source: "Port IoT · gate-in", failDetail: "Container mass mismatch at gate-in" },
@@ -168,7 +156,7 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
   }
 
   function applyChainEscrow(chainEscrow) {
-    const state = STATE_LABELS[Number(chainEscrow.state)] || "Pending";
+    const state = stateFromIndex(chainEscrow.state);
     onUpdate(escrow.id, (current) => ({
       ...current,
       state,
@@ -545,226 +533,172 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
   }
 
   const terminal = escrow.state === "Completed" || escrow.state === "Refunded";
+  const attestedCount = verification
+    ? CHECKS.filter((check) => verification[check.field] === true).length
+    : 0;
+  const importerAddress = escrow.importer || actorById("importer").address;
   const messageTone = {
-    ok: "border-state-ok/40 bg-state-ok/10 text-state-ok",
-    warn: "border-state-warn/40 bg-state-warn/10 text-state-warn",
-    fail: "border-state-fail/40 bg-state-fail/10 text-state-fail"
+    ok: "border-state-attested/40 bg-state-attested/10 text-state-attested",
+    warn: "border-state-pending/40 bg-state-pending/10 text-state-pending",
+    fail: "border-state-disputed/40 bg-state-disputed/10 text-state-disputed"
   }[message?.tone || "ok"];
 
-  const actionButton =
-    "flex w-full cursor-pointer items-center justify-center gap-2 rounded border px-3 py-2 text-xs font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40";
+  const railBtn =
+    "flex w-full cursor-pointer items-center justify-center gap-2 rounded-full px-3 py-2.5 text-[13px] font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40";
+  const btnPrimary =
+    "flex cursor-pointer items-center justify-center rounded-full bg-navy px-6 py-2.5 text-[13px] font-medium text-beige transition-colors duration-150 hover:bg-teal disabled:cursor-not-allowed disabled:opacity-40";
+  const btnOutline =
+    "flex cursor-pointer items-center justify-center rounded-full border border-sky bg-white px-5 py-2.5 text-[13px] font-medium text-navy transition-colors duration-150 hover:border-teal/40 disabled:cursor-not-allowed disabled:opacity-40";
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-[1180px]">
       <button
         type="button"
         onClick={onBack}
-        className="mb-4 flex cursor-pointer items-center gap-1.5 text-xs text-paper-dim transition-colors duration-150 hover:text-paper"
+        className="mb-4 flex cursor-pointer items-center gap-1.5 text-sm text-teal transition-colors duration-150 hover:text-navy"
       >
-        <ArrowLeft size={13} aria-hidden="true" />
+        <ArrowLeft size={14} aria-hidden="true" />
         Back to escrows
       </button>
 
-      <header className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-ink-700 pb-4">
-        <div className="flex items-center gap-3">
-          <h1 className="font-mono text-lg font-semibold text-paper">Escrow #{escrow.id}</h1>
-          <StatusPill state={escrow.state} />
-        </div>
-        <div className="flex items-baseline gap-4 text-right">
-          <div>
-            <p className="text-2xs uppercase tracking-widest text-paper-faint">Locked value</p>
-            <p className="font-mono text-sm font-semibold text-paper">
-              {grossValue.toLocaleString()} {CURRENCY_LABEL}
-            </p>
-          </div>
-          <div className="hidden sm:block">
-            <p className="text-2xs uppercase tracking-widest text-paper-faint">Exporter receives</p>
-            <p className="font-mono text-sm text-paper-dim">
-              {grossValue.toLocaleString()} {CURRENCY_LABEL}
-            </p>
-          </div>
-        </div>
-      </header>
-
-      <div className="mb-5 grid gap-x-6 gap-y-1 text-xs sm:grid-cols-2 lg:grid-cols-4">
-        <Meta label="Commodity" value={escrow.commodity} />
-        <Meta label="Container" value={escrow.containerRef} mono />
-        <Meta label="e-BL CID" value={escrow.cid} mono truncate />
-        <Meta
-          label="Deadline"
-          value={`${new Date(escrow.deadline).toLocaleString()}${deadlinePassed && !terminal ? " · passed" : ""}`}
-          warn={deadlinePassed && !terminal}
-        />
-      </div>
-
       {message ? (
-        <div role="status" className={`mb-5 rounded border px-3.5 py-2.5 text-xs ${messageTone}`}>
+        <div
+          role="status"
+          className={`mb-4 rounded-panel px-4 py-3 font-serif text-sm ${messageTone}`}
+        >
           {message.text}
         </div>
       ) : null}
 
-      <div className="grid gap-5 lg:grid-cols-[230px_1fr_280px]">
-        {/* Lifecycle */}
-        <section>
-          <SectionTitle>Lifecycle</SectionTitle>
-          <div className="rounded border border-ink-700 bg-ink-900 p-4">
-            <Timeline state={escrow.state} />
-            <div className="mt-4 border-t border-ink-800 pt-3 text-2xs text-paper-faint">
-              <p>
-                Confirmation depth:{" "}
-                <span className="font-mono text-paper-dim">
-                  {chainMeta ? `${Math.round(chainMeta.timelock / 3600)}h timelock` : "24h timelock"}
-                </span>
-              </p>
-              <p className="mt-1">
-                Settlement can take up to three 6h challenge windows plus the final timelock.
-              </p>
-            </div>
-          </div>
-
-          {!terminal ? (
-            <div className="mt-4 rounded border border-ink-700 bg-ink-900 p-4">
-              <h3 className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-widest text-paper-dim">
-                <CalendarClock size={12} aria-hidden="true" />
-                Amendment
-              </h3>
-              <p className="mt-1.5 text-2xs text-paper-faint">
-                Vessel delayed? Importer or exporter proposes a later deadline; the counterparty
-                approves.
-              </p>
-              {escrow.pendingExtension ? (
-                <p className="mt-2 rounded border border-state-info/40 bg-state-info/10 px-2 py-1.5 text-2xs text-state-info">
-                  <span className="capitalize">{escrow.pendingExtension.proposer}</span> proposed{" "}
-                  {new Date(escrow.pendingExtension.newDeadline).toLocaleString()}
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+        {/* ---------- The instrument ---------- */}
+        <div className="min-w-0">
+          <article className="overflow-hidden rounded-doc bg-white shadow-card">
+            <header className="flex flex-wrap items-end justify-between gap-4 border-b-2 border-navy px-6 py-7 lg:px-9">
+              <div className="min-w-0">
+                <p className="mb-2.5 font-mono text-2xs uppercase text-teal">
+                  Deed of conditional settlement
                 </p>
-              ) : null}
-              <input
-                type="datetime-local"
-                value={extensionInput}
-                onChange={(event) => setExtensionInput(event.target.value)}
-                aria-label="New deadline"
-                className={`${inputClass(false)} mt-2.5 px-2.5 py-2 text-xs`}
-              />
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  disabled={busy || !permissions.amend}
-                  title={permissions.amend ? undefined : "Only importer or exporter can amend"}
-                  onClick={() => run(proposeExtension)}
-                  className={`${actionButton} border-ink-600 text-paper-dim hover:border-ink-600 hover:text-paper`}
-                >
-                  Propose
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || !permissions.amend}
-                  title={permissions.amend ? undefined : "Only importer or exporter can amend"}
-                  onClick={() => run(approveExtension)}
-                  className={`${actionButton} border-brass-400/50 text-brass-300 hover:bg-brass-400/10`}
-                >
-                  Approve
-                </button>
+                <h1 className="text-balance text-[28px] font-medium leading-[1.08] tracking-display text-navy lg:text-[36px]">
+                  {escrow.commodity || "Export shipment"}
+                </h1>
+                <p className="mt-2 font-serif text-base text-teal">
+                  Instrument &#8470;&thinsp;{formatEscrowId(escrow.id)}
+                  {escrow.containerRef ? ` · ${escrow.containerRef}` : ""}
+                </p>
               </div>
-            </div>
-          ) : null}
-        </section>
+              <StatusPill state={escrow.state} />
+            </header>
 
-        {/* Verification */}
-        <section>
-          <SectionTitle>Oracle verification</SectionTitle>
-          <div className="overflow-hidden rounded border border-ink-700 bg-ink-900">
-            <table className="w-full border-collapse text-left">
-              <caption className="sr-only">Five oracle checks required for release</caption>
-              <tbody>
+            {/* Article I */}
+            <section className="border-b border-sky px-6 py-6 lg:px-9">
+              <p className="mb-3 font-mono text-2xs uppercase text-ink-faint">
+                Article I &nbsp;·&nbsp; Parties and terms
+              </p>
+              <div className="grid gap-x-14 sm:grid-cols-2">
+                <TermRow label="Importer" value={shortAddress(importerAddress)} />
+                <TermRow label="Exporter" value={shortAddress(escrow.exporter) || "not set"} />
+                <TermRow label="Arbiter" value={shortAddress(escrow.arbiter) || "not set"} />
+                <TermRow
+                  label="Contract value"
+                  value={`${grossValue.toLocaleString()} ${CURRENCY_LABEL}`}
+                />
+                <TermRow
+                  label="Deadline"
+                  value={
+                    escrow.deadline ? new Date(escrow.deadline).toLocaleDateString() : "not set"
+                  }
+                  warn={deadlinePassed && !terminal}
+                />
+                <TermRow
+                  label="Timelock"
+                  value={
+                    chainMeta ? `${Math.round(chainMeta.timelock / 3600)}h` : "24h"
+                  }
+                />
+                <TermRow label="e-BL CID" value={escrow.cid || "not pinned"} truncate />
+                <TermRow label="Conditions met" value={`${attestedCount} / ${CHECKS.length}`} />
+              </div>
+            </section>
+
+            {/* Article II */}
+            <section className="grid gap-8 border-b border-sky px-6 py-6 lg:grid-cols-[minmax(0,1fr)_216px] lg:px-9">
+              <div className="min-w-0">
+                <p className="mb-3 font-mono text-2xs uppercase text-ink-faint">
+                  Article II &nbsp;·&nbsp; Conditions precedent
+                </p>
                 {CHECKS.map((check) => {
                   const value = verification ? verification[check.field] : null;
                   return (
-                    <tr key={check.key} className="border-b border-ink-800 last:border-b-0">
-                      <td className="py-2.5 pl-3.5 pr-2">
-                        <span className="grid h-6 w-6 place-items-center rounded-full border border-ink-700">
-                          {value === null ? (
-                            <CircleDashed size={12} className="text-paper-faint" aria-hidden="true" />
-                          ) : value ? (
-                            <Check size={12} className="text-state-ok" aria-hidden="true" />
-                          ) : (
-                            <X size={12} className="text-state-fail" aria-hidden="true" />
-                          )}
-                        </span>
-                      </td>
-                      <td className="py-2.5 pr-3">
-                        <p className="text-xs font-medium text-paper">{check.label}</p>
-                        <p className="text-2xs text-paper-faint">
-                          {value === false ? check.failDetail : check.source}
-                        </p>
-                      </td>
-                      <td className="py-2.5 pr-3.5 text-right">
-                        <span
-                          className={`font-mono text-2xs uppercase tracking-wider ${
-                            value === null
-                              ? "text-paper-faint"
-                              : value
-                                ? "text-state-ok"
-                                : "text-state-fail"
-                          }`}
-                        >
-                          {value === null ? "unchecked" : value ? "attested" : "failed"}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-
-            <div className="border-t border-ink-700 px-3.5 py-3">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-2xs font-semibold uppercase tracking-widest text-paper-dim">
-                  Oracle consortium · {ORACLE_QUORUM}-of-{CONSORTIUM.length} consensus
-                </p>
-                <span className="font-mono text-2xs text-paper-faint">bond-secured</span>
-              </div>
-              <ul className="grid gap-1.5 sm:grid-cols-3">
-                {consortium.map((member) => (
-                  <li
-                    key={member.address || member.name}
-                    className={`rounded border px-2.5 py-2 ${
-                      member.slashed ? "border-state-fail/50 bg-state-fail/5" : "border-ink-700"
-                    }`}
-                  >
-                    <p className="text-xs font-medium text-paper">{member.name}</p>
-                    <p className="truncate font-mono text-2xs text-paper-faint">
-                      {member.address ? shortAddress(member.address) : member.descr}
-                    </p>
-                    <div className="mt-1 flex items-center justify-between gap-2">
-                      <span className="font-mono text-2xs text-paper-dim">
-                        bond {Number(member.bond).toFixed(2)}
-                      </span>
+                    <div
+                      key={check.key}
+                      className="flex items-center gap-3.5 border-b border-sky/50 py-3 last:border-b-0"
+                    >
                       <span
-                        className={`font-mono text-2xs uppercase tracking-wider ${
-                          member.slashed
-                            ? "text-state-fail"
-                            : member.attested
-                              ? "text-state-ok"
-                              : "text-paper-faint"
+                        className={`grid h-5 w-5 shrink-0 place-items-center rounded-[7px] ${
+                          value === null
+                            ? "border-[1.5px] border-sky bg-white"
+                            : value
+                              ? "bg-state-attested"
+                              : "bg-state-disputed"
                         }`}
                       >
-                        {member.slashed ? "slashed" : member.attested ? "attested" : "pending"}
+                        {value === true ? (
+                          <Check size={12} className="text-white" aria-hidden="true" />
+                        ) : value === false ? (
+                          <X size={12} className="text-white" aria-hidden="true" />
+                        ) : null}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[14.5px] text-navy">{check.label}</span>
+                        {value === false ? (
+                          <span className="block font-serif text-xs text-state-disputed">
+                            {check.failDetail}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="shrink-0 font-mono text-2xs uppercase text-ink-faint">
+                        {check.source.split(" · ")[0]}
                       </span>
                     </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
+                  );
+                })}
+              </div>
 
-            <div className="border-t border-ink-700 bg-ink-850 px-3.5 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="self-start rounded-panel bg-beige px-5 py-6 text-center">
+                <div
+                  className="seal mx-auto grid h-32 w-32 place-items-center rounded-full"
+                  style={{ "--pct": `${attestedCount / CHECKS.length}turn` }}
+                  role="img"
+                  aria-label={`${attestedCount} of ${CHECKS.length} conditions attested`}
+                >
+                  <span className="grid h-[104px] w-[104px] place-content-center rounded-full bg-beige text-center">
+                    <span className="block text-[33px] font-medium leading-none tracking-display text-state-attested">
+                      {attestedCount}/{CHECKS.length}
+                    </span>
+                    <span className="mt-1 block font-mono text-[8.5px] uppercase tracking-micro text-state-attested">
+                      Attested
+                    </span>
+                  </span>
+                </div>
+                <p className="mt-4 font-serif text-sm leading-snug text-ink-dim">
+                  {attestedCount === CHECKS.length
+                    ? "All conditions met. Release is eligible."
+                    : `Release withheld pending ${CHECKS.length - attestedCount} condition${
+                        CHECKS.length - attestedCount === 1 ? "" : "s"
+                      }.`}
+                </p>
+              </div>
+            </section>
+
+            {/* Conformance harness + submit */}
+            <section className="bg-beige px-6 py-5 lg:px-9">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-2xs font-semibold uppercase tracking-widest text-paper-dim">
-                    Conformance harness
-                  </p>
-                  <p className="mt-0.5 max-w-md text-2xs text-paper-faint">
-                    Deterministic feeds shaped like the real VGM/AIS/CEISA/IPFS/PSI responses — we
-                    mock the credentials, not the architecture.
+                  <p className="font-mono text-2xs uppercase text-teal">Conformance harness</p>
+                  <p className="mt-1 max-w-md font-serif text-xs leading-relaxed text-ink-dim">
+                    Deterministic feeds shaped like the real VGM, AIS, CEISA, IPFS and PSI
+                    responses. We mock the credentials, not the architecture.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -772,13 +706,17 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
                     <button
                       key={check.key}
                       type="button"
-                      onClick={() => setChecks((current) => ({ ...current, [check.key]: !current[check.key] }))}
+                      onClick={() =>
+                        setChecks((current) => ({ ...current, [check.key]: !current[check.key] }))
+                      }
                       aria-pressed={!checks[check.key]}
-                      title={`${check.label}: click to simulate ${checks[check.key] ? "failure" : "success"}`}
-                      className={`cursor-pointer rounded border px-2 py-1 font-mono text-2xs transition-colors duration-150 ${
+                      title={`${check.label}: click to simulate ${
+                        checks[check.key] ? "failure" : "success"
+                      }`}
+                      className={`cursor-pointer rounded-full px-2.5 py-1 font-mono text-2xs transition-colors duration-150 ${
                         checks[check.key]
-                          ? "border-ink-600 text-paper-dim hover:text-paper"
-                          : "border-state-fail/50 bg-state-fail/10 text-state-fail"
+                          ? "bg-white text-teal hover:text-navy"
+                          : "bg-state-disputed/10 text-state-disputed"
                       }`}
                     >
                       {check.label.split(" ")[0]} {checks[check.key] ? "✓" : "✗"}
@@ -787,17 +725,17 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
                 </div>
               </div>
 
-              <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                <span className="mr-1 text-2xs uppercase tracking-widest text-paper-faint">
+              <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                <span className="mr-1 font-mono text-2xs uppercase text-ink-faint">
                   Dissenting oracle
                 </span>
                 <button
                   type="button"
                   onClick={() => setDissentIndex(null)}
-                  className={`cursor-pointer rounded border px-2 py-1 font-mono text-2xs transition-colors duration-150 ${
+                  className={`cursor-pointer rounded-full px-2.5 py-1 font-mono text-2xs transition-colors duration-150 ${
                     dissentIndex === null
-                      ? "border-state-ok/50 bg-state-ok/10 text-state-ok"
-                      : "border-ink-600 text-paper-dim hover:text-paper"
+                      ? "bg-state-attested/10 text-state-attested"
+                      : "bg-white text-teal hover:text-navy"
                   }`}
                 >
                   none
@@ -807,11 +745,11 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
                     key={member.index}
                     type="button"
                     onClick={() => setDissentIndex(member.index)}
-                    title={`Simulate ${member.name} submitting false data — the majority outvotes it and its bond is slashed`}
-                    className={`cursor-pointer rounded border px-2 py-1 font-mono text-2xs transition-colors duration-150 ${
+                    title={`Simulate ${member.name} submitting false data. The majority outvotes it and its bond is slashed.`}
+                    className={`cursor-pointer rounded-full px-2.5 py-1 font-mono text-2xs transition-colors duration-150 ${
                       dissentIndex === member.index
-                        ? "border-state-fail/50 bg-state-fail/10 text-state-fail"
-                        : "border-ink-600 text-paper-dim hover:text-paper"
+                        ? "bg-state-disputed/10 text-state-disputed"
+                        : "bg-white text-teal hover:text-navy"
                     }`}
                   >
                     {member.name}
@@ -819,119 +757,168 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
                 ))}
               </div>
 
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <button
-                  type="button"
-                  disabled={busy || terminal}
-                  onClick={() => run(refreshFeed)}
-                  className={`${actionButton} border-ink-600 text-paper hover:bg-ink-800`}
-                >
-                  {busy ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : null}
-                  Refresh oracle feed
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || terminal || escrow.state === "Disputed"}
-                  onClick={() => run(submitVerification)}
-                  className={`${actionButton} border-brass-400 bg-brass-400 text-ink-950 hover:bg-brass-300`}
-                >
-                  Submit verification
-                </button>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-sky pt-4">
+                <span className="truncate font-mono text-2xs text-ink-faint">
+                  e-BL CID &nbsp;{escrow.cid || "not pinned"}
+                </span>
+                <div className="flex flex-wrap gap-2.5">
+                  <button
+                    type="button"
+                    disabled={busy || terminal}
+                    onClick={() => run(refreshFeed)}
+                    className={`${btnOutline} gap-2`}
+                  >
+                    {busy ? (
+                      <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+                    ) : null}
+                    Refresh oracle feed
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || terminal || escrow.state === "Disputed"}
+                    onClick={() => run(submitVerification)}
+                    className={btnPrimary}
+                  >
+                    Submit verification
+                  </button>
+                </div>
               </div>
+            </section>
+          </article>
+
+          {/* Oracle consortium */}
+          <div className="mt-5 overflow-hidden rounded-doc bg-white shadow-card">
+            <div className="flex items-center justify-between gap-2 border-b border-sky px-6 py-3.5 lg:px-9">
+              <p className="font-mono text-2xs uppercase text-ink-faint">
+                Oracle consortium &nbsp;·&nbsp; {ORACLE_QUORUM}-of-{CONSORTIUM.length} consensus
+              </p>
+              <span className="font-mono text-2xs text-ink-faint">bond-secured</span>
             </div>
+            <ul className="grid gap-px bg-sky/60 sm:grid-cols-3">
+              {consortium.map((member) => (
+                <li
+                  key={member.address || member.name}
+                  className={`px-5 py-4 ${member.slashed ? "bg-state-disputed/5" : "bg-white"}`}
+                >
+                  <p className="text-sm font-medium text-navy">{member.name}</p>
+                  <p className="truncate font-mono text-2xs text-ink-faint">
+                    {member.address ? shortAddress(member.address) : member.descr}
+                  </p>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <span className="font-mono text-2xs tabular-nums text-teal">
+                      bond {Number(member.bond).toFixed(2)}
+                    </span>
+                    <span
+                      className={`font-mono text-2xs uppercase ${
+                        member.slashed
+                          ? "text-state-disputed"
+                          : member.attested
+                            ? "text-state-attested"
+                            : "text-ink-faint"
+                      }`}
+                    >
+                      {member.slashed ? "slashed" : member.attested ? "attested" : "pending"}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
 
           {oracleSources ? (
-            <details className="mt-3 rounded border border-ink-700 bg-ink-900">
-              <summary className="flex cursor-pointer items-center justify-between px-3.5 py-2.5 text-xs font-medium text-paper-dim hover:text-paper">
-                Raw source payloads — real API response shapes
-                <ChevronDown size={13} aria-hidden="true" />
+            <details className="mt-5 overflow-hidden rounded-doc bg-white shadow-card">
+              <summary className="flex cursor-pointer items-center justify-between px-6 py-3.5 text-sm font-medium text-teal hover:text-navy lg:px-9">
+                Raw source payloads: real API response shapes
+                <ChevronDown size={14} aria-hidden="true" />
               </summary>
-              <pre className="max-h-56 overflow-auto border-t border-ink-800 px-3.5 py-3 font-mono text-2xs leading-relaxed text-paper-dim">
+              <pre className="max-h-64 overflow-auto border-t border-sky px-6 py-4 font-mono text-2xs leading-relaxed text-teal lg:px-9">
                 {JSON.stringify(oracleSources, null, 2)}
               </pre>
             </details>
           ) : null}
-        </section>
+        </div>
 
-        {/* Actions + activity */}
-        <section>
-          <SectionTitle>Actions · {role}</SectionTitle>
-          <div className="space-y-2 rounded border border-ink-700 bg-ink-900 p-4">
-            <button
-              type="button"
-              disabled={busy || terminal || escrow.state === "Disputed" || !permissions.release}
-              title={permissions.release ? undefined : "Only importer or exporter trigger release"}
-              onClick={() => run(release)}
-              className={`${actionButton} border-state-ok/50 text-state-ok hover:bg-state-ok/10`}
-            >
-              Release settlement
-            </button>
-            <button
-              type="button"
-              disabled={busy || terminal || escrow.state === "Disputed" || !permissions.refund}
-              title={permissions.refund ? undefined : "Only the importer can claim a refund"}
-              onClick={() => run(refund)}
-              className={`${actionButton} border-ink-600 text-paper-dim hover:text-paper`}
-            >
-              <Undo2 size={13} aria-hidden="true" />
-              Claim refund
-            </button>
-            <button
-              type="button"
-              disabled={busy || terminal || escrow.state === "Disputed" || !permissions.dispute}
-              onClick={() => run(openDispute)}
-              className={`${actionButton} border-state-warn/50 text-state-warn hover:bg-state-warn/10`}
-            >
-              <Scale size={13} aria-hidden="true" />
-              Open dispute
-            </button>
-            <p className="pt-1 text-2xs text-paper-faint">
-              Release pays the <span className="text-paper-dim">exporter</span>. Refund returns funds
-              to the <span className="text-paper-dim">importer</span> (importer only, after the
-              deadline). Dispute freezes funds for a 2-of-3 vote.
+        {/* ---------- Rail ---------- */}
+        <aside className="flex flex-col gap-5">
+          <Panel title="Lifecycle">
+            <Timeline state={escrow.state} />
+            <p className="mt-4 border-t border-sky pt-3 font-serif text-xs leading-relaxed text-ink-dim">
+              Settlement can take up to three 6h challenge windows plus the final timelock.
+            </p>
+          </Panel>
+
+          <Panel title={`Actions · ${role}`}>
+            <div className="space-y-2">
+              <button
+                type="button"
+                disabled={busy || terminal || escrow.state === "Disputed" || !permissions.release}
+                title={permissions.release ? undefined : "Only importer or exporter trigger release"}
+                onClick={() => run(release)}
+                className={`${railBtn} bg-state-attested/10 text-state-attested hover:bg-state-attested/20`}
+              >
+                Release settlement
+              </button>
+              <button
+                type="button"
+                disabled={busy || terminal || escrow.state === "Disputed" || !permissions.refund}
+                title={permissions.refund ? undefined : "Only the importer can claim a refund"}
+                onClick={() => run(refund)}
+                className={`${railBtn} bg-beige text-navy hover:bg-sky/50`}
+              >
+                <Undo2 size={13} aria-hidden="true" />
+                Claim refund
+              </button>
+              <button
+                type="button"
+                disabled={busy || terminal || escrow.state === "Disputed" || !permissions.dispute}
+                onClick={() => run(openDispute)}
+                className={`${railBtn} bg-state-pending/10 text-state-pending hover:bg-state-pending/20`}
+              >
+                <Scale size={13} aria-hidden="true" />
+                Open dispute
+              </button>
+            </div>
+            <p className="mt-3 font-serif text-xs leading-relaxed text-ink-dim">
+              Release pays the exporter. Refund returns funds to the importer, after the deadline.
+              Dispute freezes funds for a 2-of-3 vote.
             </p>
             {isChain ? (
-              <p className="pt-1 text-2xs text-paper-faint">
-                MetaMask signs everything — the sidebar role does not.{" "}
+              <p className="mt-2 font-serif text-xs leading-relaxed text-ink-dim">
+                MetaMask signs everything, not the sidebar role.{" "}
                 {walletAccount ? (
                   <span
                     className={
                       walletAccount.toLowerCase() === actorById(role).address.toLowerCase()
-                        ? "text-state-ok"
-                        : "text-state-warn"
+                        ? "text-state-attested"
+                        : "text-state-pending"
                     }
                   >
-                    Connected: {shortAddress(walletAccount)}
+                    Connected {shortAddress(walletAccount)}
                     {walletAccount.toLowerCase() !== actorById(role).address.toLowerCase()
-                      ? ` — differs from the ${role} demo account, switch in MetaMask before acting`
-                      : ` (matches ${role})`}
+                      ? `, which differs from the ${role} demo account. Switch in MetaMask before acting.`
+                      : ` (matches ${role}).`}
                   </span>
                 ) : (
                   "No account connected."
                 )}
               </p>
             ) : null}
-          </div>
+          </Panel>
 
           {escrow.state === "Disputed" ? (
-            <div className="mt-4 rounded border border-state-warn/40 bg-state-warn/5 p-4">
-              <h3 className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-widest text-state-warn">
-                <Scale size={12} aria-hidden="true" />
-                Dispute · 2-of-3 vote
-              </h3>
+            <Panel title="Dispute · 2-of-3 vote" tone="pending">
               {!isChain ? (
-                <ul className="mt-2.5 space-y-1">
+                <ul className="mb-3 space-y-1.5">
                   {Object.entries(escrow.votes || {}).map(([party, partyVote]) => (
-                    <li key={party} className="flex items-center justify-between text-2xs">
-                      <span className="capitalize text-paper-dim">{party}</span>
+                    <li key={party} className="flex items-center justify-between text-xs">
+                      <span className="capitalize text-teal">{party}</span>
                       <span
                         className={`font-mono ${
                           partyVote === null
-                            ? "text-paper-faint"
+                            ? "text-ink-faint"
                             : partyVote
-                              ? "text-state-ok"
-                              : "text-state-fail"
+                              ? "text-state-attested"
+                              : "text-state-disputed"
                         }`}
                       >
                         {partyVote === null ? "not voted" : partyVote ? "release" : "refund"}
@@ -940,12 +927,12 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
                   ))}
                 </ul>
               ) : null}
-              <div className="mt-3 grid gap-2">
+              <div className="grid gap-2">
                 <button
                   type="button"
                   disabled={busy || !permissions.vote}
                   onClick={() => run(() => vote(true))}
-                  className={`${actionButton} border-state-ok/50 text-state-ok hover:bg-state-ok/10`}
+                  className={`${railBtn} bg-state-attested/10 text-state-attested hover:bg-state-attested/20`}
                 >
                   Vote: release to exporter
                 </button>
@@ -953,46 +940,94 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
                   type="button"
                   disabled={busy || !permissions.vote}
                   onClick={() => run(() => vote(false))}
-                  className={`${actionButton} border-state-fail/50 text-state-fail hover:bg-state-fail/10`}
+                  className={`${railBtn} bg-state-disputed/10 text-state-disputed hover:bg-state-disputed/20`}
                 >
                   Vote: refund to importer
                 </button>
               </div>
-            </div>
+            </Panel>
           ) : null}
 
-          <div className="mt-4 rounded border border-ink-700 bg-ink-900 p-4">
-            <h3 className="mb-3 text-2xs font-semibold uppercase tracking-widest text-paper-dim">
-              Activity
-            </h3>
+          {!terminal ? (
+            <Panel title="Amendment">
+              <p className="font-serif text-xs leading-relaxed text-ink-dim">
+                Vessel delayed? The importer or exporter proposes a later deadline and the
+                counterparty approves.
+              </p>
+              {escrow.pendingExtension ? (
+                <p className="mt-2.5 rounded-panel bg-teal/10 px-3 py-2 font-serif text-xs text-teal">
+                  <span className="capitalize">{escrow.pendingExtension.proposer}</span> proposed{" "}
+                  {new Date(escrow.pendingExtension.newDeadline).toLocaleString()}
+                </p>
+              ) : null}
+              <input
+                type="datetime-local"
+                value={extensionInput}
+                onChange={(event) => setExtensionInput(event.target.value)}
+                aria-label="New deadline"
+                className={`${inputClass(false)} mt-2.5 py-2 text-xs`}
+              />
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={busy || !permissions.amend}
+                  title={permissions.amend ? undefined : "Only importer or exporter can amend"}
+                  onClick={() => run(proposeExtension)}
+                  className={`${railBtn} bg-beige text-navy hover:bg-sky/50`}
+                >
+                  Propose
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || !permissions.amend}
+                  title={permissions.amend ? undefined : "Only importer or exporter can amend"}
+                  onClick={() => run(approveExtension)}
+                  className={`${railBtn} bg-teal/10 text-teal hover:bg-teal/20`}
+                >
+                  Approve
+                </button>
+              </div>
+            </Panel>
+          ) : null}
+
+          <Panel title="Activity">
             <ActivityLog entries={escrow.activity} />
-          </div>
-        </section>
+          </Panel>
+        </aside>
       </div>
     </div>
   );
 }
 
-function SectionTitle({ children }) {
+/* Dot-leader term row: serif label, leader, mono value. See design system §5.3. */
+function TermRow({ label, value, warn, truncate }) {
   return (
-    <h2 className="mb-2 text-2xs font-semibold uppercase tracking-widest text-paper-faint">
-      {children}
-    </h2>
-  );
-}
-
-function Meta({ label, value, mono, truncate, warn }) {
-  return (
-    <div className="min-w-0">
-      <p className="text-2xs uppercase tracking-widest text-paper-faint">{label}</p>
-      <p
-        className={`mt-0.5 ${mono ? "font-mono text-2xs" : "text-xs"} ${
-          warn ? "text-state-warn" : "text-paper-dim"
-        } ${truncate ? "truncate" : ""}`}
+    <div className="flex items-baseline gap-2.5 py-2.5">
+      <span className="whitespace-nowrap font-serif text-[15px] text-teal">{label}</span>
+      <span className="leader h-1 min-w-[16px] flex-1 -translate-y-[3px]" aria-hidden="true" />
+      <span
+        className={`font-mono text-xs font-medium tabular-nums ${
+          truncate ? "min-w-0 truncate" : "whitespace-nowrap"
+        } ${warn ? "text-state-pending" : "text-navy"}`}
         title={truncate ? value : undefined}
       >
         {value}
-      </p>
+      </span>
     </div>
+  );
+}
+
+function Panel({ title, tone, children }) {
+  return (
+    <section
+      className={`overflow-hidden rounded-doc shadow-card ${
+        tone === "pending" ? "bg-state-pending/[0.06]" : "bg-white"
+      }`}
+    >
+      <h2 className="border-b border-sky px-5 py-3 font-mono text-2xs uppercase text-ink-faint">
+        {title}
+      </h2>
+      <div className="px-5 py-4">{children}</div>
+    </section>
   );
 }

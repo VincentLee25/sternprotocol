@@ -3,39 +3,48 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["Fira Sans", "system-ui", "sans-serif"],
-        mono: ["Fira Code", "ui-monospace", "SFMono-Regular", "monospace"]
+        // Multi-word / numeric family names MUST stay quoted in the emitted CSS.
+        // Unquoted, `Source Serif 4` is an invalid font-family identifier (a CSS
+        // identifier cannot be the digit 4), so the browser drops the whole
+        // declaration and silently falls back to the sans stack.
+        sans: ["Figtree", "system-ui", "sans-serif"],
+        serif: ['"Source Serif 4"', "Georgia", "serif"],
+        mono: ['"Space Mono"', "ui-monospace", "SFMono-Regular", "monospace"]
       },
       colors: {
-        ink: {
-          950: "#0B0F14",
-          900: "#10151C",
-          850: "#141A22",
-          800: "#171E27",
-          700: "#232C37",
-          600: "#33404E"
-        },
-        paper: {
-          DEFAULT: "#E8EDF2",
-          dim: "#93A1B0",
-          faint: "#5C6B7A"
-        },
-        brass: {
-          300: "#FBCB6B",
-          400: "#F5B84C",
-          500: "#E8A32E",
-          600: "#C4861F"
-        },
+        // Light app surfaces
+        navy: "#2A415B",
+        teal: "#3E6C7D",
+        beige: "#F5EFEB",
+        sky: "#C0D0E0",
+        // Dark chrome (landing + seams)
+        onyx: "#0A0A0A",
+        slate: "#1C2537",
+        alabaster: "#E5E4E2",
+        // Text ramp below navy/teal
+        ink: { dim: "#7C8FA0", faint: "#93A6B6" },
+        // Semantic tier - never used as an accent
         state: {
-          ok: "#3DD68C",
-          fail: "#F26D78",
-          warn: "#E8A32E",
-          info: "#5CB3E4"
+          attested: "#3F7A63",
+          pending: "#B8802E",
+          disputed: "#A8443C"
         }
       },
       fontSize: {
-        "2xs": ["0.6875rem", { lineHeight: "1rem" }]
-      }
+        "2xs": ["0.5938rem", { lineHeight: "0.875rem", letterSpacing: "0.18em" }],
+        data: ["0.75rem", { lineHeight: "1rem", letterSpacing: "0.06em" }]
+      },
+      borderRadius: { doc: "14px", panel: "10px" },
+      boxShadow: {
+        card: "0 2px 16px rgba(42,65,91,.075)",
+        plate: "0 40px 90px -34px rgba(0,0,0,.92)"
+      },
+      letterSpacing: { display: "-0.034em", micro: "0.18em", macro: "0.22em" },
+      backgroundImage: {
+        // Dot leader for document term rows
+        leader: "radial-gradient(circle, #A9BCCB 1.1px, transparent 1.2px)"
+      },
+      backgroundSize: { leader: "6px 4px" }
     }
   },
   plugins: []
