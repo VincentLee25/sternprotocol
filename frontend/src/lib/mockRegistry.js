@@ -49,60 +49,136 @@ function pushActivity(escrow, entry) {
   escrow.activity.unshift({ time: new Date().toISOString(), transactionHash: fakeTxHash(), ...entry });
 }
 
-// Seed one in-flight escrow so Overview isn't empty on first load — makes
-// the Inspected/Shipped milestones already-verified so the detail page
-// demonstrates the challenge-window + next-milestone state on first look.
-(function seedDemoEscrow() {
-  const now = Date.now();
-  const inspectedAt = now - 1000 * 60 * 60 * 30;
-  const shippedAt = now - 1000 * 60 * 60 * 4;
-  const { importer, exporter, arbiter } = DEMO_PARTIES;
-  const sucofindo = VERIFIERS[0];
-  const maersk = VERIFIERS[1];
+// Seed a spread of escrows across the state machine so Overview has something
+// to show on first load and every status/tone in the design system is exercised.
+// Demo only: chain mode never reads this store.
+const SEED = [
+  { id: "12", state: "Shipped",        commodity: "Arabica Gayo Grade 1",  containerRef: "TGHU-2026-001",  value: "45000000.00",  verified: 2, agoH: 36,  dueD: 20 },
+  { id: "13", state: "ArrivedCleared", commodity: "Crude palm oil, 240 MT", containerRef: "MSKU-418337-2", value: "182400000.00", verified: 3, agoH: 92,  dueD: 12 },
+  { id: "14", state: "TimelockActive", commodity: "Rattan furniture",       containerRef: "CSNU-771020-4", value: "61250000.00",  verified: 3, agoH: 140, dueD: 9, timelockH: 11 },
+  { id: "15", state: "Disputed",       commodity: "Nutmeg, 6 MT",           containerRef: "MAEU-330887-1", value: "23900000.00",  verified: 2, agoH: 74,  dueD: 15, disputedMilestone: "shipped" },
+  { id: "16", state: "Completed",      commodity: "Cocoa beans, 40 MT",     containerRef: "OOLU-552104-7", value: "97300000.00",  verified: 3, agoH: 320, dueD: -2 },
+  { id: "17", state: "Created",        commodity: "Clove oil, 3.2 MT",      containerRef: "HLCU-908812-5", value: "38500000.00",  verified: 0, agoH: 5,   dueD: 28 },
+  { id: "11", state: "Inspected",      commodity: "Seaweed, 60 MT",         containerRef: "TCLU-667301-9", value: "29400000.00",  verified: 1, agoH: 18,  dueD: 24 },
+  { id: "10", state: "Refunded",       commodity: "Vanilla beans, 800 kg",  containerRef: "SEGU-114520-3", value: "52700000.00",  verified: 1, agoH: 410, dueD: -6 }
+];
 
-  const escrow = {
-    escrowId: "12",
-    state: "Shipped",
-    commodity: "Arabica Gayo Grade 1",
-    containerRef: "TGHU-2026-001",
-    value: "45000000.00",
-    documentCid: "bafybeisterndoc001",
-    importer,
-    exporter,
-    arbiter,
-    globalDeadline: new Date(now + 1000 * 60 * 60 * 24 * 20).toISOString(),
-    createdAt: new Date(now - 1000 * 60 * 60 * 36).toISOString(),
-    milestones: {
-      inspected: {
+const MILESTONE_KEYS = MILESTONES.map((m) => m.key);
+
+(function seedDemoEscrows() {
+  const now = Date.now();
+  const H = 1000 * 60 * 60;
+  const { importer, exporter, arbiter } = DEMO_PARTIES;
+
+  for (const spec of SEED) {
+    const createdAt = now - spec.agoH * H;
+    const milestones = {};
+    const activity = [];
+
+    MILESTONE_KEYS.forEach((key, i) => {
+      if (i >= spec.verified) {
+        milestones[key] = emptyMilestoneProof();
+        return;
+      }
+      // space the verifications out between creation and now
+      const at = createdAt + ((i + 1) * (now - createdAt)) / (spec.verified + 1);
+      const verifier = VERIFIERS[i];
+      milestones[key] = {
         submitted: true,
-        verifier: sucofindo.address,
-        verifierName: sucofindo.name,
-        proofCid: "bafybeiproof001",
-        submittedAt: new Date(inspectedAt).toISOString(),
-        challengeDeadline: new Date(inspectedAt + CHALLENGE_WINDOW_MS).toISOString(),
+        verifier: verifier.address,
+        verifierName: verifier.name,
+        proofCid: `bafybeiproof${spec.id}${i + 1}`,
+        submittedAt: new Date(at).toISOString(),
+        challengeDeadline: new Date(at + CHALLENGE_WINDOW_MS).toISOString(),
         automatedCheckPassed: true
+      };
+      activity.unshift({
+        time: new Date(at).toISOString(),
+        type: "milestone_verified",
+        actor: verifier.name,
+        actorAddress: verifier.address,
+        text: `${MILESTONES[i].label} milestone verified, proof uploaded`,
+        transactionHash: fakeTxHash()
+      });
+    });
+
+    activity.push({
+      time: new Date(createdAt).toISOString(),
+      type: "escrow_created",
+      actor: "importer",
+      actorAddress: importer,
+      text: `Escrow created, ${Number(spec.value).toLocaleString("en-US")} IDRT-demo locked`,
+      transactionHash: fakeTxHash()
+    });
+
+    const disputeOpen = spec.state === "Disputed";
+    if (disputeOpen) {
+      activity.unshift({
+        time: new Date(now - 2 * H).toISOString(),
+        type: "dispute_raised",
+        actor: "importer",
+        actorAddress: importer,
+        text: `Dispute raised against the ${spec.disputedMilestone} milestone, bond locked`,
+        transactionHash: fakeTxHash()
+      });
+    }
+    if (spec.state === "Refunded") {
+      activity.unshift({
+        time: new Date(now - 30 * H).toISOString(),
+        type: "refund_claimed",
+        actor: "importer",
+        actorAddress: importer,
+        text: "Global deadline passed, refund claimed by the importer",
+        transactionHash: fakeTxHash()
+      });
+    }
+    if (spec.state === "Completed") {
+      activity.unshift({
+        time: new Date(now - 6 * H).toISOString(),
+        type: "payment_released",
+        actor: "contract",
+        actorAddress: null,
+        text: "Timelock expired, payment released to exporter",
+        transactionHash: fakeTxHash()
+      });
+    }
+
+    store.escrows.set(spec.id, {
+      escrowId: spec.id,
+      state: spec.state,
+      commodity: spec.commodity,
+      containerRef: spec.containerRef,
+      value: spec.value,
+      documentCid: `bafybeisterndoc${spec.id}`,
+      importer,
+      exporter,
+      arbiter,
+      globalDeadline: new Date(now + spec.dueD * 24 * H).toISOString(),
+      createdAt: new Date(createdAt).toISOString(),
+      milestones,
+      timelock: spec.timelockH
+        ? { active: true, releaseAt: new Date(now + spec.timelockH * H).toISOString() }
+        : { active: false, releaseAt: null },
+      dispute: {
+        open: disputeOpen,
+        raisedBy: disputeOpen ? importer : null,
+        contestedMilestone: disputeOpen ? spec.disputedMilestone : null,
+        bondAmount: disputeOpen ? String(Number(spec.value) * DISPUTE_BOND_BPS / 10000) : null,
+        raisedAt: disputeOpen ? new Date(now - 2 * H).toISOString() : null,
+        resolved: false
       },
-      shipped: {
-        submitted: true,
-        verifier: maersk.address,
-        verifierName: maersk.name,
-        proofCid: "bafybeiproof002",
-        submittedAt: new Date(shippedAt).toISOString(),
-        challengeDeadline: new Date(shippedAt + CHALLENGE_WINDOW_MS).toISOString(),
-        automatedCheckPassed: true
-      },
-      arrivedCleared: emptyMilestoneProof()
-    },
-    timelock: { active: false, releaseAt: null },
-    dispute: { open: false, raisedBy: null, contestedMilestone: null, bondAmount: null, raisedAt: null, resolved: false },
-    activity: [
-      { time: new Date(shippedAt).toISOString(), type: "milestone_verified", actor: maersk.name, actorAddress: maersk.address, text: "Shipped milestone verified, proof uploaded", transactionHash: fakeTxHash() },
-      { time: new Date(inspectedAt).toISOString(), type: "milestone_verified", actor: sucofindo.name, actorAddress: sucofindo.address, text: "Inspected milestone verified, proof uploaded", transactionHash: fakeTxHash() },
-      { time: new Date(now - 1000 * 60 * 60 * 36).toISOString(), type: "escrow_created", actor: "importer", actorAddress: importer, text: "Escrow created, 45,000,000 IDRT-demo locked", transactionHash: fakeTxHash() }
-    ]
-  };
-  store.escrows.set(escrow.escrowId, escrow);
+      activity
+    });
+  }
+
+  store.nextId = 18;
 })();
+
+// How many of the three milestone proofs are in. Used by the list view so a
+// row can show progress without an extra round trip per escrow.
+export function countVerified(milestones) {
+  return MILESTONE_KEYS.filter((k) => milestones?.[k]?.submitted).length;
+}
 
 // --- §3 Escrow registry ---------------------------------------------------
 export async function listEscrows({ role, address, state } = {}) {
@@ -122,7 +198,12 @@ export async function listEscrows({ role, address, state } = {}) {
       exporter: e.exporter,
       arbiter: e.arbiter,
       globalDeadline: e.globalDeadline,
-      createdAt: e.createdAt
+      createdAt: e.createdAt,
+      milestonesVerified: countVerified(e.milestones),
+      milestonesTotal: MILESTONE_KEYS.length,
+      disputeOpen: e.dispute.open,
+      timelockReleaseAt: e.timelock.releaseAt,
+      lastActivityAt: e.activity[0]?.time || e.createdAt
     })),
     total: rows.length
   };
@@ -168,6 +249,20 @@ export async function getActivity(escrowId) {
   await wait(250);
   const e = record(escrowId);
   return { escrowId: e.escrowId, activity: e.activity };
+}
+
+// Merged activity across every escrow, newest first. Feeds the workspace
+// activity rail, which is a portfolio view rather than a per-escrow one.
+export async function listActivity({ limit = 24 } = {}) {
+  await wait(250);
+  const rows = [];
+  for (const e of store.escrows.values()) {
+    for (const entry of e.activity) {
+      rows.push({ ...entry, escrowId: e.escrowId, commodity: e.commodity });
+    }
+  }
+  rows.sort((a, b) => new Date(b.time) - new Date(a.time));
+  return { activity: rows.slice(0, limit), total: rows.length };
 }
 
 export async function getVerifiers() {

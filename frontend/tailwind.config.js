@@ -1,4 +1,13 @@
+// Colors resolve through CSS custom properties (defined in src/styles.css for
+// :root and .dark) so the whole palette re-themes from one place instead of
+// needing dark: variants on every utility class. The `rgb(var(...) / <alpha-value>)`
+// shape is what lets Tailwind's opacity modifiers (e.g. bg-navy/10) keep working.
+function themedColor(variable) {
+  return `rgb(var(${variable}) / <alpha-value>)`;
+}
+
 export default {
+  darkMode: "class",
   content: ["./index.html", "./src/**/*.{js,jsx}"],
   theme: {
     extend: {
@@ -8,36 +17,31 @@ export default {
         // identifier cannot be the digit 4), so the browser drops the whole
         // declaration and silently falls back to the sans stack.
         sans: ["Figtree", "system-ui", "sans-serif"],
-        serif: ['"Source Serif 4"', "Georgia", "serif"],
-        mono: ['"Space Mono"', "ui-monospace", "SFMono-Regular", "monospace"]
+        serif: ['"Source Serif 4"', "Georgia", "serif"]
       },
       colors: {
-        // Light app surfaces
-        navy: "#2A415B",
-        // `teal` is the accent on LIGHT grounds (5.8:1 on white). On the dark
-        // chrome it only reaches 3.4:1, so dark surfaces use `teal-light`
-        // (7.8:1 on onyx) — same hue, legible either way.
-        teal: { DEFAULT: "#3E6C7D", light: "#7FA9BC" },
-        beige: "#F5EFEB",
-        sky: "#C0D0E0",
+        // Light app surfaces. navy/beige swap with alabaster/onyx in dark mode
+        // (they're the same "primary text" / "page background" roles, just
+        // named per the domain that used them first).
+        navy: themedColor("--rgb-ink"),
+        teal: themedColor("--rgb-teal"),
+        // Fill-only teal; see the note in styles.css for why it does not re-theme.
+        "teal-solid": themedColor("--rgb-teal-solid"),
+        beige: themedColor("--rgb-page"),
+        sky: themedColor("--rgb-sky"),
         // Dark chrome (landing + seams)
-        onyx: "#0A0A0A",
-        slate: "#1C2537",
-        alabaster: "#E5E4E2",
-        // Text ramp below navy/teal. Both clear 4.5:1 on white AND on beige;
-        // the earlier #7C8FA0 / #93A6B6 pair sat at 2.2-3.3:1 and read as
-        // washed out on the app ground.
-        ink: { dim: "#4E5E6D", faint: "#5C6E7E" },
-        // Semantic tier - never used as an accent.
-        // DEFAULT is tuned for the LIGHT app surfaces (>=4.5:1 on white AND
-        // beige); `-light` is the same hue re-tuned for the dark chrome
-        // (>=5:1 on onyx). Pending in particular had to darken a lot: the old
-        // #B8802E sat at 2.99:1 on beige, which is why status pills read as
-        // unlabelled smudges.
+        onyx: themedColor("--rgb-page"),
+        slate: themedColor("--rgb-surface"),
+        alabaster: themedColor("--rgb-ink"),
+        // Raised card/panel fill - replaces literal white so cards re-theme too
+        surface: themedColor("--rgb-surface"),
+        // Text ramp below navy/teal
+        ink: { dim: themedColor("--rgb-ink-dim"), faint: themedColor("--rgb-ink-faint") },
+        // Semantic tier - never used as an accent
         state: {
-          attested: { DEFAULT: "#3C755F", light: "#4A8F74" },
-          pending: { DEFAULT: "#8C6123", light: "#B8802E" },
-          disputed: { DEFAULT: "#A8443C", light: "#C5655D" }
+          attested: themedColor("--rgb-state-attested"),
+          pending: themedColor("--rgb-state-pending"),
+          disputed: themedColor("--rgb-state-disputed")
         }
       },
       fontSize: {
@@ -46,7 +50,7 @@ export default {
       },
       borderRadius: { doc: "14px", panel: "10px" },
       boxShadow: {
-        card: "0 2px 16px rgba(42,65,91,.075)",
+        card: "0 2px 16px rgb(var(--rgb-ink) / 0.075)",
         plate: "0 40px 90px -34px rgba(0,0,0,.92)"
       },
       letterSpacing: { display: "-0.034em", micro: "0.18em", macro: "0.22em" },

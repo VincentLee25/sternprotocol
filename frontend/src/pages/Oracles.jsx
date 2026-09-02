@@ -74,9 +74,9 @@ export default function Oracles({ onNavigate, onEnter }) {
         <div className="grid gap-5 lg:grid-cols-3">
           {VERIFIERS.map((v) => (
             <div key={v.role} className="flex flex-col rounded-doc border border-alabaster/10 p-6">
-              <p className="font-mono text-2xs text-teal-light">{v.role}</p>
+              <p className="text-2xs text-teal">{v.role}</p>
               <h3 className="mt-3 text-[20px] font-medium tracking-[-0.02em]">{v.who}</h3>
-              <p className="mt-3 font-serif text-[15px] leading-relaxed text-alabaster/[0.7]">
+              <p className="mt-3 font-serif text-[15px] leading-relaxed text-alabaster/90">
                 {v.why}
               </p>
               <div className="mt-5 border-t border-alabaster/10 pt-1">
@@ -97,9 +97,9 @@ export default function Oracles({ onNavigate, onEnter }) {
         <div className="grid gap-px overflow-hidden rounded-doc bg-alabaster/10 sm:grid-cols-2 lg:grid-cols-5">
           {LIFECYCLE.map((step) => (
             <div key={step.n} className="bg-onyx p-5">
-              <p className="font-mono text-2xs text-teal-light">{step.n}</p>
+              <p className="text-2xs text-teal">{step.n}</p>
               <h3 className="mt-2.5 text-[16px] font-medium">{step.t}</h3>
-              <p className="mt-2 font-serif text-[14px] leading-relaxed text-alabaster/[0.68]">
+              <p className="mt-2 font-serif text-[14px] leading-relaxed text-alabaster/90">
                 {step.d}
               </p>
             </div>
@@ -114,13 +114,13 @@ export default function Oracles({ onNavigate, onEnter }) {
       >
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
           <div className="rounded-doc border border-alabaster/10 p-6">
-            <p className="font-mono text-2xs uppercase text-alabaster/60">Posted verifier bond</p>
+            <p className="text-2xs uppercase text-alabaster/90">Posted verifier bond</p>
 
             <div className="mt-4 flex h-12 overflow-hidden rounded-panel">
-              <div className="flex w-1/2 items-center justify-center bg-state-disputed/25 font-mono text-2xs uppercase text-state-disputed-light">
+              <div className="flex w-1/2 items-center justify-center bg-state-disputed/25 text-2xs uppercase text-state-disputed">
                 slashed 50%
               </div>
-              <div className="flex w-1/2 items-center justify-center bg-alabaster/[0.07] font-mono text-2xs uppercase text-alabaster/65">
+              <div className="flex w-1/2 items-center justify-center bg-alabaster/[0.07] text-2xs uppercase text-alabaster/90">
                 stays staked
               </div>
             </div>
@@ -128,34 +128,34 @@ export default function Oracles({ onNavigate, onEnter }) {
             {/* connector: shows row two is a split OF the slashed half, not a second bar */}
             <div className="flex" aria-hidden="true">
               <div className="w-1/2 px-[12%]">
-                <div className="h-3 border-x border-b border-alabaster/35" />
+                <div className="h-3 border-x border-b border-alabaster/25" />
               </div>
               <div className="w-1/2" />
             </div>
 
             <div className="flex gap-1.5">
               <div className="flex w-1/2 gap-1.5">
-                <div className="flex h-14 w-[70%] flex-col items-center justify-center rounded-panel bg-state-attested/20 text-state-attested-light">
-                  <span className="font-mono text-[15px] font-medium leading-none">70%</span>
-                  <span className="mt-1 font-mono text-[8.5px] uppercase tracking-micro">injured party</span>
+                <div className="flex h-14 w-[70%] flex-col items-center justify-center rounded-panel bg-state-attested/20 text-state-attested">
+                  <span className="text-[15px] font-medium leading-none">70%</span>
+                  <span className="mt-1 text-[8.5px] uppercase tracking-micro">injured party</span>
                 </div>
-                <div className="flex h-14 w-[30%] flex-col items-center justify-center rounded-panel bg-teal/25 text-[#8FC0D2]">
-                  <span className="font-mono text-[15px] font-medium leading-none">30%</span>
-                  <span className="mt-1 font-mono text-[8.5px] uppercase tracking-micro">treasury</span>
+                <div className="flex h-14 w-[30%] flex-col items-center justify-center rounded-panel bg-teal/25 text-teal">
+                  <span className="text-[15px] font-medium leading-none">30%</span>
+                  <span className="mt-1 text-[8.5px] uppercase tracking-micro">treasury</span>
                 </div>
               </div>
               <div className="w-1/2" aria-hidden="true" />
             </div>
 
-            <p className="mt-3 font-mono text-2xs uppercase text-alabaster/60">
+            <p className="mt-3 text-2xs uppercase text-alabaster/90">
               Split of the slashed half only
             </p>
 
-            <p className="mt-5 font-serif text-[15px] leading-relaxed text-alabaster/[0.7]">
+            <p className="mt-5 font-serif text-[15px] leading-relaxed text-alabaster/90">
               The importer is the injured party in every milestone case, because the importer is the
               one whose funds sat locked on the strength of a claim that turned out to be false.
             </p>
-            <p className="mt-4 font-serif text-[15px] leading-relaxed text-alabaster/[0.7]">
+            <p className="mt-4 font-serif text-[15px] leading-relaxed text-alabaster/90">
               The other half stays staked. One wrong call does not remove an institution from the
               register, because a surveyor who is occasionally wrong is still more useful than no
               surveyor. It takes three before the role is revoked automatically.
@@ -163,7 +163,7 @@ export default function Oracles({ onNavigate, onEnter }) {
           </div>
 
           <div className="rounded-doc border border-alabaster/10 p-6">
-            <p className="font-mono text-2xs uppercase text-alabaster/60">Parameters</p>
+            <p className="text-2xs uppercase text-alabaster/90">Parameters</p>
             <div className="mt-4 border-t border-alabaster/10 pt-1">
               <DarkTermRow label="Dispute bond" value="3% of value" />
               <DarkTermRow label="Verifier slash" value="50% of bond" tone="warn" />
@@ -172,7 +172,7 @@ export default function Oracles({ onNavigate, onEnter }) {
               <DarkTermRow label="Frivolous dispute" value="100% to exporter" />
               <DarkTermRow label="Auto-revoke at" value="3 slashes" tone="warn" />
             </div>
-            <p className="mt-5 font-serif text-[15px] leading-relaxed text-alabaster/[0.7]">
+            <p className="mt-5 font-serif text-[15px] leading-relaxed text-alabaster/90">
               A frivolous dispute never slashes a verifier. The two pools are separate on purpose:
               punishing a buyer for objecting badly is not the same thing as punishing an institution
               for signing falsely.
@@ -190,7 +190,7 @@ export default function Oracles({ onNavigate, onEnter }) {
           {ASSUMPTIONS.map((a) => (
             <div key={a.t} className="bg-onyx p-6">
               <h3 className="text-[17px] font-medium">{a.t}</h3>
-              <p className="mt-2.5 font-serif text-[15px] leading-relaxed text-alabaster/[0.68]">
+              <p className="mt-2.5 font-serif text-[15px] leading-relaxed text-alabaster/90">
                 {a.d}
               </p>
             </div>

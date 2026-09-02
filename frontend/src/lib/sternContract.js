@@ -6,6 +6,7 @@
 // making failures ambiguous.
 import { encodeFunctionData, parseUnits, parseEventLogs, isAddress } from "viem";
 import { publicClient } from "./smartAccount.js";
+import { particleEnabled } from "./particle.js";
 
 export const ESCROW_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "";
 export const IDRT_ADDRESS = import.meta.env.VITE_IDRT_TOKEN_ADDRESS || "";
@@ -14,7 +15,17 @@ export const IDRT_ADDRESS = import.meta.env.VITE_IDRT_TOKEN_ADDRESS || "";
 // unit in practice, and the demo token mirrors that.
 export const IDRT_DECIMALS = 2;
 
-export const onChainConfigured = isAddress(ESCROW_ADDRESS) && isAddress(IDRT_ADDRESS);
+export const contractsConfigured = isAddress(ESCROW_ADDRESS) && isAddress(IDRT_ADDRESS);
+
+// On-chain mode requires BOTH halves. With contract addresses but no Particle
+// credentials, auth falls back to the mock, whose smartAccountAddress is a
+// generated fake — and the sidebar would then invite you to mint real tokens to
+// an address nobody holds a key for. Irreversible, and it looks like it worked.
+export const onChainConfigured = particleEnabled && contractsConfigured;
+
+// Set when contracts are configured but the wallet half is missing, so the UI
+// can name the absent piece instead of silently sitting in demo mode.
+export const contractsWithoutWallet = contractsConfigured && !particleEnabled;
 
 const ESCROW_ABI = [
   {

@@ -8,30 +8,30 @@ const MILESTONES = [
     n: "01",
     state: "Inspected",
     role: "ROLE_QUALITY_AUDITOR",
-    held: "Origin surveyor, for example Sucofindo",
+    held: "Sucofindo",
     feed: "VGM feed, port gate-in",
     gate: "vgm_match == true && gate_in_status == \"confirmed\"",
-    proof: "Inspection certificate, SHA-256 pinned to IPFS",
+    proof: "Inspection certificate",
     d: "The container is weighed at the gate and the declared mass has to agree with the verified mass. A surveyor then signs that the goods match the contract."
   },
   {
     n: "02",
     state: "Shipped",
     role: "ROLE_LOGISTICS",
-    held: "Shipping line or freight forwarder",
+    held: "Shipping line",
     feed: "AIS feed, vessel position",
     gate: "departure_status == \"departed\"",
-    proof: "Bill of lading, SHA-256 pinned to IPFS",
+    proof: "Bill of lading",
     d: "The vessel has to have actually left the port of loading. A satellite position feed says so before the carrier's own proof is accepted."
   },
   {
     n: "03",
     state: "ArrivedCleared",
     role: "ROLE_CUSTOMS",
-    held: "Customs broker or destination surveyor",
+    held: "Customs broker",
     feed: "CEISA feed, PEB status",
     gate: "customs_status == \"approved\"",
-    proof: "Customs clearance, SHA-256 pinned to IPFS",
+    proof: "Customs clearance",
     d: "Indonesian customs has to show the export declaration approved. Only then can the broker submit the final milestone."
   }
 ];
@@ -98,17 +98,23 @@ export default function Settlement({ onNavigate, onEnter }) {
 
       <Section
         eyebrow="The two gates"
-        title="A feed alone is not enough. A signature alone is not enough."
-        intro="Each transition needs an automated gate and a role gate to pass together. The feed cannot be talked into lying, and the institution cannot act on data that does not exist."
+        wide
+        title={
+          <>
+            A feed alone is not enough.
+            <br />A signature alone is not enough.
+          </>
+        }
+        intro="Each transition needs an automated gate and a role gate to pass together. The feed cannot be talked into lying, and the institution cannot act on data that does not exist. Every role gate is a document hashed with SHA-256 and pinned to IPFS."
       >
         <div className="grid gap-5 lg:grid-cols-3">
           {MILESTONES.map((m) => (
             <div key={m.n} className="flex flex-col rounded-doc border border-alabaster/10 p-6">
               <div className="flex items-baseline gap-3">
-                <span className="font-mono text-2xs text-teal-light">{m.n}</span>
+                <span className="text-2xs text-teal">{m.n}</span>
                 <h3 className="text-[20px] font-medium tracking-[-0.02em]">{m.state}</h3>
               </div>
-              <p className="mt-3 font-serif text-[15px] leading-relaxed text-alabaster/[0.7]">
+              <p className="mt-3 flex-1 font-serif text-[15px] leading-relaxed text-alabaster/90">
                 {m.d}
               </p>
               <div className="mt-5 border-t border-alabaster/10 pt-1">
@@ -117,7 +123,7 @@ export default function Settlement({ onNavigate, onEnter }) {
                 <DarkTermRow label="Automated gate" value={m.feed} />
                 <DarkTermRow label="Role gate" value={m.proof} />
               </div>
-              <pre className="mt-4 overflow-x-auto rounded-panel bg-alabaster/[0.05] px-3.5 py-3 font-mono text-2xs leading-relaxed text-state-attested-light">
+              <pre className="mt-4 flex min-h-[55px] items-center whitespace-pre-wrap break-words rounded-panel bg-alabaster/[0.05] px-3.5 py-3 text-2xs leading-relaxed text-state-attested">
                 {m.gate}
               </pre>
             </div>
@@ -128,13 +134,13 @@ export default function Settlement({ onNavigate, onEnter }) {
       <Section eyebrow="Timing and cost" title="What the delay is actually made of.">
         <div className="grid gap-5 lg:grid-cols-2">
           <div className="rounded-doc border border-alabaster/10 p-6">
-            <p className="font-mono text-2xs uppercase text-alabaster/60">Windows</p>
+            <p className="text-2xs uppercase text-alabaster/90">Windows</p>
             <div className="mt-4 border-t border-alabaster/10 pt-1">
               {TIMING.map(([label, value]) => (
                 <DarkTermRow key={label} label={label} value={value} />
               ))}
             </div>
-            <p className="mt-4 font-serif text-[15px] leading-relaxed text-alabaster/[0.68]">
+            <p className="mt-4 font-serif text-[15px] leading-relaxed text-alabaster/90">
               Three six-hour challenge windows plus a twenty-four hour timelock is roughly forty-two
               hours of deliberate waiting. That is the cost of letting anyone object before money is
               irreversible, and it is still the fastest part of the whole trade.
@@ -142,21 +148,21 @@ export default function Settlement({ onNavigate, onEnter }) {
           </div>
 
           <div className="overflow-hidden rounded-doc border border-alabaster/10">
-            <div className="border-b border-alabaster/10 px-6 py-4 font-mono text-2xs uppercase text-alabaster/60">
+            <div className="border-b border-alabaster/10 px-6 py-4 text-2xs uppercase text-alabaster/90">
               Gas per operation, Polygon
             </div>
             <div className="divide-y divide-alabaster/10">
               {COSTS.map(([op, cost, payer]) => (
                 <div key={op} className="flex flex-wrap items-baseline gap-x-4 px-6 py-3.5">
-                  <span className="min-w-[190px] flex-1 font-mono text-xs text-alabaster">{op}</span>
-                  <span className="font-mono text-xs tabular-nums text-state-attested-light">{cost}</span>
-                  <span className="w-full font-serif text-[14px] text-alabaster/[0.66] sm:w-auto sm:min-w-[190px] sm:text-right">
+                  <span className="min-w-[190px] flex-1 text-xs text-alabaster">{op}</span>
+                  <span className="text-xs tabular-nums text-state-attested">{cost}</span>
+                  <span className="w-full font-serif text-[14px] text-alabaster/90 sm:w-auto sm:min-w-[190px] sm:text-right">
                     {payer}
                   </span>
                 </div>
               ))}
             </div>
-            <p className="border-t border-alabaster/10 px-6 py-4 font-serif text-[14px] leading-relaxed text-alabaster/[0.66]">
+            <p className="border-t border-alabaster/10 px-6 py-4 font-serif text-[14px] leading-relaxed text-alabaster/90">
               The importer never pays gas directly. A sponsored paymaster covers their operations, so
               an exporter with no crypto at all can still be a counterparty.
             </p>
@@ -173,11 +179,11 @@ export default function Settlement({ onNavigate, onEnter }) {
           {OUTCOMES.map((o) => (
             <div key={o.t} className={`rounded-doc border p-6 ${TONE_RING[o.tone]}`}>
               <h3 className="text-[18px] font-medium tracking-[-0.015em]">{o.t}</h3>
-              <p className="mt-3 font-serif text-[15px] leading-relaxed text-alabaster/[0.72]">{o.d}</p>
+              <p className="mt-3 font-serif text-[15px] leading-relaxed text-alabaster/90">{o.d}</p>
             </div>
           ))}
         </div>
-        <p className="mt-6 font-serif text-[15px] leading-relaxed text-alabaster/[0.66]">
+        <p className="mt-6 font-serif text-[15px] leading-relaxed text-alabaster/90">
           The 3% figure sits between the roughly 10% that BANI and Kleros both land on and the 2%
           the contract originally defaulted to. Ten percent prices out the small exporters this is
           built for. Two percent is cheap enough that a large buyer can treat a dispute as a

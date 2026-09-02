@@ -1,20 +1,16 @@
 import { Check, Scale, Undo2 } from "lucide-react";
+import { lifecycleStep } from "../lib/escrowState.js";
 
 const MAIN_STEPS = [
-  { key: "Created", label: "Funds locked", detail: "Importer deposit held by the contract" },
-  { key: "Inspected", label: "Inspected", detail: "Sucofindo verified VGM + gate-in" },
-  { key: "Shipped", label: "Shipped", detail: "Shipping line confirmed AIS departure" },
-  { key: "ArrivedCleared", label: "Arrived & cleared", detail: "Customs confirmed CEISA clearance" },
-  { key: "TimelockActive", label: "Timelock active", detail: "24h window before funds release" },
-  { key: "Completed", label: "Settled", detail: "IDRT-demo released to exporter" }
+  { key: "Pending", label: "Funds locked", detail: "Importer deposit held by the contract" },
+  { key: "Verified", label: "Oracle verified", detail: "All three milestones verified on-chain" },
+  { key: "Completed", label: "Settled", detail: "Funds to exporter · e-BL to importer" }
 ];
-
-const STATE_ORDER = MAIN_STEPS.map((s) => s.key);
 
 export default function Timeline({ state }) {
   const isDisputed = state === "Disputed";
   const isRefunded = state === "Refunded";
-  const activeIndex = STATE_ORDER.indexOf(state);
+  const activeIndex = lifecycleStep(state);
 
   function stepStatus(index) {
     if (isDisputed || isRefunded) return index === 0 ? "done" : "off";
@@ -40,18 +36,25 @@ export default function Timeline({ state }) {
               />
             ) : null}
             <span
-              className={`relative z-10 grid h-6 w-6 shrink-0 place-items-center rounded-full border font-mono text-2xs ${
+              className={`relative z-10 grid h-6 w-6 shrink-0 place-items-center rounded-full border text-2xs ${
                 status === "done"
-                  ? "border-state-attested bg-state-attested text-white"
+                  ? "border-state-attested bg-state-attested text-beige"
                   : status === "current"
-                    ? "border-state-pending bg-state-pending text-white"
-                    : "border-sky bg-white text-ink-dim"
+                    // text-beige, not text-white: `beige` is --rgb-page, so it
+                    // flips to onyx in dark mode. White on the dark theme's
+                    // lighter ochre fill is only 2.4:1.
+                    ? "border-state-pending bg-state-pending text-beige"
+                    : "border-sky bg-surface text-ink-faint"
               }`}
             >
               {status === "done" ? <Check size={12} aria-hidden="true" /> : index + 1}
             </span>
             <div className="min-w-0 pt-0.5">
-              <p className={`text-sm font-medium ${status === "off" ? "text-ink-dim" : "text-navy"}`}>
+              <p
+                className={`text-sm font-medium ${
+                  status === "off" ? "text-ink-faint" : "text-navy"
+                }`}
+              >
                 {step.label}
               </p>
               <p className="font-serif text-xs text-ink-dim">{step.detail}</p>
@@ -61,9 +64,9 @@ export default function Timeline({ state }) {
       })}
 
       {isDisputed ? (
-        <li className="mt-1 flex items-center gap-2 rounded-panel bg-state-disputed/10 px-3 py-2.5 font-serif text-sm text-state-disputed">
+        <li className="mt-1 flex items-center gap-2 rounded-panel bg-state-pending/10 px-3 py-2.5 font-serif text-sm text-state-pending">
           <Scale size={13} aria-hidden="true" className="shrink-0" />
-          Disputed: funds frozen until the arbiter resolves it
+          Disputed: funds frozen until a 2-of-3 party vote resolves it
         </li>
       ) : null}
       {isRefunded ? (

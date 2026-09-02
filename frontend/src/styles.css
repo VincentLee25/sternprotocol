@@ -1,8 +1,72 @@
-@import url("https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,300&family=Space+Mono:wght@400;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,300&display=swap");
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Theme tokens. Every named color in tailwind.config.js resolves through one
+ * of these "R G B" triples, so toggling the `dark` class on <html> re-themes
+ * the whole app without touching component classNames. navy/beige are the
+ * light-mode identities of alabaster/onyx (same roles, opposite domains) -
+ * see tailwind.config.js for how the pairing works.
+ */
+:root {
+  --rgb-page: 245 239 235; /* beige / onyx: page background */
+  --rgb-surface: 255 255 255; /* card/panel fill (replaces literal white) */
+  --rgb-ink: 42 65 91; /* navy / alabaster: primary text */
+  /* The ink ramp and the semantic tier are tuned for >=4.5:1 on BOTH light
+     grounds (page and surface). 07_DESIGN_SYSTEM §2.4 calls its contrast rules
+     non-negotiable and then prescribes #7C8FA0 / #93A6B6, which sit at 2.2-3.3:1
+     and read as washed out. Pending was the worst at 2.99:1 on beige. */
+  --rgb-ink-dim: 78 94 109;
+  --rgb-ink-faint: 92 110 126;
+  --rgb-sky: 192 208 224; /* borders, subtle fills - never type */
+  --rgb-teal: 62 108 125; /* 5.1:1 on beige; the dark theme re-tunes it */
+  /* Teal as a BACKGROUND fill, e.g. the marketing colour block. Constant across
+     themes: white type sits on it, so lightening it for dark mode (as --rgb-teal
+     is) would drop that type to 3.2:1. */
+  --rgb-teal-solid: 62 108 125;
+  --rgb-state-attested: 60 117 95;
+  --rgb-state-pending: 140 97 35;
+  --rgb-state-disputed: 168 68 60;
+}
+
+:root.dark {
+  --rgb-page: 10 10 10;
+  --rgb-surface: 28 37 55;
+  --rgb-ink: 229 228 226;
+  --rgb-ink-dim: 168 182 196;
+  /* Lifted: 122 136 152 fell to 4.2:1 on the raised surface. */
+  --rgb-ink-faint: 133 146 160;
+  --rgb-sky: 64 78 98;
+  /* Teal is NOT constant across themes. The light value is 3.4:1 on onyx and
+     2.7:1 on the raised surface - the same hue, re-tuned for the dark ground. */
+  --rgb-teal: 91 151 174;
+  --rgb-state-attested: 94 176 138;
+  --rgb-state-pending: 214 158 74;
+  --rgb-state-disputed: 214 110 100;
+}
+
+/* Pins a subtree to the dark chrome regardless of the active theme - for
+   panels laid directly over the (always-dark) port photography, where text
+   needs guaranteed contrast against the image rather than the page theme. */
+.chrome-dark {
+  --rgb-page: 10 10 10;
+  --rgb-surface: 28 37 55;
+  --rgb-ink: 229 228 226;
+  --rgb-ink-dim: 168 182 196;
+  --rgb-ink-faint: 133 146 160;
+  --rgb-sky: 64 78 98;
+  /* Pinned dark chrome needs the dark teal too, or an eyebrow rendered over
+     the port photography drops to 3.4:1 while the page around it is light. */
+  --rgb-teal: 91 151 174;
+  /* And the semantic tier, for the same reason: the light-mode pending ochre
+     sits at 3.6:1 on onyx, which is where the footer's placeholder notice is. */
+  --rgb-state-attested: 94 176 138;
+  --rgb-state-pending: 214 158 74;
+  --rgb-state-disputed: 214 110 100;
+}
 
 * {
   box-sizing: border-box;
@@ -10,8 +74,8 @@
 
 body {
   margin: 0;
-  background: #f5efeb;
-  color: #2a415b;
+  background: rgb(var(--rgb-page));
+  color: rgb(var(--rgb-ink));
   font-family: "Figtree", system-ui, sans-serif;
   font-size: 15px;
   -webkit-font-smoothing: antialiased;
@@ -29,9 +93,54 @@ textarea {
   outline-offset: 3px;
 }
 
+/*
+ * Theme swap. Applied to <html> only for the duration of the flip, then
+ * removed. Every token-coloured surface, border and glyph fades together
+ * instead of the ground fading while the rest snaps. Leaving this on
+ * permanently would tax every hover and scroll in the app.
+ */
+.theme-transition,
+.theme-transition *,
+.theme-transition *::before,
+.theme-transition *::after {
+  transition: background-color 220ms ease, border-color 220ms ease, color 220ms ease,
+    fill 220ms ease, stroke 220ms ease, box-shadow 220ms ease !important;
+  transition-delay: 0ms !important;
+}
+
+/*
+ * A custom property is not interpolatable until it is registered, which is why
+ * the attestation ring sat frozen at its final value. Registering --pct as an
+ * angle lets the conic gradient animate. The keyframe declares only `from`, so
+ * each seal sweeps to whatever --pct its own inline style sets.
+ */
+@property --pct {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0turn;
+}
+
+@keyframes seal-sweep {
+  from {
+    --pct: 0turn;
+  }
+}
+
+/* One orchestrated load sequence for the hero; delays are set per element. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+.rise-in {
+  animation: rise-in 560ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
 /* Dot leader used by document term rows */
 .leader {
-  background-image: radial-gradient(circle, #a9bccb 1.1px, transparent 1.2px);
+  background-image: radial-gradient(circle, rgb(var(--rgb-sky)) 1.1px, transparent 1.2px);
   background-size: 6px 4px;
   background-repeat: repeat-x;
   background-position: left bottom;
@@ -39,7 +148,11 @@ textarea {
 
 /* Attestation seal: conic ring driven by --pct (0-1) */
 .seal {
-  background: conic-gradient(#3f7a63 0turn var(--pct), #c0d0e0 var(--pct) 1turn);
+  animation: seal-sweep 900ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  background: conic-gradient(
+    rgb(var(--rgb-state-attested)) 0turn var(--pct),
+    rgb(var(--rgb-sky)) var(--pct) 1turn
+  );
 }
 
 ::-webkit-scrollbar {
@@ -48,8 +161,8 @@ textarea {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c0d0e0;
-  border: 3px solid #f5efeb;
+  background: rgb(var(--rgb-sky));
+  border: 3px solid rgb(var(--rgb-page));
   border-radius: 6px;
 }
 

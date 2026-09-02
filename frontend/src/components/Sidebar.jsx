@@ -1,16 +1,31 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronsUpDown, Copy, FilePlus2, LayoutList, LogOut, Wallet } from "lucide-react";
+import { Check, ChevronsUpDown, Copy, FilePlus2, LayoutList, LogOut, RadioTower, RotateCcw, Wallet } from "lucide-react";
 import { ACTORS, actorById, shortAddress } from "../lib/actors.js";
-import { CURRENCY_LABEL } from "../lib/currency.js";
+import { getHealth } from "../lib/api.js";
 import { onChainConfigured } from "../lib/sternContract.js";
+import ThemeToggle from "./ThemeToggle.jsx";
+import sternLogo from "../assets/stern-logo.png";
 
 const NAV = [
   { id: "overview", label: "Escrows", icon: LayoutList },
   { id: "create", label: "New escrow", icon: FilePlus2 }
 ];
 
-export default function Sidebar({ view, onNavigate, role, onRoleChange, user, balance, onClaim, claiming, onSignOut }) {
+export default function Sidebar({
+  view,
+  onNavigate,
+  role,
+  onRoleChange,
+  user,
+  balance,
+  onClaim,
+  claiming,
+  onSignOut,
+  onResetDemo,
+  isOnChainReady
+}) {
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [oracleOnline, setOracleOnline] = useState(null);
   const switcherRef = useRef(null);
   const actor = actorById(role);
 
@@ -24,22 +39,43 @@ export default function Sidebar({ view, onNavigate, role, onRoleChange, user, ba
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function ping() {
+      try {
+        const health = await getHealth();
+        if (!cancelled) setOracleOnline(Boolean(health.ok));
+      } catch {
+        if (!cancelled) setOracleOnline(false);
+      }
+    }
+
+    ping();
+    const interval = setInterval(ping, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
   return (
-    <aside className="flex h-full w-[238px] shrink-0 flex-col border-r border-sky bg-white pb-3.5">
-      <button
-        type="button"
-        onClick={() => onNavigate("landing")}
-        className="cursor-pointer px-5 py-5 text-left"
-        aria-label="STERN home"
-      >
-        <span className="block text-lg font-semibold tracking-[0.14em] text-navy">STERN</span>
-        <span className="mt-0.5 block font-mono text-2xs uppercase text-teal">
-          Settlement engine
-        </span>
-      </button>
+    <aside className="flex h-full w-[238px] shrink-0 flex-col border-r border-sky bg-surface pb-3.5">
+      <div className="flex items-center justify-between gap-2 px-5 py-5">
+        <button
+          type="button"
+          onClick={() => onNavigate("landing")}
+          className="cursor-pointer text-left"
+          aria-label="STERN home"
+        >
+          <img src={sternLogo} alt="STERN" className="h-5 w-auto invert dark:invert-0" />
+          <span className="mt-0.5 block text-2xs uppercase text-teal">Settlement engine</span>
+        </button>
+        <ThemeToggle />
+      </div>
 
       <nav className="flex-1" aria-label="Primary">
-        <p className="px-5 pb-1.5 pt-3.5 font-mono text-2xs uppercase text-ink-faint">Workspace</p>
+        <p className="px-5 pb-1.5 pt-3.5 text-2xs uppercase text-ink-faint">Workspace</p>
         {NAV.map((item) => {
           const Icon = item.icon;
           const active = view === item.id;
@@ -52,7 +88,7 @@ export default function Sidebar({ view, onNavigate, role, onRoleChange, user, ba
               className={`mx-3 mb-0.5 flex w-[calc(100%-1.5rem)] cursor-pointer items-center gap-2.5 rounded-full px-3.5 py-2.5 text-left text-sm transition-colors duration-150 ${
                 active
                   ? "bg-beige font-medium text-navy"
-                  : "text-navy/85 hover:bg-beige hover:text-navy"
+                  : "text-navy/90 hover:bg-beige hover:text-navy"
               }`}
             >
               <Icon size={15} aria-hidden="true" />
@@ -63,8 +99,43 @@ export default function Sidebar({ view, onNavigate, role, onRoleChange, user, ba
       </nav>
 
       <div className="mx-3 border-t border-sky px-1.5 pt-3.5">
+        <div className="flex items-center justify-between px-1 py-1 text-2xs uppercase text-ink-faint">
+          <span>{isOnChainReady ? "Local chain · 31337" : "Mock session"}</span>
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${
+              isOnChainReady ? "bg-state-attested" : "bg-state-pending"
+            }`}
+            title={isOnChainReady ? "Wallet + contract detected" : "No wallet or contract: local mock state"}
+          />
+        </div>
+        <div
+          className="mb-2 flex items-center justify-between px-1 py-1 text-2xs uppercase text-ink-faint"
+          title="The oracle gateway is the trusted signer that submits the five verification checks on-chain (backend/oracle-gateway, port 4000)"
+        >
+          <span className="flex items-center gap-1.5">
+            <RadioTower size={11} aria-hidden="true" />
+            Oracle gateway
+          </span>
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${
+              oracleOnline === null
+                ? "bg-sky"
+                : oracleOnline
+                  ? "bg-state-attested"
+                  : "bg-state-disputed"
+            }`}
+            title={
+              oracleOnline === null
+                ? "Checking oracle gateway…"
+                : oracleOnline
+                  ? "Oracle gateway online at :4000"
+                  : "Oracle gateway offline. Run: npm run backend"
+            }
+          />
+        </div>
+
         <div className="mb-3 rounded-panel border border-sky bg-beige/60 px-3.5 py-3">
-          <div className="flex items-center gap-1.5 font-mono text-2xs uppercase text-ink-faint">
+          <div className="flex items-center gap-1.5 text-2xs uppercase text-ink-faint">
             <Wallet size={11} aria-hidden="true" />
             IDRT-demo balance
           </div>
@@ -91,7 +162,7 @@ export default function Sidebar({ view, onNavigate, role, onRoleChange, user, ba
 
         <div ref={switcherRef} className="relative">
           {switcherOpen ? (
-            <div className="absolute bottom-full left-0 right-0 z-30 mb-1.5 max-h-72 overflow-y-auto rounded-doc border border-sky bg-white py-1 shadow-card">
+            <div className="absolute bottom-full left-0 right-0 z-30 mb-1.5 overflow-hidden rounded-doc border border-sky bg-surface py-1 shadow-card">
               {ACTORS.map((option) => (
                 <button
                   key={option.id}
@@ -104,19 +175,30 @@ export default function Sidebar({ view, onNavigate, role, onRoleChange, user, ba
                     option.id === role ? "text-teal" : "text-navy"
                   }`}
                 >
-                  <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-beige font-mono text-2xs uppercase">
+                  <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-beige text-2xs uppercase">
                     {option.label[0]}
                   </span>
                   <span className="min-w-0">
                     <span className="block text-xs font-medium">{option.label}</span>
                     <span className="block truncate font-serif text-xs text-ink-dim">{option.org}</span>
-                    <span className="block font-mono text-2xs text-ink-faint">
+                    <span className="block text-2xs text-ink-faint">
                       {shortAddress(option.address)}
                     </span>
                   </span>
                 </button>
               ))}
               <div className="mt-1 border-t border-sky pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onResetDemo();
+                    setSwitcherOpen(false);
+                  }}
+                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-ink-dim transition-colors duration-150 hover:bg-beige hover:text-navy"
+                >
+                  <RotateCcw size={13} aria-hidden="true" />
+                  Reset demo data
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -144,7 +226,7 @@ export default function Sidebar({ view, onNavigate, role, onRoleChange, user, ba
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-xs font-medium text-navy">{actor.label}</span>
-              <span className="block truncate font-mono text-2xs text-ink-faint">
+              <span className="block truncate text-2xs text-ink-faint">
                 {shortAddress(actor.address)}
               </span>
             </span>
@@ -195,7 +277,7 @@ function SmartAccountAddress({ address }) {
         type="button"
         onClick={copy}
         title={address}
-        className="mt-1.5 flex w-full cursor-pointer items-center gap-1.5 rounded-panel border border-sky bg-white px-2 py-1.5 text-left transition-colors duration-150 hover:border-teal/50"
+        className="mt-1.5 flex w-full cursor-pointer items-center gap-1.5 rounded-panel border border-sky bg-surface px-2 py-1.5 text-left transition-colors duration-150 hover:border-teal/50"
       >
         <span className="min-w-0 flex-1 truncate font-mono text-2xs text-navy">{address}</span>
         {copied ? (

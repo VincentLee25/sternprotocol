@@ -1,6 +1,8 @@
 import { FileCheck2, ShieldCheck, Zap } from "lucide-react";
 import PortPlate from "../components/PortPlate.jsx";
 import { missingCredentials, particleEnabled } from "../lib/particle.js";
+import { contractsWithoutWallet } from "../lib/sternContract.js";
+import sternLogo from "../assets/stern-logo.png";
 
 const FEATURES = [
   { icon: ShieldCheck, text: "Milestone-verified settlement — Sucofindo, the shipping line, and customs each sign off before funds move" },
@@ -11,7 +13,7 @@ const FEATURES = [
 export default function Login({ onConnect, error, busy }) {
   return (
     <div className="grid min-h-dvh grid-cols-1 lg:grid-cols-2">
-      <div className="relative hidden overflow-hidden bg-onyx lg:block">
+      <div className="chrome-dark relative hidden overflow-hidden bg-onyx lg:block">
         <div className="absolute inset-0">
           <PortPlate />
         </div>
@@ -25,38 +27,38 @@ export default function Login({ onConnect, error, busy }) {
           className="absolute inset-0 bg-gradient-to-r from-onyx/95 via-onyx/70 to-transparent"
         />
         <div className="relative flex h-full flex-col justify-between p-12">
-          <span className="text-lg font-semibold tracking-[0.14em] text-alabaster">STERN</span>
+          <img src={sternLogo} alt="STERN" className="h-6 w-auto self-start" />
 
           <div className="max-w-md">
-            <span className="mb-5 block font-mono text-2xs uppercase tracking-macro text-teal-light">
+            <span className="mb-5 block text-2xs uppercase tracking-macro text-[#7FA9BC]">
               Smart escrow for export&ndash;import settlement
             </span>
-            <h1 className="text-[36px] font-medium leading-[1.04] tracking-display text-alabaster">
+            <h1 className="text-[36px] font-bold leading-[1.04] tracking-display text-alabaster">
               Paid the moment it leaves the port.
             </h1>
             <ul className="mt-8 space-y-4">
               {FEATURES.map(({ icon: Icon, text }) => (
                 <li key={text} className="flex items-start gap-3">
-                  <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border border-teal-light/40 bg-teal-light/10 text-teal-light">
+                  <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border border-teal/40 bg-teal/10 text-teal">
                     <Icon size={14} aria-hidden="true" />
                   </span>
-                  <span className="font-serif text-sm leading-relaxed text-alabaster/80">{text}</span>
+                  <span className="font-serif text-sm leading-relaxed text-alabaster/90">{text}</span>
                 </li>
               ))}
             </ul>
           </div>
 
-          <p className="font-mono text-2xs uppercase text-alabaster/60">Polygon Amoy testnet · Fase 0 preview</p>
+          <p className="text-2xs uppercase text-alabaster/90">Polygon Amoy testnet · Fase 0 preview</p>
         </div>
       </div>
 
       <div className="flex items-center justify-center bg-beige p-8">
         <div className="w-full max-w-sm">
           <div className="mb-8 lg:hidden">
-            <span className="text-lg font-semibold tracking-[0.14em] text-navy">STERN</span>
+            <img src={sternLogo} alt="STERN" className="h-6 w-auto invert dark:invert-0" />
           </div>
 
-          <h2 className="text-[26px] font-medium tracking-display text-navy">Sign in to continue</h2>
+          <h2 className="text-[26px] font-bold tracking-display text-navy">Sign in to continue</h2>
           <p className="mt-1.5 font-serif text-sm text-ink-dim">
             Your wallet is created automatically — no seed phrase, no browser extension.
           </p>
@@ -80,7 +82,13 @@ export default function Login({ onConnect, error, busy }) {
             </div>
           ) : null}
 
-          {missingCredentials ? (
+          {contractsWithoutWallet ? (
+            <div className="mt-4 rounded-panel border border-state-pending/40 bg-state-pending/10 px-3.5 py-2.5 font-serif text-xs leading-relaxed text-state-pending">
+              Contract addresses are set, but the Particle keys are not — so there is no real
+              wallet to transact with and the app stays on demo data. Fill in the three
+              <code className="font-mono"> VITE_PARTICLE_ </code> keys to go on chain.
+            </div>
+          ) : missingCredentials ? (
             <div className="mt-4 rounded-panel border border-state-pending/40 bg-state-pending/10 px-3.5 py-2.5 font-serif text-xs leading-relaxed text-state-pending">
               Particle credentials are missing from <code className="font-mono">.env</code>, so this
               is running on demo data. Copy <code className="font-mono">.env.example</code> and fill
@@ -92,7 +100,7 @@ export default function Login({ onConnect, error, busy }) {
             type="button"
             onClick={onConnect}
             disabled={busy}
-            className="mt-6 flex w-full cursor-pointer items-center justify-center gap-2.5 rounded-full border border-sky bg-white px-4 py-3 text-sm font-medium text-navy shadow-card transition-colors duration-150 hover:border-teal/50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-6 flex w-full cursor-pointer items-center justify-center gap-2.5 rounded-full border border-sky bg-surface px-4 py-3 text-sm font-medium text-navy shadow-card transition-colors duration-150 hover:border-teal/50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {busy ? (
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-teal border-t-transparent" aria-hidden="true" />
@@ -102,12 +110,12 @@ export default function Login({ onConnect, error, busy }) {
             {busy ? "Opening sign-in…" : "Continue with Google"}
           </button>
 
-          <p className="mt-4 text-center font-mono text-2xs uppercase text-ink-faint">
+          <p className="mt-4 text-center text-2xs uppercase text-ink-faint">
             {particleEnabled ? "Powered by Particle Network" : "Demo mode — no wallet created"}
           </p>
 
-          <div className="mt-10 rounded-doc border border-sky bg-white p-4">
-            <p className="font-mono text-2xs uppercase text-ink-faint">What happens after sign-in</p>
+          <div className="mt-10 rounded-doc border border-sky bg-surface p-4">
+            <p className="text-2xs uppercase text-ink-faint">What happens after sign-in</p>
             <ol className="mt-2.5 space-y-1.5 font-serif text-xs text-ink-dim">
               <li>1. A Smart Account wallet is created for you in the background</li>
               <li>2. 150,000,000 IDRT-demo is credited automatically (one-time)</li>

@@ -124,13 +124,13 @@ export default function Instrument({ onNavigate, onEnter }) {
       >
         <div className="overflow-hidden rounded-doc border border-alabaster/10">
           <div className="hidden grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_minmax(0,1.25fr)] gap-px bg-alabaster/10 lg:grid">
-            <div className="bg-onyx px-5 py-3 font-mono text-2xs uppercase text-alabaster/60">
+            <div className="bg-onyx px-5 py-3 text-2xs uppercase text-alabaster/90">
               Dimension
             </div>
-            <div className="bg-onyx px-5 py-3 font-mono text-2xs uppercase text-alabaster/60">
+            <div className="bg-onyx px-5 py-3 text-2xs uppercase text-alabaster/90">
               Letter of credit
             </div>
-            <div className="bg-onyx px-5 py-3 font-mono text-2xs uppercase text-teal-light">STERN</div>
+            <div className="bg-onyx px-5 py-3 text-2xs uppercase text-teal">STERN</div>
           </div>
           <div className="grid gap-px bg-alabaster/10">
             {COMPARISON.map((row) => (
@@ -141,10 +141,10 @@ export default function Instrument({ onNavigate, onEnter }) {
                 <div className="bg-onyx px-5 py-4 text-[15px] font-medium text-alabaster">
                   {row.k}
                 </div>
-                <div className="bg-onyx px-5 py-4 font-serif text-[15px] leading-relaxed text-alabaster/[0.68]">
+                <div className="bg-onyx px-5 py-4 font-serif text-[15px] leading-relaxed text-alabaster/90">
                   {row.lc}
                 </div>
-                <div className="bg-onyx px-5 py-4 font-serif text-[15px] leading-relaxed text-alabaster/85">
+                <div className="bg-onyx px-5 py-4 font-serif text-[15px] leading-relaxed text-alabaster/90">
                   {row.stern}
                 </div>
               </div>
@@ -161,9 +161,9 @@ export default function Instrument({ onNavigate, onEnter }) {
         <div className="grid gap-5 lg:grid-cols-3">
           {ARTICLES.map((article) => (
             <div key={article.n} className="rounded-doc border border-alabaster/10 p-6">
-              <p className="font-mono text-2xs uppercase text-teal-light">{article.n}</p>
+              <p className="text-2xs uppercase text-teal">{article.n}</p>
               <h3 className="mt-3 text-[20px] font-medium tracking-[-0.02em]">{article.t}</h3>
-              <p className="mt-2 font-serif text-[15px] leading-relaxed text-alabaster/[0.68]">
+              <p className="mt-2 font-serif text-[15px] leading-relaxed text-alabaster/90">
                 {article.d}
               </p>
               <div className="mt-4 border-t border-alabaster/10 pt-1">
@@ -185,7 +185,7 @@ export default function Instrument({ onNavigate, onEnter }) {
           {LIMITS.map((limit) => (
             <div key={limit.t} className="bg-onyx p-6">
               <h3 className="text-[17px] font-medium text-alabaster">{limit.t}</h3>
-              <p className="mt-2.5 font-serif text-[15px] leading-relaxed text-alabaster/[0.68]">
+              <p className="mt-2.5 font-serif text-[15px] leading-relaxed text-alabaster/90">
                 {limit.d}
               </p>
             </div>

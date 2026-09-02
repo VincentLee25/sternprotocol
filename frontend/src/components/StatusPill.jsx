@@ -14,7 +14,7 @@ export default function StatusPill({ state, children }) {
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-mono text-2xs font-medium uppercase ${style}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-2xs font-medium uppercase ${style}`}
     >
       <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
       {children || STATE_LABEL[state] || state}
