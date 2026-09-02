@@ -21,15 +21,17 @@ export default function MarketingShell({ current, onNavigate, onEnter, children 
           >
             <img src={sternLogo} alt="STERN" className="h-6 w-auto invert dark:invert-0" />
           </button>
-          <div className="hidden gap-8 text-sm md:flex">
+          <div className="hidden items-center gap-1 text-sm md:flex">
             {NAV.map((item) => (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => onNavigate(item.id)}
                 aria-current={current === item.id ? "page" : undefined}
-                className={`cursor-pointer transition-colors duration-150 ${
-                  current === item.id ? "text-teal" : "text-alabaster/90 hover:text-alabaster"
+                className={`cursor-pointer rounded-full px-4 py-2 transition-colors duration-150 ${
+                  current === item.id
+                    ? "bg-teal/15 text-teal"
+                    : "text-alabaster/80 hover:bg-alabaster/10 hover:text-alabaster"
                 }`}
               >
                 {item.label}
@@ -72,7 +74,7 @@ export function PageHeader({ eyebrow, title, lede }) {
   );
 }
 
-export function Section({ eyebrow, title, intro, children, tone }) {
+export function Section({ eyebrow, title, intro, children, tone, wide }) {
   return (
     <section
       className={`border-t border-alabaster/10 ${tone === "teal" ? "bg-teal text-white" : ""}`}
@@ -88,7 +90,11 @@ export function Section({ eyebrow, title, intro, children, tone }) {
           </p>
         ) : null}
         {title ? (
-          <h2 className="mt-4 max-w-[22ch] text-balance text-[28px] font-medium leading-[1.08] tracking-display lg:text-[40px]">
+          <h2
+            className={`mt-4 text-balance text-[28px] font-medium leading-[1.08] tracking-display lg:text-[40px] ${
+              wide ? "max-w-[34ch]" : "max-w-[22ch]"
+            }`}
+          >
             {title}
           </h2>
         ) : null}
@@ -114,10 +120,10 @@ export function DarkTermRow({ label, value, tone }) {
       <span className="whitespace-nowrap font-serif text-[16px] text-alabaster/90">{label}</span>
       <span
         aria-hidden="true"
-        className="h-1 min-w-[16px] flex-1 -translate-y-[3px] bg-[radial-gradient(circle,rgba(229,228,226,0.28)_1.1px,transparent_1.2px)] bg-[length:6px_4px] bg-left-bottom bg-repeat-x"
+        className="h-1 min-w-[24px] flex-1 -translate-y-[3px] bg-[radial-gradient(circle,rgba(229,228,226,0.28)_1.1px,transparent_1.2px)] bg-[length:6px_4px] bg-left-bottom bg-repeat-x"
       />
       <span
-        className={`whitespace-nowrap text-xs font-medium tabular-nums ${
+        className={`min-w-0 text-right text-xs font-medium tabular-nums ${
           tone === "warn" ? "text-state-pending" : tone === "ok" ? "text-state-attested" : "text-alabaster"
         }`}
       >

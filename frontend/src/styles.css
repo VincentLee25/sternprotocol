@@ -59,7 +59,6 @@ body {
   font-family: "Figtree", system-ui, sans-serif;
   font-size: 15px;
   -webkit-font-smoothing: antialiased;
-  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 button,
@@ -74,6 +73,51 @@ textarea {
   outline-offset: 3px;
 }
 
+/*
+ * Theme swap. Applied to <html> only for the duration of the flip, then
+ * removed. Every token-coloured surface, border and glyph fades together
+ * instead of the ground fading while the rest snaps. Leaving this on
+ * permanently would tax every hover and scroll in the app.
+ */
+.theme-transition,
+.theme-transition *,
+.theme-transition *::before,
+.theme-transition *::after {
+  transition: background-color 220ms ease, border-color 220ms ease, color 220ms ease,
+    fill 220ms ease, stroke 220ms ease, box-shadow 220ms ease !important;
+  transition-delay: 0ms !important;
+}
+
+/*
+ * A custom property is not interpolatable until it is registered, which is why
+ * the attestation ring sat frozen at its final value. Registering --pct as an
+ * angle lets the conic gradient animate. The keyframe declares only `from`, so
+ * each seal sweeps to whatever --pct its own inline style sets.
+ */
+@property --pct {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0turn;
+}
+
+@keyframes seal-sweep {
+  from {
+    --pct: 0turn;
+  }
+}
+
+/* One orchestrated load sequence for the hero; delays are set per element. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+.rise-in {
+  animation: rise-in 560ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
 /* Dot leader used by document term rows */
 .leader {
   background-image: radial-gradient(circle, rgb(var(--rgb-sky)) 1.1px, transparent 1.2px);
@@ -84,6 +128,7 @@ textarea {
 
 /* Attestation seal: conic ring driven by --pct (0-1) */
 .seal {
+  animation: seal-sweep 900ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
   background: conic-gradient(
     rgb(var(--rgb-state-attested)) 0turn var(--pct),
     rgb(var(--rgb-sky)) var(--pct) 1turn

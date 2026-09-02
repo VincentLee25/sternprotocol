@@ -8,30 +8,30 @@ const MILESTONES = [
     n: "01",
     state: "Inspected",
     role: "ROLE_QUALITY_AUDITOR",
-    held: "Origin surveyor, for example Sucofindo",
+    held: "Sucofindo",
     feed: "VGM feed, port gate-in",
     gate: "vgm_match == true && gate_in_status == \"confirmed\"",
-    proof: "Inspection certificate, SHA-256 pinned to IPFS",
+    proof: "Inspection certificate",
     d: "The container is weighed at the gate and the declared mass has to agree with the verified mass. A surveyor then signs that the goods match the contract."
   },
   {
     n: "02",
     state: "Shipped",
     role: "ROLE_LOGISTICS",
-    held: "Shipping line or freight forwarder",
+    held: "Shipping line",
     feed: "AIS feed, vessel position",
     gate: "departure_status == \"departed\"",
-    proof: "Bill of lading, SHA-256 pinned to IPFS",
+    proof: "Bill of lading",
     d: "The vessel has to have actually left the port of loading. A satellite position feed says so before the carrier's own proof is accepted."
   },
   {
     n: "03",
     state: "ArrivedCleared",
     role: "ROLE_CUSTOMS",
-    held: "Customs broker or destination surveyor",
+    held: "Customs broker",
     feed: "CEISA feed, PEB status",
     gate: "customs_status == \"approved\"",
-    proof: "Customs clearance, SHA-256 pinned to IPFS",
+    proof: "Customs clearance",
     d: "Indonesian customs has to show the export declaration approved. Only then can the broker submit the final milestone."
   }
 ];
@@ -98,8 +98,14 @@ export default function Settlement({ onNavigate, onEnter }) {
 
       <Section
         eyebrow="The two gates"
-        title="A feed alone is not enough. A signature alone is not enough."
-        intro="Each transition needs an automated gate and a role gate to pass together. The feed cannot be talked into lying, and the institution cannot act on data that does not exist."
+        wide
+        title={
+          <>
+            A feed alone is not enough.
+            <br />A signature alone is not enough.
+          </>
+        }
+        intro="Each transition needs an automated gate and a role gate to pass together. The feed cannot be talked into lying, and the institution cannot act on data that does not exist. Every role gate is a document hashed with SHA-256 and pinned to IPFS."
       >
         <div className="grid gap-5 lg:grid-cols-3">
           {MILESTONES.map((m) => (
@@ -108,7 +114,7 @@ export default function Settlement({ onNavigate, onEnter }) {
                 <span className="text-2xs text-teal">{m.n}</span>
                 <h3 className="text-[20px] font-medium tracking-[-0.02em]">{m.state}</h3>
               </div>
-              <p className="mt-3 font-serif text-[15px] leading-relaxed text-alabaster/90">
+              <p className="mt-3 flex-1 font-serif text-[15px] leading-relaxed text-alabaster/90">
                 {m.d}
               </p>
               <div className="mt-5 border-t border-alabaster/10 pt-1">
@@ -117,7 +123,7 @@ export default function Settlement({ onNavigate, onEnter }) {
                 <DarkTermRow label="Automated gate" value={m.feed} />
                 <DarkTermRow label="Role gate" value={m.proof} />
               </div>
-              <pre className="mt-4 overflow-x-auto rounded-panel bg-alabaster/[0.05] px-3.5 py-3 text-2xs leading-relaxed text-state-attested">
+              <pre className="mt-4 flex min-h-[55px] items-center whitespace-pre-wrap break-words rounded-panel bg-alabaster/[0.05] px-3.5 py-3 text-2xs leading-relaxed text-state-attested">
                 {m.gate}
               </pre>
             </div>

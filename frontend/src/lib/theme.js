@@ -35,7 +35,25 @@ export function useTheme() {
     return () => media.removeEventListener("change", onChange);
   }, []);
 
+  // The swap cross-fades every token-coloured surface at once. The class is
+  // added around the flip and pulled straight back off, so nothing else in the
+  // app pays for it. CSS-only reduced-motion cover does not reach a class we
+  // add from JS, so it is checked explicitly.
   const toggleTheme = useCallback(() => {
+    const root = document.documentElement;
+    const still =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (!still) {
+      root.classList.add("theme-transition");
+      window.clearTimeout(root._themeTimer);
+      root._themeTimer = window.setTimeout(
+        () => root.classList.remove("theme-transition"),
+        260
+      );
+    }
+
     setTheme((current) => {
       const next = current === "dark" ? "light" : "dark";
       try {
