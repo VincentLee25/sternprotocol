@@ -1,7 +1,6 @@
-import { useState } from "react";
 import { FileCheck2, ShieldCheck, Zap } from "lucide-react";
 import PortPlate from "../components/PortPlate.jsx";
-import { postAuthSession } from "../lib/mockBackend.js";
+import { missingCredentials, particleEnabled } from "../lib/particle.js";
 
 const FEATURES = [
   { icon: ShieldCheck, text: "Milestone-verified settlement — Sucofindo, the shipping line, and customs each sign off before funds move" },
@@ -9,34 +8,27 @@ const FEATURES = [
   { icon: FileCheck2, text: "IDRT-demo balance provisioned automatically the moment you sign in" }
 ];
 
-export default function Login({ onAuthenticated }) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  async function handleGoogleLogin() {
-    setLoading(true);
-    setError("");
-    try {
-      const user = await postAuthSession({ authType: "google", email: "buyer@example.com" });
-      onAuthenticated(user);
-    } catch (err) {
-      setError(err.message || "Login failed");
-    } finally {
-      setLoading(false);
-    }
-  }
-
+export default function Login({ onConnect, error, busy }) {
   return (
     <div className="grid min-h-dvh grid-cols-1 lg:grid-cols-2">
       <div className="relative hidden overflow-hidden bg-onyx lg:block">
         <div className="absolute inset-0">
           <PortPlate />
         </div>
+        {/* Directional scrim. Without it the lede and feature rows sit straight
+            on the gantry cranes and read as noise however high the nominal
+            contrast is. It fades left-to-right rather than flat, so the text
+            column is backed while the sun and the right of the plate stay
+            visible — the plate is half the argument (07_DESIGN_SYSTEM §5.6). */}
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 bg-gradient-to-r from-onyx/95 via-onyx/70 to-transparent"
+        />
         <div className="relative flex h-full flex-col justify-between p-12">
           <span className="text-lg font-semibold tracking-[0.14em] text-alabaster">STERN</span>
 
           <div className="max-w-md">
-            <span className="mb-5 block font-mono text-2xs uppercase tracking-macro text-[#7FA9BC]">
+            <span className="mb-5 block font-mono text-2xs uppercase tracking-macro text-teal-light">
               Smart escrow for export&ndash;import settlement
             </span>
             <h1 className="text-[36px] font-medium leading-[1.04] tracking-display text-alabaster">
@@ -45,7 +37,7 @@ export default function Login({ onAuthenticated }) {
             <ul className="mt-8 space-y-4">
               {FEATURES.map(({ icon: Icon, text }) => (
                 <li key={text} className="flex items-start gap-3">
-                  <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border border-[#7FA9BC]/40 bg-[#7FA9BC]/10 text-[#7FA9BC]">
+                  <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border border-teal-light/40 bg-teal-light/10 text-teal-light">
                     <Icon size={14} aria-hidden="true" />
                   </span>
                   <span className="font-serif text-sm leading-relaxed text-alabaster/80">{text}</span>
@@ -70,27 +62,48 @@ export default function Login({ onAuthenticated }) {
           </p>
 
           {error ? (
-            <div className="mt-4 rounded-panel border border-state-disputed/40 bg-state-disputed/10 px-3.5 py-2.5 font-serif text-xs text-state-disputed">
+            <div
+              role="alert"
+              className="mt-4 rounded-panel border border-state-disputed/40 bg-state-disputed/10 px-3.5 py-2.5 font-serif text-xs leading-relaxed text-state-disputed"
+            >
               {error}
+              {/* Only offer the popup explanation when the error does not already
+                  carry its own. Appending it to every failure sent people
+                  hunting for a popup blocker while the real cause — an
+                  unreachable RPC — was already spelled out above. */}
+              {!/rpc|fetch|network|reach|VITE_/i.test(String(error)) ? (
+                <span className="mt-1 block text-ink-dim">
+                  If nothing opened, your browser may have blocked the popup — allow popups for this
+                  site and try again.
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+
+          {missingCredentials ? (
+            <div className="mt-4 rounded-panel border border-state-pending/40 bg-state-pending/10 px-3.5 py-2.5 font-serif text-xs leading-relaxed text-state-pending">
+              Particle credentials are missing from <code className="font-mono">.env</code>, so this
+              is running on demo data. Copy <code className="font-mono">.env.example</code> and fill
+              in the three keys to sign in for real.
             </div>
           ) : null}
 
           <button
             type="button"
-            onClick={handleGoogleLogin}
-            disabled={loading}
+            onClick={onConnect}
+            disabled={busy}
             className="mt-6 flex w-full cursor-pointer items-center justify-center gap-2.5 rounded-full border border-sky bg-white px-4 py-3 text-sm font-medium text-navy shadow-card transition-colors duration-150 hover:border-teal/50 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {loading ? (
+            {busy ? (
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-teal border-t-transparent" aria-hidden="true" />
             ) : (
               <GoogleMark />
             )}
-            {loading ? "Creating your wallet…" : "Continue with Google"}
+            {busy ? "Opening sign-in…" : "Continue with Google"}
           </button>
 
           <p className="mt-4 text-center font-mono text-2xs uppercase text-ink-faint">
-            Powered by Particle Network
+            {particleEnabled ? "Powered by Particle Network" : "Demo mode — no wallet created"}
           </p>
 
           <div className="mt-10 rounded-doc border border-sky bg-white p-4">

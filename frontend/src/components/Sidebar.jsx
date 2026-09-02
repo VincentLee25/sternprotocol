@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronsUpDown, FilePlus2, LayoutList, LogOut, Wallet } from "lucide-react";
+import { Check, ChevronsUpDown, Copy, FilePlus2, LayoutList, LogOut, Wallet } from "lucide-react";
 import { ACTORS, actorById, shortAddress } from "../lib/actors.js";
 import { CURRENCY_LABEL } from "../lib/currency.js";
+import { onChainConfigured } from "../lib/sternContract.js";
 
 const NAV = [
   { id: "overview", label: "Escrows", icon: LayoutList },
@@ -70,7 +71,13 @@ export default function Sidebar({ view, onNavigate, role, onRoleChange, user, ba
           <p className="mt-1 font-mono text-sm font-semibold text-navy">
             {balance ? Number(balance).toLocaleString("id-ID") : "0"}
           </p>
-          {!user?.hasClaimedDemoBalance ? (
+          {/* On chain the faucet is a real mint guarded by MINTER_ROLE, so the
+              browser cannot do it. Showing the mock button here would paint a
+              balance the wallet does not hold, and the next createEscrow would
+              revert for insufficient funds. */}
+          {onChainConfigured ? (
+            <SmartAccountAddress address={user?.smartAccountAddress} />
+          ) : !user?.hasClaimedDemoBalance ? (
             <button
               type="button"
               onClick={onClaim}
@@ -150,5 +157,56 @@ export default function Sidebar({ view, onNavigate, role, onRoleChange, user, ba
         </p>
       </div>
     </aside>
+  );
+}
+
+// The panel used to say "mint to this address" without ever showing it, and the
+// actor pill below shows a demo address from actors.js — not the signed-in
+// user's Safe. Minting to that one sends the tokens nowhere useful, so print
+// the real address here and make it copyable.
+function SmartAccountAddress({ address }) {
+  const [copied, setCopied] = useState(false);
+
+  if (!address) {
+    return (
+      <p className="mt-2 font-serif text-2xs leading-relaxed text-ink-dim">
+        On-chain balance. Resolving your Smart Account address…
+      </p>
+    );
+  }
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Clipboard is blocked on insecure origins; the address is on screen
+      // anyway, so there is nothing useful to report.
+    }
+  }
+
+  return (
+    <div className="mt-2">
+      <p className="font-serif text-2xs leading-relaxed text-ink-dim">
+        On-chain balance. Mint IDRT-demo to your Smart Account:
+      </p>
+      <button
+        type="button"
+        onClick={copy}
+        title={address}
+        className="mt-1.5 flex w-full cursor-pointer items-center gap-1.5 rounded-panel border border-sky bg-white px-2 py-1.5 text-left transition-colors duration-150 hover:border-teal/50"
+      >
+        <span className="min-w-0 flex-1 truncate font-mono text-2xs text-navy">{address}</span>
+        {copied ? (
+          <Check size={11} className="shrink-0 text-state-attested" aria-hidden="true" />
+        ) : (
+          <Copy size={11} className="shrink-0 text-ink-dim" aria-hidden="true" />
+        )}
+      </button>
+      <span className="sr-only" role="status">
+        {copied ? "Smart Account address copied" : ""}
+      </span>
+    </div>
   );
 }

@@ -6,6 +6,7 @@ import { CURRENCY_CAPTION, CURRENCY_LABEL } from "../lib/currency.js";
 import { formatBytes } from "../lib/ebl.js";
 import { hashShipmentDocument } from "../lib/shipmentHash.js";
 import { createEscrow } from "../lib/mockRegistry.js";
+import { createEscrowOnChain, onChainConfigured } from "../lib/sternContract.js";
 import { validateEscrowForm } from "../lib/validate.js";
 
 const INITIAL_FORM = {
@@ -17,7 +18,7 @@ const INITIAL_FORM = {
   deadline: ""
 };
 
-export default function NewEscrow({ role, balance, onCreated, onBack }) {
+export default function NewEscrow({ role, balance, onCreated, onBack, smartAccountClient, importerAddress }) {
   const [form, setForm] = useState(INITIAL_FORM);
   const [touched, setTouched] = useState({});
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
@@ -76,8 +77,8 @@ export default function NewEscrow({ role, balance, onCreated, onBack }) {
 
     setSubmitting(true);
     try {
-      const result = await createEscrow({
-        importer: actor.address,
+      const payload = {
+        importer: importerAddress || actor.address,
         exporter: form.exporter,
         arbiter: form.arbiter,
         documentCid: document_.documentHash,
@@ -85,7 +86,14 @@ export default function NewEscrow({ role, balance, onCreated, onBack }) {
         commodity: form.commodity.trim(),
         containerRef: form.containerRef.trim().toUpperCase(),
         globalDeadline: new Date(form.deadline).toISOString()
-      });
+      };
+
+      // On-chain when the contracts are configured, mock otherwise, so a demo
+      // without a deploy still works end to end.
+      const result = onChainConfigured
+        ? await createEscrowOnChain(smartAccountClient, payload)
+        : await createEscrow(payload);
+
       onCreated(result.escrowId);
     } catch (error) {
       setSubmitError(error.message || "Transaction failed");
@@ -277,9 +285,15 @@ export default function NewEscrow({ role, balance, onCreated, onBack }) {
             className="mt-5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-navy py-3 text-sm font-medium text-beige transition-colors duration-150 hover:bg-teal disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Lock size={14} aria-hidden="true" />}
-            {submitting ? "Locking funds…" : "Lock funds in escrow"}
+            {submitting
+              ? onChainConfigured
+                ? "Locking funds on chain…"
+                : "Locking funds…"
+              : "Lock funds in escrow"}
           </button>
-          <p className="mt-2.5 text-center font-mono text-2xs uppercase text-ink-faint">Gasless — sponsored by the Paymaster</p>
+          <p className="mt-2.5 text-center font-mono text-2xs uppercase text-ink-faint">
+            {onChainConfigured ? "Gasless — sponsored by Pimlico" : "Demo data — nothing is sent on chain"}
+          </p>
         </aside>
       </form>
     </div>

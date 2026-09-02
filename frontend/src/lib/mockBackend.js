@@ -17,10 +17,18 @@ const session = { user: null };
 const balances = new Map(); // smartAccountAddress -> { balance, hasClaimed }
 
 // --- §1 Auth & session -------------------------------------------------
-export async function postAuthSession({ authType, email }) {
-  await wait(900);
-  const smartAccountAddress = fakeAddress("smart-" + (email || Date.now()));
-  const eoaOwnerAddress = fakeAddress("eoa-" + (email || Date.now()));
+// When Particle is live the caller passes the REAL addresses it just derived,
+// and this only stands in for the backend row. The fake-address fallback is for
+// the mock path, where nothing has authenticated at all.
+export async function postAuthSession({
+  authType,
+  email,
+  smartAccountAddress: realSmart,
+  eoaOwnerAddress: realEoa
+} = {}) {
+  await wait(realSmart ? 300 : 900);
+  const smartAccountAddress = realSmart || fakeAddress("smart-" + (email || Date.now()));
+  const eoaOwnerAddress = realEoa || fakeAddress("eoa-" + (email || Date.now()));
   session.user = {
     userId: `usr_${Math.random().toString(16).slice(2, 6)}`,
     smartAccountAddress,
@@ -28,7 +36,9 @@ export async function postAuthSession({ authType, email }) {
     authType,
     email,
     role: "importer",
-    hasClaimedDemoBalance: false,
+    // A returning wallet must not be offered the faucet twice, so read the
+    // ledger rather than assuming a fresh user.
+    hasClaimedDemoBalance: balances.get(smartAccountAddress)?.hasClaimed || false,
     createdAt: new Date().toISOString()
   };
   return { ...session.user };
