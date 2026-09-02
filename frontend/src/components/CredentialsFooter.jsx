@@ -24,14 +24,14 @@ export default function CredentialsFooter({ onNavigate, onEnter }) {
         <div className="border-b border-alabaster/10 py-12 lg:py-16">
           <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p className="font-mono text-2xs uppercase tracking-macro text-teal">
+              <p className="text-2xs uppercase tracking-macro text-teal">
                 Who is behind this
               </p>
               <h2 className="mt-3 text-[26px] font-medium tracking-display lg:text-[32px]">
                 Professional credentials
               </h2>
             </div>
-            <p className="max-w-[46ch] rounded-panel bg-state-pending/10 px-4 py-2.5 font-mono text-2xs uppercase leading-relaxed text-state-pending">
+            <p className="max-w-[46ch] rounded-panel bg-state-pending/10 px-4 py-2.5 text-2xs uppercase leading-relaxed text-state-pending">
               Placeholder profiles. Fill the name slots before any public deploy.
             </p>
           </div>
@@ -41,15 +41,15 @@ export default function CredentialsFooter({ onNavigate, onEnter }) {
               <div key={person.role} className="flex flex-col gap-3 bg-onyx p-6">
                 <span
                   aria-hidden="true"
-                  className="grid h-11 w-11 place-items-center rounded-full border border-dashed border-alabaster/25 font-mono text-sm text-alabaster/30"
+                  className="grid h-11 w-11 place-items-center rounded-full border border-dashed border-alabaster/25 text-sm text-alabaster/30"
                 >
                   ?
                 </span>
                 <div>
-                  <p className="font-mono text-sm text-alabaster/35">[ full name ]</p>
+                  <p className="text-sm text-alabaster/35">[ full name ]</p>
                   <p className="mt-1.5 text-[15px] font-medium text-alabaster">{person.role}</p>
                 </div>
-                <p className="mt-auto font-serif text-[14px] leading-relaxed text-alabaster/[0.55]">
+                <p className="mt-auto font-serif text-[14px] leading-relaxed text-alabaster/90">
                   {person.credential}
                 </p>
               </div>
@@ -66,7 +66,7 @@ export default function CredentialsFooter({ onNavigate, onEnter }) {
                 key={item.id}
                 type="button"
                 onClick={() => onNavigate(item.id)}
-                className="cursor-pointer text-sm text-alabaster/55 transition-colors duration-150 hover:text-alabaster"
+                className="cursor-pointer text-sm text-alabaster/90 transition-colors duration-150 hover:text-alabaster"
               >
                 {item.label}
               </button>
@@ -80,7 +80,7 @@ export default function CredentialsFooter({ onNavigate, onEnter }) {
               <ArrowUpRight size={13} aria-hidden="true" />
             </button>
           </div>
-          <p className="font-mono text-2xs uppercase text-alabaster/35">
+          <p className="text-2xs uppercase text-alabaster/90">
             Testnet only &nbsp;·&nbsp; not a licensed payment service
           </p>
         </div>

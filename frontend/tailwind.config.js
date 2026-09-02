@@ -1,4 +1,13 @@
+// Colors resolve through CSS custom properties (defined in src/styles.css for
+// :root and .dark) so the whole palette re-themes from one place instead of
+// needing dark: variants on every utility class. The `rgb(var(...) / <alpha-value>)`
+// shape is what lets Tailwind's opacity modifiers (e.g. bg-navy/10) keep working.
+function themedColor(variable) {
+  return `rgb(var(${variable}) / <alpha-value>)`;
+}
+
 export default {
+  darkMode: "class",
   content: ["./index.html", "./src/**/*.{js,jsx}"],
   theme: {
     extend: {
@@ -8,26 +17,29 @@ export default {
         // identifier cannot be the digit 4), so the browser drops the whole
         // declaration and silently falls back to the sans stack.
         sans: ["Figtree", "system-ui", "sans-serif"],
-        serif: ['"Source Serif 4"', "Georgia", "serif"],
-        mono: ['"Space Mono"', "ui-monospace", "SFMono-Regular", "monospace"]
+        serif: ['"Source Serif 4"', "Georgia", "serif"]
       },
       colors: {
-        // Light app surfaces
-        navy: "#2A415B",
-        teal: "#3E6C7D",
-        beige: "#F5EFEB",
-        sky: "#C0D0E0",
+        // Light app surfaces. navy/beige swap with alabaster/onyx in dark mode
+        // (they're the same "primary text" / "page background" roles, just
+        // named per the domain that used them first).
+        navy: themedColor("--rgb-ink"),
+        teal: themedColor("--rgb-teal"),
+        beige: themedColor("--rgb-page"),
+        sky: themedColor("--rgb-sky"),
         // Dark chrome (landing + seams)
-        onyx: "#0A0A0A",
-        slate: "#1C2537",
-        alabaster: "#E5E4E2",
+        onyx: themedColor("--rgb-page"),
+        slate: themedColor("--rgb-surface"),
+        alabaster: themedColor("--rgb-ink"),
+        // Raised card/panel fill - replaces literal white so cards re-theme too
+        surface: themedColor("--rgb-surface"),
         // Text ramp below navy/teal
-        ink: { dim: "#7C8FA0", faint: "#93A6B6" },
+        ink: { dim: themedColor("--rgb-ink-dim"), faint: themedColor("--rgb-ink-faint") },
         // Semantic tier - never used as an accent
         state: {
-          attested: "#3F7A63",
-          pending: "#B8802E",
-          disputed: "#A8443C"
+          attested: themedColor("--rgb-state-attested"),
+          pending: themedColor("--rgb-state-pending"),
+          disputed: themedColor("--rgb-state-disputed")
         }
       },
       fontSize: {
@@ -36,7 +48,7 @@ export default {
       },
       borderRadius: { doc: "14px", panel: "10px" },
       boxShadow: {
-        card: "0 2px 16px rgba(42,65,91,.075)",
+        card: "0 2px 16px rgb(var(--rgb-ink) / 0.075)",
         plate: "0 40px 90px -34px rgba(0,0,0,.92)"
       },
       letterSpacing: { display: "-0.034em", micro: "0.18em", macro: "0.22em" },

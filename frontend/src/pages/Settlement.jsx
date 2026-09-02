@@ -105,10 +105,10 @@ export default function Settlement({ onNavigate, onEnter }) {
           {MILESTONES.map((m) => (
             <div key={m.n} className="flex flex-col rounded-doc border border-alabaster/10 p-6">
               <div className="flex items-baseline gap-3">
-                <span className="font-mono text-2xs text-teal">{m.n}</span>
+                <span className="text-2xs text-teal">{m.n}</span>
                 <h3 className="text-[20px] font-medium tracking-[-0.02em]">{m.state}</h3>
               </div>
-              <p className="mt-3 font-serif text-[15px] leading-relaxed text-alabaster/[0.58]">
+              <p className="mt-3 font-serif text-[15px] leading-relaxed text-alabaster/90">
                 {m.d}
               </p>
               <div className="mt-5 border-t border-alabaster/10 pt-1">
@@ -117,7 +117,7 @@ export default function Settlement({ onNavigate, onEnter }) {
                 <DarkTermRow label="Automated gate" value={m.feed} />
                 <DarkTermRow label="Role gate" value={m.proof} />
               </div>
-              <pre className="mt-4 overflow-x-auto rounded-panel bg-alabaster/[0.05] px-3.5 py-3 font-mono text-2xs leading-relaxed text-state-attested">
+              <pre className="mt-4 overflow-x-auto rounded-panel bg-alabaster/[0.05] px-3.5 py-3 text-2xs leading-relaxed text-state-attested">
                 {m.gate}
               </pre>
             </div>
@@ -128,13 +128,13 @@ export default function Settlement({ onNavigate, onEnter }) {
       <Section eyebrow="Timing and cost" title="What the delay is actually made of.">
         <div className="grid gap-5 lg:grid-cols-2">
           <div className="rounded-doc border border-alabaster/10 p-6">
-            <p className="font-mono text-2xs uppercase text-alabaster/40">Windows</p>
+            <p className="text-2xs uppercase text-alabaster/90">Windows</p>
             <div className="mt-4 border-t border-alabaster/10 pt-1">
               {TIMING.map(([label, value]) => (
                 <DarkTermRow key={label} label={label} value={value} />
               ))}
             </div>
-            <p className="mt-4 font-serif text-[15px] leading-relaxed text-alabaster/[0.55]">
+            <p className="mt-4 font-serif text-[15px] leading-relaxed text-alabaster/90">
               Three six-hour challenge windows plus a twenty-four hour timelock is roughly forty-two
               hours of deliberate waiting. That is the cost of letting anyone object before money is
               irreversible, and it is still the fastest part of the whole trade.
@@ -142,21 +142,21 @@ export default function Settlement({ onNavigate, onEnter }) {
           </div>
 
           <div className="overflow-hidden rounded-doc border border-alabaster/10">
-            <div className="border-b border-alabaster/10 px-6 py-4 font-mono text-2xs uppercase text-alabaster/40">
+            <div className="border-b border-alabaster/10 px-6 py-4 text-2xs uppercase text-alabaster/90">
               Gas per operation, Polygon
             </div>
             <div className="divide-y divide-alabaster/10">
               {COSTS.map(([op, cost, payer]) => (
                 <div key={op} className="flex flex-wrap items-baseline gap-x-4 px-6 py-3.5">
-                  <span className="min-w-[190px] flex-1 font-mono text-xs text-alabaster">{op}</span>
-                  <span className="font-mono text-xs tabular-nums text-state-attested">{cost}</span>
-                  <span className="w-full font-serif text-[14px] text-alabaster/[0.5] sm:w-auto sm:min-w-[190px] sm:text-right">
+                  <span className="min-w-[190px] flex-1 text-xs text-alabaster">{op}</span>
+                  <span className="text-xs tabular-nums text-state-attested">{cost}</span>
+                  <span className="w-full font-serif text-[14px] text-alabaster/90 sm:w-auto sm:min-w-[190px] sm:text-right">
                     {payer}
                   </span>
                 </div>
               ))}
             </div>
-            <p className="border-t border-alabaster/10 px-6 py-4 font-serif text-[14px] leading-relaxed text-alabaster/[0.5]">
+            <p className="border-t border-alabaster/10 px-6 py-4 font-serif text-[14px] leading-relaxed text-alabaster/90">
               The importer never pays gas directly. A sponsored paymaster covers their operations, so
               an exporter with no crypto at all can still be a counterparty.
             </p>
@@ -173,11 +173,11 @@ export default function Settlement({ onNavigate, onEnter }) {
           {OUTCOMES.map((o) => (
             <div key={o.t} className={`rounded-doc border p-6 ${TONE_RING[o.tone]}`}>
               <h3 className="text-[18px] font-medium tracking-[-0.015em]">{o.t}</h3>
-              <p className="mt-3 font-serif text-[15px] leading-relaxed text-alabaster/[0.6]">{o.d}</p>
+              <p className="mt-3 font-serif text-[15px] leading-relaxed text-alabaster/90">{o.d}</p>
             </div>
           ))}
         </div>
-        <p className="mt-6 font-serif text-[15px] leading-relaxed text-alabaster/[0.5]">
+        <p className="mt-6 font-serif text-[15px] leading-relaxed text-alabaster/90">
           The 3% figure sits between the roughly 10% that BANI and Kleros both land on and the 2%
           the contract originally defaulted to. Ten percent prices out the small exporters this is
           built for. Two percent is cheap enough that a large buyer can treat a dispute as a

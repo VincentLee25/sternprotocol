@@ -105,7 +105,7 @@ export default function NewEscrow({ role, balance, onCreated, onBack, smartAccou
   const grossValue = Number(form.value) || 0;
 
   return (
-    <div className="mx-auto max-w-[1180px]">
+    <div className="w-full">
       <button
         type="button"
         onClick={onBack}
@@ -116,8 +116,8 @@ export default function NewEscrow({ role, balance, onCreated, onBack, smartAccou
       </button>
 
       <header className="mb-6">
-        <p className="font-mono text-2xs uppercase text-ink-faint">Deed of conditional settlement</p>
-        <h1 className="mt-1.5 text-[32px] font-medium leading-none tracking-display text-navy">New escrow</h1>
+        <p className="text-2xs uppercase text-ink-faint">Deed of conditional settlement</p>
+        <h1 className="mt-1.5 text-[32px] font-bold leading-none tracking-display text-navy">New escrow</h1>
         <p className="mt-2.5 max-w-[62ch] font-serif text-[15px] leading-relaxed text-teal">
           You are acting as the <span className="text-navy">{actor.label}</span> — the party that
           deposits funds. Gasless, sponsored by the Paymaster.
@@ -131,10 +131,10 @@ export default function NewEscrow({ role, balance, onCreated, onBack, smartAccou
         </div>
       ) : null}
 
-      <form onSubmit={onSubmit} noValidate className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <form onSubmit={onSubmit} noValidate className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_336px]">
         <div className="space-y-5">
-          <section className="rounded-doc bg-white p-6 shadow-card">
-            <h2 className="mb-4 font-mono text-2xs uppercase text-ink-faint">Counterparties</h2>
+          <section className="rounded-doc bg-surface p-6 shadow-card">
+            <h2 className="mb-4 text-2xs uppercase text-ink-faint">Counterparties</h2>
             <div className="space-y-4">
               <Field label="Exporter wallet" htmlFor="exporter" required error={showError("exporter")} hint="Receives IDRT-demo once all three milestones are verified.">
                 <input
@@ -146,7 +146,7 @@ export default function NewEscrow({ role, balance, onCreated, onBack, smartAccou
                   placeholder="0x…"
                   spellCheck="false"
                   autoComplete="off"
-                  className={`${inputClass(Boolean(showError("exporter")))} font-mono text-xs`}
+                  className={`${inputClass(Boolean(showError("exporter")))} text-xs`}
                 />
               </Field>
               <Field label="Arbiter wallet" htmlFor="arbiter" required error={showError("arbiter")} hint="Resolves disputes — independent of importer and exporter.">
@@ -159,14 +159,14 @@ export default function NewEscrow({ role, balance, onCreated, onBack, smartAccou
                   placeholder="0x…"
                   spellCheck="false"
                   autoComplete="off"
-                  className={`${inputClass(Boolean(showError("arbiter")))} font-mono text-xs`}
+                  className={`${inputClass(Boolean(showError("arbiter")))} text-xs`}
                 />
               </Field>
             </div>
           </section>
 
-          <section className="rounded-doc bg-white p-6 shadow-card">
-            <h2 className="mb-4 font-mono text-2xs uppercase text-ink-faint">Shipment terms</h2>
+          <section className="rounded-doc bg-surface p-6 shadow-card">
+            <h2 className="mb-4 text-2xs uppercase text-ink-faint">Shipment terms</h2>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label={`Contract value (${CURRENCY_LABEL})`} htmlFor="value" required error={showError("value")}>
                 <input
@@ -177,7 +177,7 @@ export default function NewEscrow({ role, balance, onCreated, onBack, smartAccou
                   onChange={update}
                   onBlur={markTouched}
                   placeholder="45000000"
-                  className={`${inputClass(Boolean(showError("value")))} font-mono`}
+                  className={inputClass(Boolean(showError("value")))}
                 />
               </Field>
               <Field label="Settlement deadline" htmlFor="deadline" required error={showError("deadline")} hint="Global safety valve — importer can refund any time after this passes.">
@@ -211,15 +211,15 @@ export default function NewEscrow({ role, balance, onCreated, onBack, smartAccou
                   onBlur={markTouched}
                   placeholder="TGHU-2026-001"
                   spellCheck="false"
-                  className={`${inputClass(Boolean(showError("containerRef")))} font-mono text-xs uppercase`}
+                  className={`${inputClass(Boolean(showError("containerRef")))} text-xs uppercase`}
                 />
               </Field>
             </div>
             <p className="mt-3 font-serif text-xs leading-relaxed text-ink-dim">{CURRENCY_CAPTION}</p>
           </section>
 
-          <section className="rounded-doc bg-white p-6 shadow-card">
-            <h2 className="mb-1 font-mono text-2xs uppercase text-ink-faint">Contract document</h2>
+          <section className="rounded-doc bg-surface p-6 shadow-card">
+            <h2 className="mb-1 text-2xs uppercase text-ink-faint">Contract document</h2>
             <p className="mb-3 font-serif text-xs leading-relaxed text-ink-dim">
               Hashed locally (container ref + commodity + file &rarr; keccak256), so the contract
               anchors a real fingerprint of your document, not a filename.
@@ -245,7 +245,7 @@ export default function NewEscrow({ role, balance, onCreated, onBack, smartAccou
                     <span className="block truncate text-xs font-medium text-navy">
                       {document_.fileName} <span className="text-ink-dim">({formatBytes(document_.size)})</span>
                     </span>
-                    <span className="block truncate font-mono text-2xs text-teal">
+                    <span className="block truncate text-2xs text-teal">
                       {document_.documentHash.slice(0, 24)}…
                     </span>
                   </>
@@ -262,8 +262,8 @@ export default function NewEscrow({ role, balance, onCreated, onBack, smartAccou
           </section>
         </div>
 
-        <aside className="h-fit rounded-doc bg-white p-6 shadow-card lg:sticky lg:top-6">
-          <h2 className="mb-4 font-mono text-2xs uppercase text-ink-faint">Review &amp; lock</h2>
+        <aside className="h-fit rounded-doc bg-surface p-6 shadow-card lg:sticky lg:top-6">
+          <h2 className="mb-4 text-2xs uppercase text-ink-faint">Review &amp; lock</h2>
           <div className="space-y-2.5 text-sm">
             <Row label="Deposit" value={`${grossValue.toLocaleString("id-ID")} ${CURRENCY_LABEL}`} />
             <Row label="Your balance" value={`${Number(balance || 0).toLocaleString("id-ID")} ${CURRENCY_LABEL}`} />
@@ -291,7 +291,7 @@ export default function NewEscrow({ role, balance, onCreated, onBack, smartAccou
                 : "Locking funds…"
               : "Lock funds in escrow"}
           </button>
-          <p className="mt-2.5 text-center font-mono text-2xs uppercase text-ink-faint">
+          <p className="mt-2.5 text-center text-2xs uppercase text-ink-faint">
             {onChainConfigured ? "Gasless — sponsored by Pimlico" : "Demo data — nothing is sent on chain"}
           </p>
         </aside>
@@ -303,7 +303,7 @@ export default function NewEscrow({ role, balance, onCreated, onBack, smartAccou
 function Row({ label, value }) {
   return (
     <div className="flex items-baseline justify-between gap-3 border-b border-dotted border-sky pb-2">
-      <span className="font-mono text-2xs uppercase text-ink-faint">{label}</span>
+      <span className="text-2xs uppercase text-ink-faint">{label}</span>
       <span className="text-right font-serif text-[13.5px] text-navy">{value}</span>
     </div>
   );

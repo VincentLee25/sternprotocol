@@ -19,12 +19,15 @@ import { CONSORTIUM, ORACLE_QUORUM, defaultConsortium } from "../lib/oracles.js"
 import { actorById, shortAddress } from "../lib/actors.js";
 import { stateFromIndex, formatEscrowId } from "../lib/escrowState.js";
 
+// The contract has THREE milestones (docs/01_CONTRACT_SPEC.md §4), each gated by
+// one automated feed plus one role-holder's signed proof. The earlier five-check
+// list included two conditions ("e-BL hash valid", "Inspection passed") that the
+// contract never had; they were a frontend invention. `milestoneKey` reads the
+// real proof from mockRegistry; `field` is the legacy oracle-harness fallback.
 const CHECKS = [
-  { key: "vgm", field: "vgmMatch", label: "VGM match", source: "Port IoT · gate-in", failDetail: "Container mass mismatch at gate-in" },
-  { key: "ais", field: "aisDeparted", label: "Vessel departed", source: "AIS satellite feed", failDetail: "Vessel still in port" },
-  { key: "ceisa", field: "ceisaApproved", label: "Customs approved", source: "CEISA · PEB status", failDetail: "Customs clearance still pending" },
-  { key: "ebl", field: "eblCidValid", label: "e-BL hash valid", source: "IPFS content check", failDetail: "Document hash does not match contract" },
-  { key: "inspection", field: "inspectionPassed", label: "Inspection passed", source: "PSI surveyor certificate", failDetail: "PSI: goods do not match contract" }
+  { key: "vgm", milestoneKey: "inspected", field: "vgmMatch", label: "Inspected — VGM match and gate-in", source: "Sucofindo · Port IoT", failDetail: "Container mass mismatch at gate-in" },
+  { key: "ais", milestoneKey: "shipped", field: "aisDeparted", label: "Shipped — vessel departed", source: "Shipping line · AIS", failDetail: "Vessel still in port" },
+  { key: "ceisa", milestoneKey: "arrivedCleared", field: "ceisaApproved", label: "Arrived and cleared — customs approved", source: "Customs broker · CEISA", failDetail: "Customs clearance still pending" }
 ];
 
 const PERMISSIONS = {
@@ -533,9 +536,13 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
   }
 
   const terminal = escrow.state === "Completed" || escrow.state === "Refunded";
-  const attestedCount = verification
-    ? CHECKS.filter((check) => verification[check.field] === true).length
-    : 0;
+  // Prefer the real milestone proof; fall back to the legacy harness payload.
+  const checkValue = (check) => {
+    const proof = escrow.milestones?.[check.milestoneKey];
+    if (proof) return proof.submitted ? true : null;
+    return verification ? verification[check.field] : null;
+  };
+  const attestedCount = CHECKS.filter((check) => checkValue(check) === true).length;
   const importerAddress = escrow.importer || actorById("importer").address;
   const messageTone = {
     ok: "border-state-attested/40 bg-state-attested/10 text-state-attested",
@@ -548,10 +555,10 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
   const btnPrimary =
     "flex cursor-pointer items-center justify-center rounded-full bg-navy px-6 py-2.5 text-[13px] font-medium text-beige transition-colors duration-150 hover:bg-teal disabled:cursor-not-allowed disabled:opacity-40";
   const btnOutline =
-    "flex cursor-pointer items-center justify-center rounded-full border border-sky bg-white px-5 py-2.5 text-[13px] font-medium text-navy transition-colors duration-150 hover:border-teal/40 disabled:cursor-not-allowed disabled:opacity-40";
+    "flex cursor-pointer items-center justify-center rounded-full border border-sky bg-surface px-5 py-2.5 text-[13px] font-medium text-navy transition-colors duration-150 hover:border-teal/40 disabled:cursor-not-allowed disabled:opacity-40";
 
   return (
-    <div className="mx-auto max-w-[1180px]">
+    <div className="w-full">
       <button
         type="button"
         onClick={onBack}
@@ -570,16 +577,16 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
         </div>
       ) : null}
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_336px]">
         {/* ---------- The instrument ---------- */}
         <div className="min-w-0">
-          <article className="overflow-hidden rounded-doc bg-white shadow-card">
+          <article className="overflow-hidden rounded-doc bg-surface shadow-card">
             <header className="flex flex-wrap items-end justify-between gap-4 border-b-2 border-navy px-6 py-7 lg:px-9">
               <div className="min-w-0">
-                <p className="mb-2.5 font-mono text-2xs uppercase text-teal">
+                <p className="mb-2.5 text-2xs uppercase text-teal">
                   Deed of conditional settlement
                 </p>
-                <h1 className="text-balance text-[28px] font-medium leading-[1.08] tracking-display text-navy lg:text-[36px]">
+                <h1 className="text-balance text-[28px] font-bold leading-[1.08] tracking-display text-navy lg:text-[36px]">
                   {escrow.commodity || "Export shipment"}
                 </h1>
                 <p className="mt-2 font-serif text-base text-teal">
@@ -592,7 +599,7 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
 
             {/* Article I */}
             <section className="border-b border-sky px-6 py-6 lg:px-9">
-              <p className="mb-3 font-mono text-2xs uppercase text-ink-faint">
+              <p className="mb-3 text-2xs uppercase text-ink-faint">
                 Article I &nbsp;·&nbsp; Parties and terms
               </p>
               <div className="grid gap-x-14 sm:grid-cols-2">
@@ -624,11 +631,11 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
             {/* Article II */}
             <section className="grid gap-8 border-b border-sky px-6 py-6 lg:grid-cols-[minmax(0,1fr)_216px] lg:px-9">
               <div className="min-w-0">
-                <p className="mb-3 font-mono text-2xs uppercase text-ink-faint">
+                <p className="mb-3 text-2xs uppercase text-ink-faint">
                   Article II &nbsp;·&nbsp; Conditions precedent
                 </p>
                 {CHECKS.map((check) => {
-                  const value = verification ? verification[check.field] : null;
+                  const value = checkValue(check);
                   return (
                     <div
                       key={check.key}
@@ -637,7 +644,7 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
                       <span
                         className={`grid h-5 w-5 shrink-0 place-items-center rounded-[7px] ${
                           value === null
-                            ? "border-[1.5px] border-sky bg-white"
+                            ? "border-[1.5px] border-sky bg-surface"
                             : value
                               ? "bg-state-attested"
                               : "bg-state-disputed"
@@ -657,7 +664,7 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
                           </span>
                         ) : null}
                       </span>
-                      <span className="shrink-0 font-mono text-2xs uppercase text-ink-faint">
+                      <span className="shrink-0 text-2xs uppercase text-ink-faint">
                         {check.source.split(" · ")[0]}
                       </span>
                     </div>
@@ -676,7 +683,7 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
                     <span className="block text-[33px] font-medium leading-none tracking-display text-state-attested">
                       {attestedCount}/{CHECKS.length}
                     </span>
-                    <span className="mt-1 block font-mono text-[8.5px] uppercase tracking-micro text-state-attested">
+                    <span className="mt-1 block text-[8.5px] uppercase tracking-micro text-state-attested">
                       Attested
                     </span>
                   </span>
@@ -695,10 +702,10 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
             <section className="bg-beige px-6 py-5 lg:px-9">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="font-mono text-2xs uppercase text-teal">Conformance harness</p>
+                  <p className="text-2xs uppercase text-teal">Conformance harness</p>
                   <p className="mt-1 max-w-md font-serif text-xs leading-relaxed text-ink-dim">
-                    Deterministic feeds shaped like the real VGM, AIS, CEISA, IPFS and PSI
-                    responses. We mock the credentials, not the architecture.
+                    Deterministic feeds shaped like the real VGM, AIS and CEISA responses. We
+                    mock the credentials, not the architecture.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -713,9 +720,9 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
                       title={`${check.label}: click to simulate ${
                         checks[check.key] ? "failure" : "success"
                       }`}
-                      className={`cursor-pointer rounded-full px-2.5 py-1 font-mono text-2xs transition-colors duration-150 ${
+                      className={`cursor-pointer rounded-full px-2.5 py-1 text-2xs transition-colors duration-150 ${
                         checks[check.key]
-                          ? "bg-white text-teal hover:text-navy"
+                          ? "bg-surface text-teal hover:text-navy"
                           : "bg-state-disputed/10 text-state-disputed"
                       }`}
                     >
@@ -726,16 +733,16 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
               </div>
 
               <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                <span className="mr-1 font-mono text-2xs uppercase text-ink-faint">
+                <span className="mr-1 text-2xs uppercase text-ink-faint">
                   Dissenting oracle
                 </span>
                 <button
                   type="button"
                   onClick={() => setDissentIndex(null)}
-                  className={`cursor-pointer rounded-full px-2.5 py-1 font-mono text-2xs transition-colors duration-150 ${
+                  className={`cursor-pointer rounded-full px-2.5 py-1 text-2xs transition-colors duration-150 ${
                     dissentIndex === null
                       ? "bg-state-attested/10 text-state-attested"
-                      : "bg-white text-teal hover:text-navy"
+                      : "bg-surface text-teal hover:text-navy"
                   }`}
                 >
                   none
@@ -746,10 +753,10 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
                     type="button"
                     onClick={() => setDissentIndex(member.index)}
                     title={`Simulate ${member.name} submitting false data. The majority outvotes it and its bond is slashed.`}
-                    className={`cursor-pointer rounded-full px-2.5 py-1 font-mono text-2xs transition-colors duration-150 ${
+                    className={`cursor-pointer rounded-full px-2.5 py-1 text-2xs transition-colors duration-150 ${
                       dissentIndex === member.index
                         ? "bg-state-disputed/10 text-state-disputed"
-                        : "bg-white text-teal hover:text-navy"
+                        : "bg-surface text-teal hover:text-navy"
                     }`}
                   >
                     {member.name}
@@ -758,7 +765,7 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
               </div>
 
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-sky pt-4">
-                <span className="truncate font-mono text-2xs text-ink-faint">
+                <span className="truncate text-2xs text-ink-faint">
                   e-BL CID &nbsp;{escrow.cid || "not pinned"}
                 </span>
                 <div className="flex flex-wrap gap-2.5">
@@ -787,29 +794,29 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
           </article>
 
           {/* Oracle consortium */}
-          <div className="mt-5 overflow-hidden rounded-doc bg-white shadow-card">
+          <div className="mt-5 overflow-hidden rounded-doc bg-surface shadow-card">
             <div className="flex items-center justify-between gap-2 border-b border-sky px-6 py-3.5 lg:px-9">
-              <p className="font-mono text-2xs uppercase text-ink-faint">
-                Oracle consortium &nbsp;·&nbsp; {ORACLE_QUORUM}-of-{CONSORTIUM.length} consensus
+              <p className="text-2xs uppercase text-ink-faint">
+                Verifier institutions &nbsp;·&nbsp; one role each
               </p>
-              <span className="font-mono text-2xs text-ink-faint">bond-secured</span>
+              <span className="text-2xs text-ink-faint">bond-secured</span>
             </div>
             <ul className="grid gap-px bg-sky/60 sm:grid-cols-3">
               {consortium.map((member) => (
                 <li
                   key={member.address || member.name}
-                  className={`px-5 py-4 ${member.slashed ? "bg-state-disputed/5" : "bg-white"}`}
+                  className={`px-5 py-4 ${member.slashed ? "bg-state-disputed/5" : "bg-surface"}`}
                 >
                   <p className="text-sm font-medium text-navy">{member.name}</p>
-                  <p className="truncate font-mono text-2xs text-ink-faint">
+                  <p className="truncate text-2xs text-ink-faint">
                     {member.address ? shortAddress(member.address) : member.descr}
                   </p>
                   <div className="mt-2 flex items-center justify-between gap-2">
-                    <span className="font-mono text-2xs tabular-nums text-teal">
+                    <span className="text-2xs tabular-nums text-teal">
                       bond {Number(member.bond).toFixed(2)}
                     </span>
                     <span
-                      className={`font-mono text-2xs uppercase ${
+                      className={`text-2xs uppercase ${
                         member.slashed
                           ? "text-state-disputed"
                           : member.attested
@@ -826,12 +833,12 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
           </div>
 
           {oracleSources ? (
-            <details className="mt-5 overflow-hidden rounded-doc bg-white shadow-card">
+            <details className="mt-5 overflow-hidden rounded-doc bg-surface shadow-card">
               <summary className="flex cursor-pointer items-center justify-between px-6 py-3.5 text-sm font-medium text-teal hover:text-navy lg:px-9">
                 Raw source payloads: real API response shapes
                 <ChevronDown size={14} aria-hidden="true" />
               </summary>
-              <pre className="max-h-64 overflow-auto border-t border-sky px-6 py-4 font-mono text-2xs leading-relaxed text-teal lg:px-9">
+              <pre className="max-h-64 overflow-auto border-t border-sky px-6 py-4 text-2xs leading-relaxed text-teal lg:px-9">
                 {JSON.stringify(oracleSources, null, 2)}
               </pre>
             </details>
@@ -839,7 +846,7 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
         </div>
 
         {/* ---------- Rail ---------- */}
-        <aside className="flex flex-col gap-5">
+        <aside className="flex flex-col gap-5 lg:sticky lg:top-0">
           <Panel title="Lifecycle">
             <Timeline state={escrow.state} />
             <p className="mt-4 border-t border-sky pt-3 font-serif text-xs leading-relaxed text-ink-dim">
@@ -913,7 +920,7 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
                     <li key={party} className="flex items-center justify-between text-xs">
                       <span className="capitalize text-teal">{party}</span>
                       <span
-                        className={`font-mono ${
+                        className={`${
                           partyVote === null
                             ? "text-ink-faint"
                             : partyVote
@@ -1006,7 +1013,7 @@ function TermRow({ label, value, warn, truncate }) {
       <span className="whitespace-nowrap font-serif text-[15px] text-teal">{label}</span>
       <span className="leader h-1 min-w-[16px] flex-1 -translate-y-[3px]" aria-hidden="true" />
       <span
-        className={`font-mono text-xs font-medium tabular-nums ${
+        className={`text-xs font-medium tabular-nums ${
           truncate ? "min-w-0 truncate" : "whitespace-nowrap"
         } ${warn ? "text-state-pending" : "text-navy"}`}
         title={truncate ? value : undefined}
@@ -1021,10 +1028,10 @@ function Panel({ title, tone, children }) {
   return (
     <section
       className={`overflow-hidden rounded-doc shadow-card ${
-        tone === "pending" ? "bg-state-pending/[0.06]" : "bg-white"
+        tone === "pending" ? "bg-state-pending/[0.06]" : "bg-surface"
       }`}
     >
-      <h2 className="border-b border-sky px-5 py-3 font-mono text-2xs uppercase text-ink-faint">
+      <h2 className="border-b border-sky px-5 py-3 text-2xs uppercase text-ink-faint">
         {title}
       </h2>
       <div className="px-5 py-4">{children}</div>

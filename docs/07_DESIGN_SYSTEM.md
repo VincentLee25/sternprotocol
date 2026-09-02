@@ -57,7 +57,7 @@ fighting navy.
 
 | Token | Hex | Escrow states |
 |---|---|---|
-| `attested` | `#3F7A63` | Verified, Completed |
+| `attested` | `#0F7C5E` | Verified, Completed |
 | `pending` | `#B8802E` | Pending attestation, awaiting checks |
 | `disputed` | `#A8443C` | Disputed, failed check, Refunded (muted) |
 
@@ -272,7 +272,7 @@ export default {
         slate: "#1C2537",
         alabaster: "#E5E4E2",
         ink: { dim: "#7C8FA0", faint: "#93A6B6" },
-        state: { attested: "#3F7A63", pending: "#B8802E", disputed: "#A8443C" }
+        state: { attested: "#0F7C5E", pending: "#B8802E", disputed: "#A8443C" }
       },
       fontSize: {
         "2xs": ["0.5938rem", { lineHeight: "0.875rem", letterSpacing: "0.18em" }],

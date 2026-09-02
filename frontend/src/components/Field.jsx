@@ -3,7 +3,7 @@ export default function Field({ label, htmlFor, required, error, hint, children 
     <div>
       <label
         htmlFor={htmlFor}
-        className="mb-2 block font-mono text-2xs font-medium uppercase text-ink-faint"
+        className="mb-2 block text-2xs font-medium uppercase text-ink-faint"
       >
         {label}
         {required ? <span className="ml-1 text-state-disputed">*</span> : null}
@@ -21,7 +21,7 @@ export default function Field({ label, htmlFor, required, error, hint, children 
 }
 
 export const inputClass = (hasError) =>
-  `w-full rounded-panel border bg-white px-3.5 py-2.5 text-sm text-navy placeholder:text-ink-faint transition-colors duration-150 focus:outline-none ${
+  `w-full rounded-panel border bg-surface px-3.5 py-2.5 text-sm text-navy placeholder:text-ink-faint transition-colors duration-150 focus:outline-none ${
     hasError
       ? "border-state-disputed/60 focus:border-state-disputed"
       : "border-sky hover:border-teal/40 focus:border-teal"

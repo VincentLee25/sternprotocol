@@ -3,7 +3,7 @@ import { lifecycleStep } from "../lib/escrowState.js";
 
 const MAIN_STEPS = [
   { key: "Pending", label: "Funds locked", detail: "Importer deposit held by the contract" },
-  { key: "Verified", label: "Oracle verified", detail: "All five checks attested on-chain" },
+  { key: "Verified", label: "Oracle verified", detail: "All three milestones verified on-chain" },
   { key: "Completed", label: "Settled", detail: "Funds to exporter · e-BL to importer" }
 ];
 
@@ -36,12 +36,12 @@ export default function Timeline({ state }) {
               />
             ) : null}
             <span
-              className={`relative z-10 grid h-6 w-6 shrink-0 place-items-center rounded-full border font-mono text-2xs ${
+              className={`relative z-10 grid h-6 w-6 shrink-0 place-items-center rounded-full border text-2xs ${
                 status === "done"
                   ? "border-state-attested bg-state-attested text-white"
                   : status === "current"
                     ? "border-state-pending bg-state-pending text-white"
-                    : "border-sky bg-white text-ink-faint"
+                    : "border-sky bg-surface text-ink-faint"
               }`}
             >
               {status === "done" ? <Check size={12} aria-hidden="true" /> : index + 1}

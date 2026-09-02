@@ -52,7 +52,7 @@ export default function StateMachine() {
               y={Y - 12}
               textAnchor="middle"
               fill="#93A6B6"
-              fontFamily="JetBrains Mono, monospace"
+              fontFamily="Figtree, sans-serif"
               fontSize="9"
               letterSpacing="0.08em"
             >
@@ -75,7 +75,7 @@ export default function StateMachine() {
               height={H}
               rx="10"
               fill={last ? "rgba(63,122,99,0.14)" : "#141A22"}
-              stroke={last ? "#3F7A63" : "rgba(229,228,226,0.2)"}
+              stroke={last ? "#0F7C5E" : "rgba(229,228,226,0.2)"}
               strokeWidth="1.2"
             />
             <text
@@ -94,7 +94,7 @@ export default function StateMachine() {
               y={Y + 38}
               textAnchor="middle"
               fill="#93A6B6"
-              fontFamily="JetBrains Mono, monospace"
+              fontFamily="Figtree, sans-serif"
               fontSize="8.5"
               letterSpacing="0.08em"
             >
@@ -106,10 +106,10 @@ export default function StateMachine() {
 
       {/* dispute branch leaves the rail */}
       <line x1="507" y1="100" x2="507" y2="198" stroke="#B8802E" strokeWidth="1.5" strokeDasharray="4 4" markerEnd="url(#sm-arrow)" />
-      <text x="523" y="140" fill="#B8802E" fontFamily="JetBrains Mono, monospace" fontSize="9" letterSpacing="0.08em">
+      <text x="523" y="140" fill="#B8802E" fontFamily="Figtree, sans-serif" fontSize="9" letterSpacing="0.08em">
         raiseDispute()
       </text>
-      <text x="523" y="156" fill="#93A6B6" fontFamily="JetBrains Mono, monospace" fontSize="9" letterSpacing="0.08em">
+      <text x="523" y="156" fill="#93A6B6" fontFamily="Figtree, sans-serif" fontSize="9" letterSpacing="0.08em">
         any state before Completed
       </text>
 
@@ -117,18 +117,18 @@ export default function StateMachine() {
       <text x="507" y="228" textAnchor="middle" fill="#D6A657" fontFamily="Figtree, sans-serif" fontSize="13.5" fontWeight="500">
         Disputed
       </text>
-      <text x="507" y="244" textAnchor="middle" fill="#93A6B6" fontFamily="JetBrains Mono, monospace" fontSize="8.5" letterSpacing="0.08em">
+      <text x="507" y="244" textAnchor="middle" fill="#93A6B6" fontFamily="Figtree, sans-serif" fontSize="8.5" letterSpacing="0.08em">
         bond 3% locked
       </text>
 
       {/* arbiter fork */}
       <path d="M592 232 H622 V213 H652" fill="none" stroke="#8FA3B4" strokeWidth="1.5" markerEnd="url(#sm-arrow)" />
       <path d="M592 232 H622 V257 H652" fill="none" stroke="#8FA3B4" strokeWidth="1.5" markerEnd="url(#sm-arrow)" />
-      <text x="640" y="188" fill="#93A6B6" fontFamily="JetBrains Mono, monospace" fontSize="9" letterSpacing="0.08em">
+      <text x="640" y="188" fill="#93A6B6" fontFamily="Figtree, sans-serif" fontSize="9" letterSpacing="0.08em">
         resolveDispute() &middot; arbiter decides
       </text>
 
-      <rect x="660" y="196" width="190" height="34" rx="8" fill="rgba(63,122,99,0.14)" stroke="#3F7A63" strokeWidth="1.2" />
+      <rect x="660" y="196" width="190" height="34" rx="8" fill="rgba(63,122,99,0.14)" stroke="#0F7C5E" strokeWidth="1.2" />
       <text x="755" y="218" textAnchor="middle" fill="#63A98A" fontFamily="Figtree, sans-serif" fontSize="13" fontWeight="500">
         Completed
       </text>
@@ -138,10 +138,10 @@ export default function StateMachine() {
         Refunded
       </text>
 
-      <text x="872" y="222" fill="#93A6B6" fontFamily="JetBrains Mono, monospace" fontSize="9" letterSpacing="0.08em">
+      <text x="872" y="222" fill="#93A6B6" fontFamily="Figtree, sans-serif" fontSize="9" letterSpacing="0.08em">
         globalDeadline passed also
       </text>
-      <text x="872" y="238" fill="#93A6B6" fontFamily="JetBrains Mono, monospace" fontSize="9" letterSpacing="0.08em">
+      <text x="872" y="238" fill="#93A6B6" fontFamily="Figtree, sans-serif" fontSize="9" letterSpacing="0.08em">
         refunds, importer only
       </text>
     </svg>

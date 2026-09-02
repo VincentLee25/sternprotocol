@@ -10,7 +10,7 @@ export default function ActivityLog({ entries }) {
           key={`${entry.time}-${index}`}
           className="flex gap-3 border-b border-sky/50 py-2.5 text-sm last:border-b-0"
         >
-          <span className="w-14 shrink-0 pt-0.5 font-mono text-2xs text-ink-faint">
+          <span className="w-14 shrink-0 pt-0.5 text-2xs text-ink-faint">
             {new Date(entry.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </span>
           <span className="min-w-0">
