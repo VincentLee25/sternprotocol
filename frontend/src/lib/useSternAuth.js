@@ -9,6 +9,7 @@ import { useAccount, useDisconnect, useModal, useWallets } from "@particle-netwo
 import { particleEnabled } from "./particle.js";
 import { createSternSmartAccount, gaslessConfigured } from "./smartAccount.js";
 import { postAuthSession, signOut as mockSignOut } from "./mockBackend.js";
+import { adoptDemoEscrows } from "./mockRegistry.js";
 
 // Status the UI switches on. Deliberately not the same vocabulary as Particle's:
 // "loading" folds together two different waits that look identical to a user
@@ -142,6 +143,10 @@ function useMockAuth() {
     setError("");
     try {
       const session = await postAuthSession({ authType: "google", email: "buyer@example.com" });
+      // The seeded escrows name fixed demo addresses. Now that the role is read
+      // off the escrow rather than picked in the sidebar, leaving them that way
+      // would make this wallet a party to nothing and the whole demo read-only.
+      adoptDemoEscrows(session.smartAccountAddress);
       setUser(session);
       setStatus(AUTH.READY);
     } catch (err) {

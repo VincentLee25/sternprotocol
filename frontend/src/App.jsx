@@ -9,6 +9,7 @@ import Login from "./pages/Login.jsx";
 import Overview from "./pages/Overview.jsx";
 import NewEscrow from "./pages/NewEscrow.jsx";
 import EscrowDetail from "./pages/EscrowDetail.jsx";
+import OpsConsole from "./pages/OpsConsole.jsx";
 import { claimDemoBalance as mockClaim, getDemoBalance as mockBalance } from "./lib/mockBackend.js";
 import * as api from "./lib/sternApi.js";
 import { sourceIsLive } from "./lib/escrowSource.js";
@@ -21,7 +22,6 @@ export default function App() {
   const { status, user, error, connect, disconnect, setUser, smartAccountClient } = useSternAuth();
   const [balance, setBalance] = useState("0.00");
   const [claiming, setClaiming] = useState(false);
-  const [role, setRole] = useState("importer");
   const [view, setView] = useState({ name: "landing" });
   const [escrows, setEscrows] = useState([]);
 
@@ -65,7 +65,7 @@ export default function App() {
       // The real faucet mints through the backend's minter wallet; MINTER_ROLE
       // makes this impossible from the browser.
       const result = sourceIsLive
-        ? await api.claimDemoBalance(address, role === "exporter" ? "exporter" : "importer")
+        ? await api.claimDemoBalance(address, "importer")
         : await mockClaim(address);
       setBalance(result.newBalance ?? result.balance ?? "0.00");
       setUser((current) => (current ? { ...current, hasClaimedDemoBalance: true } : current));
@@ -74,7 +74,7 @@ export default function App() {
     } finally {
       setClaiming(false);
     }
-  }, [address, role, setUser]);
+  }, [address, setUser]);
 
   const updateEscrow = useCallback((id, updater) => {
     setEscrows((current) =>
@@ -135,6 +135,12 @@ export default function App() {
     [activeView, escrows]
   );
 
+  // Ops is checked before the Particle gate: the arbiter and admin sign in with
+  // their own keys, so requiring a Particle session first would be nonsense.
+  if (activeView.name === "ops") {
+    return <OpsConsole onExit={() => setView({ name: status === AUTH.READY ? "overview" : "landing" })} />;
+  }
+
   // Marketing surface — no login required, shares the dark chrome.
   const MarketingPage = MARKETING[activeView.name];
   if (MarketingPage) {
@@ -169,13 +175,11 @@ export default function App() {
       <Sidebar
         view={activeView.name}
         onNavigate={(name) => setView({ name })}
-        role={role}
-        onRoleChange={setRole}
         user={user}
         balance={balance}
         claiming={claiming}
         onClaim={handleClaim}
-        onResetDemo={resetDemo}
+        onOpenOps={() => setView({ name: "ops" })}
         onSignOut={handleSignOut}
         isOnChainReady={sourceIsLive}
       />
@@ -183,7 +187,6 @@ export default function App() {
       <main className="flex-1 overflow-y-auto px-6 py-6 lg:px-10 lg:py-8">
         {activeView.name === "create" ? (
           <NewEscrow
-            role={role}
             balance={balance}
             smartAccountClient={smartAccountClient}
             importerAddress={address}
@@ -193,7 +196,7 @@ export default function App() {
         ) : activeView.name === "escrow" && activeEscrow ? (
           <EscrowDetail
             escrow={activeEscrow}
-            role={role}
+            walletAddress={address}
             isOnChainReady={sourceIsLive}
             smartAccountClient={smartAccountClient}
             onRefresh={refresh}

@@ -180,6 +180,42 @@ export function countVerified(milestones) {
   return MILESTONE_KEYS.filter((k) => milestones?.[k]?.submitted).length;
 }
 
+// Bind the seeded escrows to whoever just signed in.
+//
+// The seed used to name three fixed demo addresses, which was fine while the
+// sidebar had a role switcher: you picked "Importer" and the app pretended you
+// were that address. With the role derived from the escrow instead, that seed
+// makes the signed-in wallet a party to nothing, and every demo escrow is
+// read-only.
+//
+// So spread the wallet across the seed: importer on some, exporter on others,
+// and deliberately neither on two of them. That is the model on screen — one
+// account, a role that changes per escrow, and escrows that are simply none of
+// your business.
+//
+// Mock only. On chain the parties are whatever the contract says.
+const DEMO_BINDING = {
+  "12": "importer",
+  "13": "exporter",
+  "14": "importer",
+  "15": "exporter",
+  "16": "importer",
+  "17": "importer"
+  // 11 and 10 stay with the seeded parties, so "not a party" stays reachable.
+};
+
+export function adoptDemoEscrows(address) {
+  if (!address) return;
+  for (const [id, party] of Object.entries(DEMO_BINDING)) {
+    const escrow = store.escrows.get(id);
+    if (!escrow) continue;
+    // Keep the counterparty distinct: taking over one side must not leave the
+    // same address on both, which no real escrow could have.
+    if (escrow[party === "importer" ? "exporter" : "importer"] === address) continue;
+    escrow[party] = address;
+  }
+}
+
 // --- §3 Escrow registry ---------------------------------------------------
 export async function listEscrows({ role, address, state } = {}) {
   await wait(400);
