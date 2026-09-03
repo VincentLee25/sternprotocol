@@ -625,13 +625,15 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
                   </p>
                 </div>
                 <div>
-                  <p className="text-2xs uppercase text-ink-faint">Verify a milestone</p>
+                  <p className="text-2xs uppercase text-ink-faint">Verify the milestones</p>
                   <p className="mt-1 font-serif text-xs leading-relaxed text-ink-dim">
-                    Signed by the verifier institutions, not from here:
+                    Use Verify milestones in the Evidence panel. It asks the gateway to run its own
+                    check and commit what passes — the verifier institutions sign, never this page.
                   </p>
-                  <code className="mt-1.5 block overflow-x-auto whitespace-nowrap rounded-panel bg-surface px-2.5 py-1.5 font-mono text-2xs text-navy">
-                    ESCROW_ID={escrow.id} npx hardhat run scripts/drive-demo.js --network amoy
-                  </code>
+                  <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">
+                    The backend team can do the same from a terminal:{" "}
+                    <code className="font-mono text-2xs text-navy">scripts/drive-demo.js</code>
+                  </p>
                 </div>
               </div>
 

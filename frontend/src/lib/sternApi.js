@@ -117,6 +117,18 @@ export const getOracleStatus = ({ signal } = {}) => request("/oracle/status", { 
 export const getVerifiers = ({ signal } = {}) => request("/verifiers", { signal });
 export const getMockStatus = (id, { signal } = {}) => request(`/mock-status/${id}`, { signal });
 
+/**
+ * Asks the gateway to run its own verification and commit whatever passes.
+ *
+ * This does NOT give the browser the ability to sign a proof — it cannot, and
+ * must not. The verifier keys stay on the gateway; this only asks it to do the
+ * job it was always going to do. If the sources fail, the gateway refuses, and
+ * that refusal is the correct outcome rather than an error to work around.
+ *
+ * Writes to chain, so it is slow by nature. Callers must show progress.
+ */
+export const verifyMilestones = (id) => request(`/oracle/verify/${id}`, { method: "POST", body: {} });
+
 // Demo-only, in-memory, and explicitly NOT a bad on-chain proof: it rewrites the
 // current mock source so the gateway can detect that an already-committed proof
 // now disagrees with it. Pass "none" to reset.
