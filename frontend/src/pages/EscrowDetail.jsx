@@ -16,7 +16,9 @@ import { getBrowserContract } from "../lib/contract.js";
 import { CURRENCY_LABEL } from "../lib/currency.js";
 import { CONSORTIUM, defaultConsortium } from "../lib/oracles.js";
 import { shortAddress } from "../lib/actors.js";
+import { getVerifiers } from "../lib/sternApi.js";
 import { ROLE, ROLE_LABEL, roleOnEscrow } from "../lib/roles.js";
+import { claimRefundAsUser, initiateTimelockAsUser, releasePaymentAsUser } from "../lib/settlementFlow.js";
 import { stateFromIndex, formatEscrowId } from "../lib/escrowState.js";
 
 // The contract has THREE milestones (docs/01_CONTRACT_SPEC.md §4), each gated by
@@ -55,7 +57,11 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
   const [walletAccount, setWalletAccount] = useState(null);
 
   const permissions = PERMISSIONS[role] || PERMISSIONS.observer;
-  const isChain = isOnChainReady && escrow.source === "chain";
+  // escrowSource labels live rows "gateway"; only the retired window.ethereum
+  // path produced "chain". Testing for "chain" alone meant every real escrow
+  // fell through to the mock branch and reported settlements that never
+  // happened.
+  const isChain = isOnChainReady && (escrow.source === "gateway" || escrow.source === "chain");
   const verification = escrow.verification;
   const deadlinePassed = escrow.deadline ? Date.now() > new Date(escrow.deadline).getTime() : false;
   const consortium = isChain ? chainOracles || [] : escrow.consortium || defaultConsortium();
@@ -67,19 +73,28 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
     setChainOracles(null);
     if (!isChain) return;
 
+    // Read through the gateway, not window.ethereum. A Particle user has no
+    // injected provider, so the old path threw here and left the verifier panel
+    // empty — the data was always available over HTTP.
     (async () => {
       try {
-        const contract = await getBrowserContract({ requireSigner: false });
-        const [timelock, eligible, chainEscrow] = await Promise.all([
-          contract.timelockDurationSeconds(),
-          contract.isReleaseEligible(escrow.id),
-          contract.getEscrow(escrow.id)
-        ]);
-        setChainMeta({ timelock: Number(timelock), eligible });
-        applyChainEscrow(chainEscrow);
-        await Promise.all([loadChainOracles(contract), loadChainExtension(contract, chainEscrow)]);
+        const vfs = await getVerifiers();
+        const rows = (vfs?.verifiers || []).map((v, index) => ({
+          address: v.address,
+          name: v.name || CONSORTIUM[index]?.name || `Oracle ${index + 1}`,
+          descr: CONSORTIUM[index]?.descr || v.role || "",
+          bond: Number(v.bond) / 100,
+          slashes: Number(v.slashCount) || 0,
+          // The escrow's own proofs say who has actually attested on THIS
+          // escrow; a verifier being registered says nothing about that.
+          attested: Boolean(
+            escrow.milestones?.[["inspected", "shipped", "arrived_cleared"][index]]?.submitted
+          ),
+          slashed: Number(v.slashCount) > 0
+        }));
+        setChainOracles(rows);
       } catch {
-        setChainMeta(null);
+        setChainOracles(null);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -240,19 +255,28 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
     }
   }
 
+  async function startTimelock() {
+    if (!isChain) {
+      fail("The timelock is a contract state. Connect the gateway to run it for real.");
+      return;
+    }
+    const { transactionHash } = await initiateTimelockAsUser(smartAccountClient, escrow.id);
+    onRefresh?.();
+    ok(`Timelock started (tx ${transactionHash.slice(0, 10)}…). Release opens once it elapses.`);
+    log("started the timelock on-chain");
+  }
+
   async function release() {
     if (isChain) {
-      const contract = await getBrowserContract();
-      const tx = await contract.releasePayment(escrow.id);
-      const receipt = await tx.wait();
-      await syncChain();
-      ok(`Funds released to exporter (tx ${receipt.hash.slice(0, 10)}…).`);
+      const { transactionHash } = await releasePaymentAsUser(smartAccountClient, escrow.id);
+      onRefresh?.();
+      ok(`Funds released to exporter (tx ${transactionHash.slice(0, 10)}…).`);
       log("released the settlement on-chain");
       return;
     }
 
     if (escrow.state !== "Verified") {
-      fail("Conditions not met: all five checks must pass before funds can be released.");
+      fail("Conditions not met: every milestone must be verified before funds can be released.");
       return;
     }
     onUpdate(escrow.id, (current) => ({ ...current, state: "Completed" }));
@@ -262,11 +286,9 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
 
   async function refund() {
     if (isChain) {
-      const contract = await getBrowserContract();
-      const tx = await contract.claimRefund(escrow.id);
-      const receipt = await tx.wait();
-      await syncChain();
-      ok(`Refund claimed (tx ${receipt.hash.slice(0, 10)}…).`);
+      const { transactionHash } = await claimRefundAsUser(smartAccountClient, escrow.id);
+      onRefresh?.();
+      ok(`Refund claimed (tx ${transactionHash.slice(0, 10)}…).`);
       log("claimed a refund on-chain");
       return;
     }
@@ -700,12 +722,26 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
           <Panel title="Lifecycle">
             <Timeline state={escrow.state} />
             <p className="mt-4 border-t border-sky pt-3 font-serif text-xs leading-relaxed text-ink-dim">
-              Settlement can take up to three 6h challenge windows plus the final timelock.
+              Each milestone opens a challenge window, and the timelock runs after the third. Both are set at deploy time.
             </p>
           </Panel>
 
           <Panel title={`Actions · ${role}`}>
             <div className="space-y-2">
+              {/* The step between "all three verified" and "release", and it was
+                  missing entirely. releasePayment requires State.TimelockActive,
+                  so with no way to start the timelock the settlement path simply
+                  ended at ArrivedCleared with a button that could only revert. */}
+              {escrow.state === "ArrivedCleared" ? (
+                <button
+                  type="button"
+                  disabled={busy || !permissions.release}
+                  onClick={() => run(startTimelock)}
+                  className={`${railBtn} bg-teal/10 text-teal hover:bg-teal/20`}
+                >
+                  Start timelock
+                </button>
+              ) : null}
               <button
                 type="button"
                 disabled={busy || terminal || escrow.state === "Disputed" || !permissions.release}
