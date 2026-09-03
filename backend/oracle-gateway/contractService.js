@@ -61,6 +61,13 @@ function getContract(signerOrProvider) {
 }
 
 function normalizeMilestone(milestone) {
+  // MILESTONES is keyed by name, but the contract side of this file works in
+  // numeric ids — so passing one straight back in threw "Unknown milestone: 1".
+  // Accept the id it already returns, so a round-trip is not an error.
+  if (typeof milestone === "number" || typeof milestone === "bigint") {
+    const id = Number(milestone);
+    if (id >= 0 && id < MILESTONE_NAMES.length) return id;
+  }
   const key = String(milestone || "").replace(/[\s-]/g, "_");
   const value = MILESTONES[key] ?? MILESTONES[key.toLowerCase()];
   if (value === undefined) {
@@ -521,7 +528,7 @@ async function verifyAndSubmitAll(contractId, verification, { proofCidPrefix = "
       }
     }
 
-    if (!milestonePassed(id, verification)) {
+    if (!milestonePassed(name, verification)) {
       // The refusal is the product working. A failing source must never reach
       // the chain, and the caller should see why rather than a bare "failed".
       results[name] = {
