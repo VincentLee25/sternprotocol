@@ -18,10 +18,22 @@ import { getIdrtBalance, onChainConfigured } from "./lib/sternContract.js";
 
 const MARKETING = { landing: Landing, instrument: Instrument, settlement: Settlement, oracles: Oracles };
 
+// Who can actually hand this wallet demo tokens.
+//
+// The gateway can: POST /demo-balance/claim mints through a wallet holding
+// MINTER_ROLE. The mock ledger can too, because nothing is real there. The one
+// case with no faucet is contracts configured but no gateway — the browser
+// cannot mint, so the only route is minting by hand from the deployer.
+//
+// This used to be keyed on onChainConfigured, which hid the button for exactly
+// the setup that CAN claim: Particle + contracts + gateway all configured.
+const canClaim = sourceIsLive || !onChainConfigured;
+
 export default function App() {
   const { status, user, error, connect, disconnect, setUser, smartAccountClient } = useSternAuth();
   const [balance, setBalance] = useState("0.00");
   const [claiming, setClaiming] = useState(false);
+  const [claimError, setClaimError] = useState("");
   const [view, setView] = useState({ name: "landing" });
   const [escrows, setEscrows] = useState([]);
 
@@ -42,35 +54,56 @@ export default function App() {
     let cancelled = false;
     // Once the token is deployed the balance is a fact on chain, not something
     // the mock ledger should be inventing.
+    //
+    // The gateway also reports whether this wallet has already drawn from the
+    // faucet. That ledger lives on the gateway, so it is the only thing that
+    // knows — the mock session row cannot, and assuming "not yet" would offer a
+    // claim that comes straight back as a 409.
     const read = sourceIsLive
-      ? api.getDemoBalance(address).then((r) => r.balance ?? r.formatted ?? "0.00")
+      ? api.getDemoBalance(address).then((r) => ({
+          balance: r.balance ?? r.formatted ?? "0.00",
+          hasClaimed: r.hasClaimed
+        }))
       : onChainConfigured
-        ? getIdrtBalance(address)
-        : mockBalance(address).then((result) => result.balance);
+        ? getIdrtBalance(address).then((balance) => ({ balance }))
+        : mockBalance(address).then((result) => ({
+            balance: result.balance,
+            hasClaimed: result.hasClaimed
+          }));
 
     read
-      .then((value) => {
-        if (!cancelled && value != null) setBalance(value);
+      .then(({ balance: value, hasClaimed }) => {
+        if (cancelled) return;
+        if (value != null) setBalance(value);
+        if (hasClaimed != null) {
+          setUser((current) =>
+            current ? { ...current, hasClaimedDemoBalance: hasClaimed } : current
+          );
+        }
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [address]);
+  }, [address, setUser, refreshKey]);
 
   const handleClaim = useCallback(async () => {
     if (!address) return;
     setClaiming(true);
+    setClaimError("");
     try {
       // The real faucet mints through the backend's minter wallet; MINTER_ROLE
-      // makes this impossible from the browser.
+      // makes this impossible from the browser, so the gateway does it for us.
       const result = sourceIsLive
         ? await api.claimDemoBalance(address, "importer")
         : await mockClaim(address);
       setBalance(result.newBalance ?? result.balance ?? "0.00");
       setUser((current) => (current ? { ...current, hasClaimedDemoBalance: true } : current));
     } catch (err) {
-      console.warn(err.message);
+      // A failed mint used to go to console.warn only: the button simply stopped
+      // spinning and nothing said why. The reasons are all actionable — already
+      // claimed, minter lacks MINTER_ROLE, gateway unreachable — so show them.
+      setClaimError(err?.message || "Could not claim the demo balance.");
     } finally {
       setClaiming(false);
     }
@@ -178,7 +211,9 @@ export default function App() {
         user={user}
         balance={balance}
         claiming={claiming}
+        claimError={claimError}
         onClaim={handleClaim}
+        canClaim={canClaim}
         onOpenOps={() => setView({ name: "ops" })}
         onSignOut={handleSignOut}
         isOnChainReady={sourceIsLive}

@@ -18,6 +18,8 @@ export default function Sidebar({
   balance,
   onClaim,
   claiming,
+  canClaim,
+  claimError,
   onSignOut,
   onOpenOps,
   isOnChainReady
@@ -127,21 +129,37 @@ export default function Sidebar({
           <p className="mt-1 font-mono text-sm font-semibold text-navy">
             {balance ? Number(balance).toLocaleString("id-ID") : "0"}
           </p>
-          {/* On chain the faucet is a real mint guarded by MINTER_ROLE, so the
-              browser cannot do it. Showing the mock button here would paint a
-              balance the wallet does not hold, and the next createEscrow would
-              revert for insufficient funds. */}
-          {onChainConfigured ? (
-            <SmartAccountAddress address={user?.smartAccountAddress} />
-          ) : !user?.hasClaimedDemoBalance ? (
+          {/* The browser cannot mint — MINTER_ROLE guards it — but the gateway
+              can, and does, on POST /demo-balance/claim. These two were an
+              either/or, which hid the faucet from the one setup that can use
+              it. The address is useful whenever it exists; the button appears
+              whenever something can actually mint. */}
+          {onChainConfigured ? <SmartAccountAddress address={user?.smartAccountAddress} /> : null}
+
+          {canClaim && !user?.hasClaimedDemoBalance ? (
             <button
               type="button"
               onClick={onClaim}
               disabled={claiming}
               className="mt-2 w-full cursor-pointer rounded-full border border-teal/50 bg-teal/10 py-1.5 text-2xs font-medium uppercase text-teal transition-colors duration-150 hover:bg-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {claiming ? "Provisioning…" : "Claim demo balance"}
+              {claiming ? "Minting…" : "Claim demo balance"}
             </button>
+          ) : null}
+
+          {canClaim && user?.hasClaimedDemoBalance ? (
+            <p className="mt-2 font-serif text-2xs leading-relaxed text-ink-dim">
+              Demo balance already claimed for this wallet. The faucet is once per address.
+            </p>
+          ) : null}
+
+          {claimError ? (
+            <p
+              role="alert"
+              className="mt-2 rounded-panel border border-state-disputed/40 bg-state-disputed/10 px-2.5 py-2 font-serif text-2xs leading-relaxed text-state-disputed"
+            >
+              {claimError}
+            </p>
           ) : null}
         </div>
 
