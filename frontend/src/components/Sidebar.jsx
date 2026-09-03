@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { Check, ChevronsUpDown, Copy, FilePlus2, LayoutList, LogOut, RadioTower, RotateCcw, Wallet } from "lucide-react";
-import { ACTORS, actorById, shortAddress } from "../lib/actors.js";
+import { useEffect, useState } from "react";
+import { Check, Copy, FilePlus2, KeyRound, LayoutList, LogOut, RadioTower, Wallet } from "lucide-react";
+import { shortAddress } from "../lib/actors.js";
 import { getHealth } from "../lib/api.js";
 import { onChainConfigured } from "../lib/sternContract.js";
 import ThemeToggle from "./ThemeToggle.jsx";
@@ -14,30 +14,17 @@ const NAV = [
 export default function Sidebar({
   view,
   onNavigate,
-  role,
-  onRoleChange,
   user,
   balance,
   onClaim,
   claiming,
+  canClaim,
+  claimError,
   onSignOut,
-  onResetDemo,
+  onOpenOps,
   isOnChainReady
 }) {
-  const [switcherOpen, setSwitcherOpen] = useState(false);
   const [oracleOnline, setOracleOnline] = useState(null);
-  const switcherRef = useRef(null);
-  const actor = actorById(role);
-
-  useEffect(() => {
-    function onClickOutside(event) {
-      if (switcherRef.current && !switcherRef.current.contains(event.target)) {
-        setSwitcherOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -142,100 +129,80 @@ export default function Sidebar({
           <p className="mt-1 font-mono text-sm font-semibold text-navy">
             {balance ? Number(balance).toLocaleString("id-ID") : "0"}
           </p>
-          {/* On chain the faucet is a real mint guarded by MINTER_ROLE, so the
-              browser cannot do it. Showing the mock button here would paint a
-              balance the wallet does not hold, and the next createEscrow would
-              revert for insufficient funds. */}
-          {onChainConfigured ? (
-            <SmartAccountAddress address={user?.smartAccountAddress} />
-          ) : !user?.hasClaimedDemoBalance ? (
+          {/* The browser cannot mint — MINTER_ROLE guards it — but the gateway
+              can, and does, on POST /demo-balance/claim. These two were an
+              either/or, which hid the faucet from the one setup that can use
+              it. The address is useful whenever it exists; the button appears
+              whenever something can actually mint. */}
+          {onChainConfigured ? <SmartAccountAddress address={user?.smartAccountAddress} /> : null}
+
+          {canClaim && !user?.hasClaimedDemoBalance ? (
             <button
               type="button"
               onClick={onClaim}
               disabled={claiming}
               className="mt-2 w-full cursor-pointer rounded-full border border-teal/50 bg-teal/10 py-1.5 text-2xs font-medium uppercase text-teal transition-colors duration-150 hover:bg-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {claiming ? "Provisioning…" : "Claim demo balance"}
+              {claiming ? "Minting…" : "Claim demo balance"}
             </button>
           ) : null}
-        </div>
 
-        <div ref={switcherRef} className="relative">
-          {switcherOpen ? (
-            <div className="absolute bottom-full left-0 right-0 z-30 mb-1.5 overflow-hidden rounded-doc border border-sky bg-surface py-1 shadow-card">
-              {ACTORS.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => {
-                    onRoleChange(option.id);
-                    setSwitcherOpen(false);
-                  }}
-                  className={`flex w-full cursor-pointer items-start gap-2.5 px-3 py-2 text-left transition-colors duration-150 hover:bg-beige ${
-                    option.id === role ? "text-teal" : "text-navy"
-                  }`}
-                >
-                  <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-beige text-2xs uppercase">
-                    {option.label[0]}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-xs font-medium">{option.label}</span>
-                    <span className="block truncate font-serif text-xs text-ink-dim">{option.org}</span>
-                    <span className="block text-2xs text-ink-faint">
-                      {shortAddress(option.address)}
-                    </span>
-                  </span>
-                </button>
-              ))}
-              <div className="mt-1 border-t border-sky pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    onResetDemo();
-                    setSwitcherOpen(false);
-                  }}
-                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-ink-dim transition-colors duration-150 hover:bg-beige hover:text-navy"
-                >
-                  <RotateCcw size={13} aria-hidden="true" />
-                  Reset demo data
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onSignOut();
-                    setSwitcherOpen(false);
-                  }}
-                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-ink-dim transition-colors duration-150 hover:bg-beige hover:text-navy"
-                >
-                  <LogOut size={13} aria-hidden="true" />
-                  Sign out
-                </button>
-              </div>
-            </div>
+          {canClaim && user?.hasClaimedDemoBalance ? (
+            <p className="mt-2 font-serif text-2xs leading-relaxed text-ink-dim">
+              Demo balance already claimed for this wallet. The faucet is once per address.
+            </p>
           ) : null}
 
-          <button
-            type="button"
-            onClick={() => setSwitcherOpen((open) => !open)}
-            aria-expanded={switcherOpen}
-            aria-label={`Acting as ${actor.label}. Switch actor.`}
-            className="flex w-full cursor-pointer items-center gap-2.5 rounded-full bg-beige px-2 py-1.5 text-left transition-colors duration-150 hover:bg-sky/40"
-          >
+          {claimError ? (
+            <p
+              role="alert"
+              className="mt-2 rounded-panel border border-state-disputed/40 bg-state-disputed/10 px-2.5 py-2 font-serif text-2xs leading-relaxed text-state-disputed"
+            >
+              {claimError}
+            </p>
+          ) : null}
+        </div>
+
+        {/* Identity, not a chooser. One session is one wallet; which party you
+            are is a fact about each escrow (see lib/roles.js), so there is
+            nothing here to pick. */}
+        <div className="relative">
+          <div className="flex w-full items-center gap-2.5 rounded-full bg-beige px-2 py-1.5 text-left">
             <span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full bg-navy text-xs font-semibold uppercase text-beige">
-              {actor.label[0]}
+              {(user?.email || "S")[0].toUpperCase()}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-xs font-medium text-navy">{actor.label}</span>
+              <span className="block truncate text-xs font-medium text-navy">
+                {user?.email || "Signed in"}
+              </span>
               <span className="block truncate text-2xs text-ink-faint">
-                {shortAddress(actor.address)}
+                {shortAddress(user?.smartAccountAddress)}
               </span>
             </span>
-            <ChevronsUpDown size={13} className="mr-1 shrink-0 text-ink-dim" aria-hidden="true" />
-          </button>
+          </div>
+
+          <div className="mt-1.5 flex gap-1.5">
+            <button
+              type="button"
+              onClick={onOpenOps}
+              className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full border border-sky py-1.5 text-2xs uppercase text-ink-dim transition-colors duration-150 hover:border-teal/50 hover:text-navy"
+            >
+              <KeyRound size={11} aria-hidden="true" />
+              Ops
+            </button>
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full border border-sky py-1.5 text-2xs uppercase text-ink-dim transition-colors duration-150 hover:border-teal/50 hover:text-navy"
+            >
+              <LogOut size={11} aria-hidden="true" />
+              Sign out
+            </button>
+          </div>
         </div>
         <p className="mt-2.5 px-1 font-serif text-xs leading-relaxed tracking-normal text-ink-dim">
-          Demo: switch actor to preview each party&rsquo;s view. A real session is one wallet per
-          signed-in user.
+          Your role is read from each escrow. The arbiter and the contract admin sign in on the
+          ops console with their own keys.
         </p>
       </div>
     </aside>

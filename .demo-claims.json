@@ -1,0 +1,16 @@
+{
+  "0x39e1215139b00797a06Bad6EFfeF75A0d3718F70": {
+    "role": "importer",
+    "amount": "150000000.0",
+    "currency": "IDRT-demo",
+    "transactionHash": "0x53ad0a844c99a815f6b130568a02178b69c812747b8c986f0236ce8410fe5d95",
+    "claimedAt": "2026-09-03T15:47:34.081Z"
+  },
+  "0xfAF7af811FC2D0D2a915D9e2d1ce44463Cb96381": {
+    "role": "importer",
+    "amount": "150000000.0",
+    "currency": "IDRT-demo",
+    "transactionHash": "0x39a5721bcc1fcdff56dc97f32033a920b6c2a65cd37ad0bdfc27bb58d69c326b",
+    "claimedAt": "2026-09-03T15:49:29.578Z"
+  }
+}

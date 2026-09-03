@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
-import { ArrowLeft, FileCheck2, Loader2, Lock, Paperclip, ShieldCheck } from "lucide-react";
+import { ArrowLeft, FileCheck2, Loader2, Lock, Paperclip } from "lucide-react";
 import Field, { inputClass } from "../components/Field.jsx";
-import { actorById } from "../lib/actors.js";
 import { CURRENCY_CAPTION, CURRENCY_LABEL } from "../lib/currency.js";
 import { formatBytes } from "../lib/ebl.js";
 import { hashShipmentDocument } from "../lib/shipmentHash.js";
@@ -18,7 +17,7 @@ const INITIAL_FORM = {
   deadline: ""
 };
 
-export default function NewEscrow({ role, balance, onCreated, onBack, smartAccountClient, importerAddress }) {
+export default function NewEscrow({ balance, onCreated, onBack, smartAccountClient, importerAddress }) {
   const [form, setForm] = useState(INITIAL_FORM);
   const [touched, setTouched] = useState({});
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
@@ -27,7 +26,6 @@ export default function NewEscrow({ role, balance, onCreated, onBack, smartAccou
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
-  const actor = actorById(role);
   const { errors, valid } = useMemo(
     () => validateEscrowForm(form, document_?.documentHash),
     [form, document_]
@@ -78,7 +76,7 @@ export default function NewEscrow({ role, balance, onCreated, onBack, smartAccou
     setSubmitting(true);
     try {
       const payload = {
-        importer: importerAddress || actor.address,
+        importer: importerAddress,
         exporter: form.exporter,
         arbiter: form.arbiter,
         documentCid: document_.documentHash,
@@ -119,17 +117,11 @@ export default function NewEscrow({ role, balance, onCreated, onBack, smartAccou
         <p className="text-2xs uppercase text-ink-faint">Deed of conditional settlement</p>
         <h1 className="mt-1.5 text-[32px] font-bold leading-none tracking-display text-navy">New escrow</h1>
         <p className="mt-2.5 max-w-[62ch] font-serif text-[15px] leading-relaxed text-teal">
-          You are acting as the <span className="text-navy">{actor.label}</span> — the party that
-          deposits funds. Gasless, sponsored by the Paymaster.
+          Creating an escrow makes you its <span className="text-navy">Importer</span> — the party
+          that deposits funds. Gasless, sponsored by the Paymaster.
         </p>
       </header>
 
-      {role !== "importer" ? (
-        <div className="mb-5 flex items-center gap-2 rounded-panel bg-state-pending/10 px-4 py-3 font-serif text-sm text-state-pending">
-          <ShieldCheck size={15} aria-hidden="true" className="shrink-0" />
-          Only the importer deposits funds. Switch to Importer in the sidebar to create an escrow.
-        </div>
-      ) : null}
 
       <form onSubmit={onSubmit} noValidate className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_336px]">
         <div className="space-y-5">

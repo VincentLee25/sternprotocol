@@ -11,12 +11,14 @@ import {
 import ActivityLog from "../components/ActivityLog.jsx";
 import StatusPill from "../components/StatusPill.jsx";
 import Timeline from "../components/Timeline.jsx";
+import EvidencePanel from "../components/EvidencePanel.jsx";
 import { inputClass } from "../components/Field.jsx";
 import { getMockStatus, submitOracle } from "../lib/api.js";
 import { getBrowserContract } from "../lib/contract.js";
 import { CURRENCY_LABEL } from "../lib/currency.js";
 import { CONSORTIUM, ORACLE_QUORUM, defaultConsortium } from "../lib/oracles.js";
-import { actorById, shortAddress } from "../lib/actors.js";
+import { shortAddress } from "../lib/actors.js";
+import { ROLE, ROLE_LABEL, roleOnEscrow } from "../lib/roles.js";
 import { stateFromIndex, formatEscrowId } from "../lib/escrowState.js";
 
 // The contract has THREE milestones (docs/01_CONTRACT_SPEC.md §4), each gated by
@@ -33,10 +35,19 @@ const CHECKS = [
 const PERMISSIONS = {
   importer: { release: true, refund: true, dispute: true, vote: true, amend: true },
   exporter: { release: true, refund: false, dispute: true, vote: true, amend: true },
-  arbiter: { release: false, refund: false, dispute: true, vote: true, amend: false }
+  arbiter: { release: false, refund: false, dispute: true, vote: true, amend: false },
+  // A wallet that is not a party to this escrow may read it and nothing more.
+  // This entry is load-bearing: with the role switcher gone, "observer" is a
+  // real outcome, and falling back to the importer's row would offer every
+  // action to a stranger and send them into a transaction the contract must
+  // reject.
+  observer: { release: false, refund: false, dispute: false, vote: false, amend: false }
 };
 
-export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, onBack }) {
+export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, smartAccountClient, onRefresh, onUpdate, onBack }) {
+  // Which party you are is read off the escrow, not chosen in the sidebar.
+  // The same wallet can be the importer here and the exporter on the next one.
+  const role = roleOnEscrow(escrow, walletAddress);
   const [checks, setChecks] = useState({ vgm: true, ais: true, ceisa: true, ebl: true, inspection: true });
   const [dissentIndex, setDissentIndex] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -47,7 +58,7 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
   const [chainOracles, setChainOracles] = useState(null);
   const [walletAccount, setWalletAccount] = useState(null);
 
-  const permissions = PERMISSIONS[role] || PERMISSIONS.importer;
+  const permissions = PERMISSIONS[role] || PERMISSIONS.observer;
   const isChain = isOnChainReady && escrow.source === "chain";
   const verification = escrow.verification;
   const deadlinePassed = escrow.deadline ? Date.now() > new Date(escrow.deadline).getTime() : false;
@@ -214,7 +225,7 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
       hint = " Refund only opens after the escrow deadline.";
     } else if (/proposer cannot approve|only importer or exporter|not escrow party|only importer/i.test(reason)) {
       hint =
-        " The signer is the connected MetaMask account — the sidebar role does NOT change who signs. Switch accounts in MetaMask, then retry.";
+        " Your Smart Account signs this, and your role is read from the escrow party addresses.";
     }
     const signedAs = isChain && walletAccount ? ` (signed as ${shortAddress(walletAccount)})` : "";
     fail(`${reason}.${hint}${signedAs}`);
@@ -543,7 +554,7 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
     return verification ? verification[check.field] : null;
   };
   const attestedCount = CHECKS.filter((check) => checkValue(check) === true).length;
-  const importerAddress = escrow.importer || actorById("importer").address;
+  const importerAddress = escrow.importer;
   const messageTone = {
     ok: "border-state-attested/40 bg-state-attested/10 text-state-attested",
     warn: "border-state-pending/40 bg-state-pending/10 text-state-pending",
@@ -847,6 +858,17 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
 
         {/* ---------- Rail ---------- */}
         <aside className="flex flex-col gap-5 lg:sticky lg:top-0">
+          {/* Committed proofs vs current sources, and the dispute CTA that
+              depends on them. Only meaningful against a live gateway; the mock
+              registry has no evidence endpoint. */}
+          {isOnChainReady ? (
+            <EvidencePanel
+              escrowId={escrow.id}
+              smartAccountClient={smartAccountClient}
+              onStateChanged={onRefresh}
+            />
+          ) : null}
+
           <Panel title="Lifecycle">
             <Timeline state={escrow.state} />
             <p className="mt-4 border-t border-sky pt-3 font-serif text-xs leading-relaxed text-ink-dim">
@@ -887,29 +909,19 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
             </div>
             <p className="mt-3 font-serif text-xs leading-relaxed text-ink-dim">
               Release pays the exporter. Refund returns funds to the importer, after the deadline.
-              Dispute freezes funds for a 2-of-3 vote.
+              A dispute freezes the funds until the arbiter resolves it.
             </p>
-            {isChain ? (
+            {role === ROLE.OBSERVER ? (
               <p className="mt-2 font-serif text-xs leading-relaxed text-ink-dim">
-                MetaMask signs everything, not the sidebar role.{" "}
-                {walletAccount ? (
-                  <span
-                    className={
-                      walletAccount.toLowerCase() === actorById(role).address.toLowerCase()
-                        ? "text-state-attested"
-                        : "text-state-pending"
-                    }
-                  >
-                    Connected {shortAddress(walletAccount)}
-                    {walletAccount.toLowerCase() !== actorById(role).address.toLowerCase()
-                      ? `, which differs from the ${role} demo account. Switch in MetaMask before acting.`
-                      : ` (matches ${role}).`}
-                  </span>
-                ) : (
-                  "No account connected."
-                )}
+                Your wallet is not a party to this escrow, so none of these actions are yours. You
+                can read it in full.
               </p>
-            ) : null}
+            ) : (
+              <p className="mt-2 font-serif text-xs leading-relaxed text-ink-dim">
+                You are the <span className="text-navy">{ROLE_LABEL[role]}</span> on this escrow,
+                read from its own party addresses. Your Smart Account signs.
+              </p>
+            )}
           </Panel>
 
           {escrow.state === "Disputed" ? (
