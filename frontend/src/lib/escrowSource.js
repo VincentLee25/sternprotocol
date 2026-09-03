@@ -19,9 +19,32 @@ export const sourceLabel = sourceIsLive ? "Live — STERN gateway" : "Demo data"
 
 // Gateway milestones are keyed by name; the mock returns the same keys. Count
 // whichever reports a committed proof.
+// Counts the three canonical milestones by name rather than every value, so the
+// arrivedCleared alias added by normaliseMilestones cannot be counted twice.
 function countCommitted(milestones) {
   if (!milestones) return 0;
-  return Object.values(milestones).filter((m) => m?.submitted).length;
+  const third = milestones.arrived_cleared ?? milestones.arrivedCleared;
+  return [milestones.inspected, milestones.shipped, third].filter((m) => m?.submitted).length;
+}
+
+// The third milestone has two spellings in this codebase: the contract and the
+// gateway say `arrived_cleared`, while milestones.js, mockRegistry and
+// EscrowDetail's CHECKS say `arrivedCleared`. Nothing reconciled them, so on the
+// gateway path `escrow.milestones.arrivedCleared` was always undefined and the
+// third condition could never read its on-chain proof.
+//
+// Keep both keys pointing at the same object rather than renaming one side:
+// evidence.js and disputeFlow.js send `arrived_cleared` to the gateway, which is
+// the name the contract itself uses.
+function normaliseMilestones(milestones) {
+  if (!milestones) return milestones;
+  const out = { ...milestones };
+  const third = milestones.arrived_cleared ?? milestones.arrivedCleared;
+  if (third) {
+    out.arrived_cleared = third;
+    out.arrivedCleared = third;
+  }
+  return out;
 }
 
 // The gateway names the actor field `actorAddress` and the mock names it
@@ -51,7 +74,7 @@ function toRow(detail, activity, source) {
     importer: detail.importer,
     exporter: detail.exporter,
     arbiter: detail.arbiter,
-    milestones: detail.milestones,
+    milestones: normaliseMilestones(detail.milestones),
     timelock: detail.timelock || null,
     releaseEligible: detail.releaseEligible ?? null,
     verification: null,
