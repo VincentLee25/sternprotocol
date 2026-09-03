@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Check, Clock, Loader2, RefreshCcw, ShieldAlert, X } from "lucide-react";
 import { getEvidence, simulateFault, apiConfigured } from "../lib/sternApi.js";
-import { disputeOpportunity, faultOptions, activeFault, milestoneRows, verificationChecks } from "../lib/evidence.js";
+import { disputeOpportunity, faultOptions, activeFault, milestoneRows, sourceEvidence, verificationChecks } from "../lib/evidence.js";
 import { previewDispute, raiseDisputeAsUser } from "../lib/disputeFlow.js";
 
 // Renders GET /oracle/evidence/:id: the committed on-chain proofs, the current
@@ -41,6 +41,7 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
   const opportunity = disputeOpportunity(evidence);
   const rows = milestoneRows(evidence);
   const checks = verificationChecks(evidence);
+  const failing = sourceEvidence(evidence).filter((s) => !s.passed);
   const faults = faultOptions(evidence);
   const currentFault = activeFault(evidence);
 
@@ -190,6 +191,27 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
                 ))}
               </ul>
             </div>
+          ) : null}
+
+          {/* Only the failing sources get the long form. A chip is enough for a
+              source that agrees; when one disagrees, "expected departed, got
+              not_departed" is the thing an operator actually needs to read. */}
+          {failing.length ? (
+            <ul className="mt-3 space-y-2">
+              {failing.map((s) => (
+                <li key={s.key} className="rounded-panel border border-state-disputed/40 bg-state-disputed/[0.06] px-3.5 py-2.5">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="font-mono text-2xs uppercase text-state-disputed">{s.source}</p>
+                    <p className="font-serif text-2xs text-ink-dim">{s.oracle?.replace(/_/g, " ")}</p>
+                  </div>
+                  <dl className="mt-1.5 space-y-0.5 text-2xs">
+                    <Row label="Field" value={s.field} mono />
+                    <Row label="Expected" value={s.expected} mono />
+                    <Row label="Actual" value={s.actual} mono />
+                  </dl>
+                </li>
+              ))}
+            </ul>
           ) : null}
 
           {/* The CTA appears only when the gateway says a dispute is actually

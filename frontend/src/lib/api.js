@@ -43,20 +43,17 @@ export function getMockStatus(contractId, overrides) {
   return request(`/mock-status/${contractId}${toOverrideQuery(overrides)}`);
 }
 
-export function submitOracle(contractId, body) {
-  return request(`/submit-oracle/${contractId}`, {
-    method: "POST",
-    body: JSON.stringify(body || {})
-  });
-}
+// submitOracle() is deliberately absent. POST /submit-oracle/:id makes the
+// gateway sign a milestone proof with a verifier key, and it is gated by
+// INTERNAL_API_KEY so that a browser cannot reach it — a key shipped to the
+// frontend would let anyone forge a proof from DevTools. Milestones are signed
+// by the verifier institutions: scripts/drive-demo.js, or the gateway itself.
 
-export function openDispute(contractId) {
-  return request(`/open-dispute/${contractId}`, { method: "POST" });
-}
-
-export function resolveDispute(contractId, releaseToExporter) {
-  return request(`/resolve-dispute/${contractId}`, {
-    method: "POST",
-    body: JSON.stringify({ releaseToExporter })
-  });
-}
+// openDispute() used to POST /open-dispute/:id. The gateway has no such route
+// and answers 404 — nothing called it, but it was there to be picked up.
+// A user's dispute goes through disputeFlow.js: the gateway prepares the
+// calldata and the user's own Smart Account signs it.
+//
+// resolveDispute() is gone for a different reason: POST /resolve-dispute/:id is
+// behind INTERNAL_API_KEY, and this client sends no key header, so it could only
+// return 401. Resolution is the arbiter's, from the ops console.

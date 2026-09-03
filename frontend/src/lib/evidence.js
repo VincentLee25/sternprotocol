@@ -85,6 +85,35 @@ export function faultOptions(evidence) {
 export const activeFault = (evidence) =>
   evidence?.simulation?.enabled ? evidence.simulation.fault : "none";
 
+/**
+ * The per-source rows the gateway already compared: what it expected, what the
+ * source actually said, and whether that passed.
+ *
+ * The gateway sends this in `evidence[]` and the UI was throwing it away,
+ * showing only a pass/fail chip. "CEISA failed" does not tell an operator what
+ * went wrong; "expected approved, got rejected" does.
+ */
+export function sourceEvidence(evidence) {
+  return (evidence?.evidence || []).map((item, i) => ({
+    key: `${item.source}-${item.field}-${i}`,
+    source: item.source,
+    oracle: item.oracle,
+    field: item.field,
+    expected: formatValue(item.expected),
+    actual: formatValue(item.actual),
+    passed: item.passed !== false,
+    simulated: Boolean(item.simulated)
+  }));
+}
+
+// Booleans read badly as "true"/"false" next to strings like "not_departed".
+function formatValue(value) {
+  if (value === true) return "yes";
+  if (value === false) return "no";
+  if (value === null || value === undefined) return "—";
+  return String(value);
+}
+
 /** The named checks, for the source panel. */
 export function verificationChecks(evidence) {
   const v = evidence?.verification || {};
