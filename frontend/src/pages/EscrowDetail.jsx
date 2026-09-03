@@ -16,7 +16,7 @@ import { getBrowserContract } from "../lib/contract.js";
 import { CURRENCY_LABEL } from "../lib/currency.js";
 import { CONSORTIUM, defaultConsortium } from "../lib/oracles.js";
 import { shortAddress } from "../lib/actors.js";
-import { getVerifiers } from "../lib/sternApi.js";
+import { getTimelock, getVerifiers } from "../lib/sternApi.js";
 import { ROLE, ROLE_LABEL, roleOnEscrow } from "../lib/roles.js";
 import { claimRefundAsUser, initiateTimelockAsUser, releasePaymentAsUser } from "../lib/settlementFlow.js";
 import { stateFromIndex, formatEscrowId } from "../lib/escrowState.js";
@@ -31,6 +31,15 @@ const CHECKS = [
   { key: "ais", milestoneKey: "shipped", field: "aisDeparted", label: "Shipped — vessel departed", source: "Shipping line · AIS", failDetail: "Vessel still in port" },
   { key: "ceisa", milestoneKey: "arrivedCleared", field: "ceisaApproved", label: "Arrived and cleared — customs approved", source: "Customs broker · CEISA", failDetail: "Customs clearance still pending" }
 ];
+
+// "3600 seconds" is not something anyone reads as an hour.
+function formatRemaining(seconds) {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
 
 const PERMISSIONS = {
   importer: { release: true, refund: true, dispute: true, vote: false, amend: true },
@@ -54,6 +63,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
   const [extensionInput, setExtensionInput] = useState("");
   const [chainMeta, setChainMeta] = useState(null);
   const [chainOracles, setChainOracles] = useState(null);
+  const [timelock, setTimelock] = useState(null);
   const [walletAccount, setWalletAccount] = useState(null);
 
   const permissions = PERMISSIONS[role] || PERMISSIONS.observer;
@@ -97,6 +107,18 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
         setChainOracles(null);
       }
     })();
+
+    // The list endpoint does not carry the timelock, so the detail page asks for
+    // it. Without this the Release button had no idea whether the contract would
+    // accept it, and pressing it early came back as a raw
+    // "timelock not elapsed" revert.
+    if (escrow.state === "TimelockActive") {
+      getTimelock(escrow.id)
+        .then(setTimelock)
+        .catch(() => setTimelock(null));
+    } else {
+      setTimelock(null);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [escrow.id, isChain]);
 
@@ -727,6 +749,18 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
           </Panel>
 
           <Panel title={`Actions · ${role}`}>
+            {/* The contract's own isReleaseEligible, surfaced. Saying "not yet"
+                with the time is the difference between a disabled button and a
+                raw "timelock not elapsed" revert. */}
+            {timelock && !timelock.canRelease ? (
+              <p className="mb-3 rounded-panel border border-state-pending/40 bg-state-pending/[0.08] px-3 py-2.5 font-serif text-xs leading-relaxed text-state-pending">
+                Timelock running. Release opens{" "}
+                {new Date(timelock.timelockReleaseAt).toLocaleString("id-ID")}
+                {Number(timelock.secondsRemaining) > 0
+                  ? ` — about ${formatRemaining(Number(timelock.secondsRemaining))} from now.`
+                  : "."}
+              </p>
+            ) : null}
             <div className="space-y-2">
               {/* The step between "all three verified" and "release", and it was
                   missing entirely. releasePayment requires State.TimelockActive,
@@ -744,8 +778,20 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
               ) : null}
               <button
                 type="button"
-                disabled={busy || terminal || escrow.state === "Disputed" || !permissions.release}
-                title={permissions.release ? undefined : "Only importer or exporter trigger release"}
+                disabled={
+                  busy ||
+                  terminal ||
+                  escrow.state === "Disputed" ||
+                  !permissions.release ||
+                  (timelock ? !timelock.canRelease : false)
+                }
+                title={
+                  !permissions.release
+                    ? "Only importer or exporter trigger release"
+                    : timelock && !timelock.canRelease
+                      ? `The timelock has not elapsed. Release opens ${new Date(timelock.timelockReleaseAt).toLocaleString("id-ID")}.`
+                      : undefined
+                }
                 onClick={() => run(release)}
                 className={`${railBtn} bg-state-attested/10 text-state-attested hover:bg-state-attested/20`}
               >
