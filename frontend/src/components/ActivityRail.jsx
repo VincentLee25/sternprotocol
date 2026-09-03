@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { CircleDot, FileCheck2, Gavel, PlusCircle, Wallet } from "lucide-react";
 import { listActivity } from "../lib/mockRegistry.js";
+import { sourceIsLive } from "../lib/escrowSource.js";
 
 const ICONS = {
   escrow_created: PlusCircle,
@@ -28,10 +29,29 @@ function dayLabel(iso) {
   return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
-export default function ActivityRail({ onOpen }) {
+// Activity comes from the escrows the caller already loaded, because the
+// gateway exposes events per escrow rather than as one global feed. Reading the
+// mock feed while the list is live showed invented events beside a real (and
+// possibly empty) registry — the worst of both.
+export default function ActivityRail({ onOpen, escrows }) {
   const [rows, setRows] = useState([]);
 
   useEffect(() => {
+    if (sourceIsLive) {
+      const merged = (escrows || [])
+        .flatMap((e) =>
+          (e.activity || []).map((a) => ({
+            ...a,
+            escrowId: e.id,
+            commodity: e.commodity
+          }))
+        )
+        .sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0))
+        .slice(0, 20);
+      setRows(merged);
+      return;
+    }
+
     let cancelled = false;
     listActivity({ limit: 20 })
       .then((res) => {
@@ -43,7 +63,7 @@ export default function ActivityRail({ onOpen }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [escrows]);
 
   const groups = rows.reduce((acc, row) => {
     const key = dayLabel(row.time);

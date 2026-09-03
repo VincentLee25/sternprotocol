@@ -4,10 +4,9 @@ import {
 } from "lucide-react";
 import StatusPill from "../components/StatusPill.jsx";
 import ActivityRail from "../components/ActivityRail.jsx";
-import { getBrowserContract } from "../lib/contract.js";
+import { loadEscrowRows, sourceIsLive, sourceLabel } from "../lib/escrowSource.js";
 import { CURRENCY_LABEL } from "../lib/currency.js";
-import { stateFromIndex, formatEscrowId } from "../lib/escrowState.js";
-import { listEscrows, getEscrow, getActivity, countVerified } from "../lib/mockRegistry.js";
+import { formatEscrowId } from "../lib/escrowState.js";
 import { MILESTONES, STATE_ORDER, STATE_LABELS } from "../lib/milestones.js";
 
 const PAGE_SIZE = 6;
@@ -48,7 +47,7 @@ const SORTS = {
   progress: { label: "Progress", fn: (a, b) => b.verified - a.verified }
 };
 
-export default function Overview({ escrows, isOnChainReady, onOpen, onCreate, onChainSync, onRegistryLoad }) {
+export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, onRegistryLoad }) {
   const [chainStatus, setChainStatus] = useState("");
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
@@ -58,81 +57,20 @@ export default function Overview({ escrows, isOnChainReady, onOpen, onCreate, on
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState(() => new Set());
 
-  async function loadChainEscrows() {
+  // One loader for both sources. escrowSource decides which, and returns the
+  // same row shape either way, so nothing below this point knows the difference.
+  async function load(signal) {
     setLoading(true);
-    setChainStatus("Reading escrows from the local contract…");
+    setChainStatus("");
     try {
-      const contract = await getBrowserContract({ requireSigner: false });
-      const next = Number(await contract.nextEscrowId());
-      const ids = Array.from({ length: next }, (_item, index) => index);
-      const chainRows = await Promise.all(
-        ids.map(async (id) => {
-          const escrow = await contract.getEscrow(id);
-          return {
-            id: String(id),
-            source: "chain",
-            commodity: escrow.commodity || "Export shipment",
-            containerRef: escrow.containerRef,
-            cid: escrow.eBLCID,
-            value: String(Number(escrow.contractValue) / 1e18),
-            deadline: new Date(Number(escrow.deadline) * 1000).toISOString(),
-            state: stateFromIndex(escrow.state),
-            exporter: escrow.exporterAddress,
-            arbiter: escrow.arbiterAddress
-          };
-        })
-      );
-      onChainSync(chainRows);
-      setChainStatus(chainRows.length === 0 ? "Contract deployed. No escrows created yet." : "");
-    } catch (error) {
-      setChainStatus(error.shortMessage || error.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // Pull the full record for each escrow, not just the list summary: the detail
-  // page is rendered from App state, so it needs milestones and activity to be
-  // present before a row is clicked.
-  async function loadMockEscrows() {
-    setLoading(true);
-    try {
-      const res = await listEscrows();
-      const full = await Promise.all(
-        res.escrows.map(async (row) => {
-          const [detail, log] = await Promise.all([
-            getEscrow(row.escrowId),
-            getActivity(row.escrowId)
-          ]);
-          return {
-            id: detail.escrowId,
-            source: "mock",
-            commodity: detail.commodity,
-            containerRef: detail.containerRef,
-            value: detail.value,
-            cid: detail.documentCid,
-            deadline: detail.globalDeadline,
-            createdAt: detail.createdAt,
-            state: detail.state,
-            importer: detail.importer,
-            exporter: detail.exporter,
-            arbiter: detail.arbiter,
-            milestones: detail.milestones,
-            timelock: detail.timelock,
-            verification: null,
-            votes: { importer: null, exporter: null, arbiter: null },
-            pendingExtension: null,
-            activity: log.activity.map((a) => ({ time: a.time, actor: a.actor, event: a.text })),
-            verified: countVerified(detail.milestones),
-            total: MILESTONES.length,
-            disputeOpen: detail.dispute.open
-          };
-        })
-      );
+      const full = await loadEscrowRows({ address: walletAddress, signal });
       setRows(full);
       onRegistryLoad?.(full);
-      setChainStatus("");
+      if (sourceIsLive && full.length === 0) {
+        setChainStatus("Connected to the gateway. No escrows have been created yet.");
+      }
     } catch (error) {
+      if (error.name === "AbortError") return;
       setChainStatus(error.message);
     } finally {
       setLoading(false);
@@ -140,23 +78,11 @@ export default function Overview({ escrows, isOnChainReady, onOpen, onCreate, on
   }
 
   useEffect(() => {
-    if (isOnChainReady) loadChainEscrows();
-    else loadMockEscrows();
+    const controller = new AbortController();
+    load(controller.signal);
+    return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOnChainReady]);
-
-  // In chain mode the authoritative list lives in App state.
-  useEffect(() => {
-    if (!isOnChainReady) return;
-    setRows(
-      (escrows || []).map((e) => ({
-        ...e,
-        verified: verifiedFromState(e.state),
-        total: MILESTONES.length,
-        disputeOpen: e.state === "Disputed"
-      }))
-    );
-  }, [escrows, isOnChainReady]);
+  }, [walletAddress, refreshKey]);
 
   const counts = useMemo(
     () => Object.fromEntries(FILTERS.map((f) => [f.key, rows.filter(f.match).length])),
@@ -228,27 +154,27 @@ export default function Overview({ escrows, isOnChainReady, onOpen, onCreate, on
       <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-2xs uppercase text-ink-faint">
-            {isOnChainReady ? "On-chain registry" : "Mock session"}
+            {sourceIsLive ? "Settlement registry" : "Mock session"}
           </p>
           <h1 className="mt-1.5 text-[30px] font-bold leading-none tracking-display text-navy">
             Escrows
           </h1>
           <p className="mt-2 font-serif text-[15px] text-teal">
-            {isOnChainReady
-              ? "Local Hardhat network"
-              : "Demo data. Connect a wallet and set VITE_CONTRACT_ADDRESS for on-chain mode."}
+            {sourceIsLive
+              ? sourceLabel
+              : "Demo data. Set VITE_ORACLE_API to read escrows from the gateway."}
           </p>
         </div>
         <div className="flex gap-2.5">
-          {isOnChainReady ? (
+          {sourceIsLive ? (
             <button
               type="button"
-              onClick={loadChainEscrows}
+              onClick={() => load()}
               disabled={loading}
               className="flex cursor-pointer items-center gap-2 rounded-full border border-sky bg-surface px-5 py-2.5 text-[13px] font-medium text-navy transition-colors duration-150 hover:border-teal/40 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <RefreshCcw size={13} aria-hidden="true" />
-              Sync chain
+              Refresh
             </button>
           ) : null}
           <button
@@ -540,7 +466,7 @@ export default function Overview({ escrows, isOnChainReady, onOpen, onCreate, on
           </div>
         </div>
 
-        <ActivityRail onOpen={onOpen} />
+        <ActivityRail onOpen={onOpen} escrows={rows} />
       </div>
     </div>
   );

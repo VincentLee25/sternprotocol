@@ -11,6 +11,7 @@ import {
 import ActivityLog from "../components/ActivityLog.jsx";
 import StatusPill from "../components/StatusPill.jsx";
 import Timeline from "../components/Timeline.jsx";
+import EvidencePanel from "../components/EvidencePanel.jsx";
 import { inputClass } from "../components/Field.jsx";
 import { getMockStatus, submitOracle } from "../lib/api.js";
 import { getBrowserContract } from "../lib/contract.js";
@@ -36,7 +37,7 @@ const PERMISSIONS = {
   arbiter: { release: false, refund: false, dispute: true, vote: true, amend: false }
 };
 
-export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, onBack }) {
+export default function EscrowDetail({ escrow, role, isOnChainReady, smartAccountClient, onRefresh, onUpdate, onBack }) {
   const [checks, setChecks] = useState({ vgm: true, ais: true, ceisa: true, ebl: true, inspection: true });
   const [dissentIndex, setDissentIndex] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -847,6 +848,17 @@ export default function EscrowDetail({ escrow, role, isOnChainReady, onUpdate, o
 
         {/* ---------- Rail ---------- */}
         <aside className="flex flex-col gap-5 lg:sticky lg:top-0">
+          {/* Committed proofs vs current sources, and the dispute CTA that
+              depends on them. Only meaningful against a live gateway; the mock
+              registry has no evidence endpoint. */}
+          {isOnChainReady ? (
+            <EvidencePanel
+              escrowId={escrow.id}
+              smartAccountClient={smartAccountClient}
+              onStateChanged={onRefresh}
+            />
+          ) : null}
+
           <Panel title="Lifecycle">
             <Timeline state={escrow.state} />
             <p className="mt-4 border-t border-sky pt-3 font-serif text-xs leading-relaxed text-ink-dim">

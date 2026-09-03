@@ -9,7 +9,9 @@ import Login from "./pages/Login.jsx";
 import Overview from "./pages/Overview.jsx";
 import NewEscrow from "./pages/NewEscrow.jsx";
 import EscrowDetail from "./pages/EscrowDetail.jsx";
-import { claimDemoBalance, getDemoBalance } from "./lib/mockBackend.js";
+import { claimDemoBalance as mockClaim, getDemoBalance as mockBalance } from "./lib/mockBackend.js";
+import * as api from "./lib/sternApi.js";
+import { sourceIsLive } from "./lib/escrowSource.js";
 import { AUTH, useSternAuth } from "./lib/useSternAuth.js";
 import { getIdrtBalance, onChainConfigured } from "./lib/sternContract.js";
 
@@ -25,9 +27,10 @@ export default function App() {
 
   const address = user?.smartAccountAddress;
 
-  const hasContractAddress = Boolean(import.meta.env.VITE_CONTRACT_ADDRESS);
-  const hasInjectedWallet = typeof window !== "undefined" && Boolean(window.ethereum);
-  const isOnChainReady = hasContractAddress && hasInjectedWallet;
+  // Bumping this re-runs Overview's load. Used after a transaction or a fault
+  // simulation, so the list reflects the new state without a page reload.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const refresh = useCallback(() => setRefreshKey((n) => n + 1), []);
 
   // A restored session arrives with a wallet that may already hold a balance,
   // so read it rather than starting every session at zero.
@@ -39,9 +42,11 @@ export default function App() {
     let cancelled = false;
     // Once the token is deployed the balance is a fact on chain, not something
     // the mock ledger should be inventing.
-    const read = onChainConfigured
-      ? getIdrtBalance(address)
-      : getDemoBalance(address).then((result) => result.balance);
+    const read = sourceIsLive
+      ? api.getDemoBalance(address).then((r) => r.balance ?? r.formatted ?? "0.00")
+      : onChainConfigured
+        ? getIdrtBalance(address)
+        : mockBalance(address).then((result) => result.balance);
 
     read
       .then((value) => {
@@ -57,15 +62,19 @@ export default function App() {
     if (!address) return;
     setClaiming(true);
     try {
-      const result = await claimDemoBalance(address);
-      setBalance(result.newBalance);
+      // The real faucet mints through the backend's minter wallet; MINTER_ROLE
+      // makes this impossible from the browser.
+      const result = sourceIsLive
+        ? await api.claimDemoBalance(address, role === "exporter" ? "exporter" : "importer")
+        : await mockClaim(address);
+      setBalance(result.newBalance ?? result.balance ?? "0.00");
       setUser((current) => (current ? { ...current, hasClaimedDemoBalance: true } : current));
     } catch (err) {
       console.warn(err.message);
     } finally {
       setClaiming(false);
     }
-  }, [address, setUser]);
+  }, [address, role, setUser]);
 
   const updateEscrow = useCallback((id, updater) => {
     setEscrows((current) =>
@@ -168,7 +177,7 @@ export default function App() {
         onClaim={handleClaim}
         onResetDemo={resetDemo}
         onSignOut={handleSignOut}
-        isOnChainReady={isOnChainReady}
+        isOnChainReady={sourceIsLive}
       />
 
       <main className="flex-1 overflow-y-auto px-6 py-6 lg:px-10 lg:py-8">
@@ -178,24 +187,25 @@ export default function App() {
             balance={balance}
             smartAccountClient={smartAccountClient}
             importerAddress={address}
-            onCreated={(escrowId) => setView({ name: "escrow", id: escrowId })}
+            onCreated={(escrowId) => { refresh(); setView({ name: "escrow", id: escrowId }); }}
             onBack={() => setView({ name: "overview" })}
           />
         ) : activeView.name === "escrow" && activeEscrow ? (
           <EscrowDetail
             escrow={activeEscrow}
             role={role}
-            isOnChainReady={isOnChainReady}
+            isOnChainReady={sourceIsLive}
+            smartAccountClient={smartAccountClient}
+            onRefresh={refresh}
             onUpdate={updateEscrow}
             onBack={() => setView({ name: "overview" })}
           />
         ) : (
           <Overview
-            escrows={escrows}
-            isOnChainReady={isOnChainReady}
+            walletAddress={address}
+            refreshKey={refreshKey}
             onOpen={(id) => setView({ name: "escrow", id })}
             onCreate={() => setView({ name: "create" })}
-            onChainSync={syncChainEscrows}
             onRegistryLoad={loadRegistryEscrows}
           />
         )}
