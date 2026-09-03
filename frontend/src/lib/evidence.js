@@ -85,6 +85,79 @@ export function faultOptions(evidence) {
 export const activeFault = (evidence) =>
   evidence?.simulation?.enabled ? evidence.simulation.fault : "none";
 
+/**
+ * Reads the response of POST /oracle/verify/:id into rows for the UI.
+ *
+ * The agreed shape is `{ contractId, results: { inspected: "submitted", … } }`,
+ * but "submitted" is only one of the outcomes that can honestly come back. The
+ * contract enforces order and a challenge window between milestones, so a single
+ * call can very reasonably commit the first and be unable to reach the second
+ * yet. Anything the gateway did not commit is reported as it came, rather than
+ * being flattened into a failure — a milestone waiting on its challenge window
+ * is not an error, and saying so keeps the operator from re-pressing the button
+ * expecting a different answer.
+ */
+const VERIFY_TONE = {
+  submitted: "ok",
+  already: "ok",
+  already_submitted: "ok",
+  skipped: "muted",
+  pending: "wait",
+  waiting: "wait",
+  challenge_window_open: "wait",
+  blocked: "wait",
+  not_ready: "wait"
+};
+
+export function verifyResultRows(response) {
+  const results = response?.results || {};
+  return EVIDENCE_MILESTONES.map((m) => {
+    // Accept either spelling of the third milestone, and either a bare string
+    // or an object carrying a reason.
+    const raw = results[m.key] ?? results[m.key.replace(/_(\w)/g, (_, c) => c.toUpperCase())];
+    const status = typeof raw === "string" ? raw : raw?.status || null;
+    const detail = typeof raw === "object" ? raw?.reason || raw?.error || null : null;
+    const key = String(status || "").toLowerCase();
+    return {
+      key: m.key,
+      label: m.label,
+      oracle: m.oracle,
+      status: status || "no result",
+      detail,
+      tone: status ? VERIFY_TONE[key] || "fail" : "muted"
+    };
+  });
+}
+
+/**
+ * The per-source rows the gateway already compared: what it expected, what the
+ * source actually said, and whether that passed.
+ *
+ * The gateway sends this in `evidence[]` and the UI was throwing it away,
+ * showing only a pass/fail chip. "CEISA failed" does not tell an operator what
+ * went wrong; "expected approved, got rejected" does.
+ */
+export function sourceEvidence(evidence) {
+  return (evidence?.evidence || []).map((item, i) => ({
+    key: `${item.source}-${item.field}-${i}`,
+    source: item.source,
+    oracle: item.oracle,
+    field: item.field,
+    expected: formatValue(item.expected),
+    actual: formatValue(item.actual),
+    passed: item.passed !== false,
+    simulated: Boolean(item.simulated)
+  }));
+}
+
+// Booleans read badly as "true"/"false" next to strings like "not_departed".
+function formatValue(value) {
+  if (value === true) return "yes";
+  if (value === false) return "no";
+  if (value === null || value === undefined) return "—";
+  return String(value);
+}
+
 /** The named checks, for the source panel. */
 export function verificationChecks(evidence) {
   const v = evidence?.verification || {};

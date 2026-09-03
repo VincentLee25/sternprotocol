@@ -48,9 +48,19 @@ async function request(path, { method = "GET", body, signal } = {}) {
       body: body ? JSON.stringify(body) : undefined
     });
   } catch (cause) {
-    // fetch only rejects on transport failure. A gateway that is not running,
-    // or one that has not allow-listed this origin, both land here — and the
-    // bare "Failed to fetch" gives no clue which.
+    // An aborted request is not a failure — it is this app cancelling its own
+    // fetch on unmount or when the escrow changes. Re-throw it untouched.
+    //
+    // Wrapping it was a real bug: callers filter on `err.name === "AbortError"`,
+    // and renaming it to ApiError defeated every one of those guards. Ordinary
+    // navigation then painted "Could not reach the STERN gateway... check
+    // CORS_ORIGINS" over a gateway that was answering perfectly well, and sent
+    // us hunting for a CORS problem that did not exist.
+    if (cause?.name === "AbortError") throw cause;
+
+    // Past that, fetch only rejects on transport failure. A gateway that is not
+    // running, or one that has not allow-listed this origin, both land here —
+    // and the bare "Failed to fetch" gives no clue which.
     throw new ApiError(
       `Could not reach the STERN gateway at ${API_BASE}. Check that it is running and that CORS_ORIGINS allows this origin.`,
       { code: "API_UNREACHABLE", url, cause }
@@ -106,6 +116,18 @@ export const getOracleIdentity = ({ signal } = {}) => request("/oracle/identity"
 export const getOracleStatus = ({ signal } = {}) => request("/oracle/status", { signal });
 export const getVerifiers = ({ signal } = {}) => request("/verifiers", { signal });
 export const getMockStatus = (id, { signal } = {}) => request(`/mock-status/${id}`, { signal });
+
+/**
+ * Asks the gateway to run its own verification and commit whatever passes.
+ *
+ * This does NOT give the browser the ability to sign a proof — it cannot, and
+ * must not. The verifier keys stay on the gateway; this only asks it to do the
+ * job it was always going to do. If the sources fail, the gateway refuses, and
+ * that refusal is the correct outcome rather than an error to work around.
+ *
+ * Writes to chain, so it is slow by nature. Callers must show progress.
+ */
+export const verifyMilestones = (id) => request(`/oracle/verify/${id}`, { method: "POST", body: {} });
 
 // Demo-only, in-memory, and explicitly NOT a bad on-chain proof: it rewrites the
 // current mock source so the gateway can detect that an already-committed proof

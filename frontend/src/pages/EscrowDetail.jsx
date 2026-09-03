@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   Check,
-  ChevronDown,
   Loader2,
   Scale,
   Undo2,
@@ -13,10 +12,9 @@ import StatusPill from "../components/StatusPill.jsx";
 import Timeline from "../components/Timeline.jsx";
 import EvidencePanel from "../components/EvidencePanel.jsx";
 import { inputClass } from "../components/Field.jsx";
-import { getMockStatus, submitOracle } from "../lib/api.js";
 import { getBrowserContract } from "../lib/contract.js";
 import { CURRENCY_LABEL } from "../lib/currency.js";
-import { CONSORTIUM, ORACLE_QUORUM, defaultConsortium } from "../lib/oracles.js";
+import { CONSORTIUM, defaultConsortium } from "../lib/oracles.js";
 import { shortAddress } from "../lib/actors.js";
 import { ROLE, ROLE_LABEL, roleOnEscrow } from "../lib/roles.js";
 import { stateFromIndex, formatEscrowId } from "../lib/escrowState.js";
@@ -33,9 +31,10 @@ const CHECKS = [
 ];
 
 const PERMISSIONS = {
-  importer: { release: true, refund: true, dispute: true, vote: true, amend: true },
-  exporter: { release: true, refund: false, dispute: true, vote: true, amend: true },
+  importer: { release: true, refund: true, dispute: true, vote: false, amend: true },
+  exporter: { release: true, refund: false, dispute: true, vote: false, amend: true },
   arbiter: { release: false, refund: false, dispute: true, vote: true, amend: false },
+
   // A wallet that is not a party to this escrow may read it and nothing more.
   // This entry is load-bearing: with the role switcher gone, "observer" is a
   // real outcome, and falling back to the importer's row would offer every
@@ -48,11 +47,8 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
   // Which party you are is read off the escrow, not chosen in the sidebar.
   // The same wallet can be the importer here and the exporter on the next one.
   const role = roleOnEscrow(escrow, walletAddress);
-  const [checks, setChecks] = useState({ vgm: true, ais: true, ceisa: true, ebl: true, inspection: true });
-  const [dissentIndex, setDissentIndex] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
-  const [oracleSources, setOracleSources] = useState(null);
   const [extensionInput, setExtensionInput] = useState("");
   const [chainMeta, setChainMeta] = useState(null);
   const [chainOracles, setChainOracles] = useState(null);
@@ -68,9 +64,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
 
   useEffect(() => {
     setMessage(null);
-    setOracleSources(null);
     setChainOracles(null);
-    setDissentIndex(null);
     if (!isChain) return;
 
     (async () => {
@@ -220,7 +214,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
       hint =
         " Funds were already released to the exporter — release also happens automatically inside the oracle's submit once all checks pass and the confirmation depth is reached.";
     } else if (/conditions not met/i.test(reason)) {
-      hint = " A 2-of-3 oracle consensus must be finalized on-chain and the confirmation depth reached.";
+      hint = " All three milestone proofs must be committed on-chain first.";
     } else if (/deadline not passed/i.test(reason)) {
       hint = " Refund only opens after the escrow deadline.";
     } else if (/proposer cannot approve|only importer or exporter|not escrow party|only importer/i.test(reason)) {
@@ -229,16 +223,6 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
     }
     const signedAs = isChain && walletAccount ? ` (signed as ${shortAddress(walletAccount)})` : "";
     fail(`${reason}.${hint}${signedAs}`);
-  }
-
-  function buildOverrides() {
-    const overrides = {};
-    if (!checks.vgm) overrides.vgm = { vgm_match: false };
-    if (!checks.ais) overrides.ais = { departure_status: "in_port" };
-    if (!checks.ceisa) overrides.ceisa = { customs_status: "pending" };
-    if (!checks.inspection) overrides.inspection = { inspection_status: "failed" };
-    overrides.eblCid = checks.ebl ? escrow.cid : "invalid-cid-demo";
-    return overrides;
   }
 
   async function run(action) {
@@ -253,120 +237,6 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
       if (isChain) await syncChain().catch(() => {});
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function refreshFeed() {
-    const status = await getMockStatus(escrow.id, buildOverrides());
-    setOracleSources(status.sources);
-    onUpdate(escrow.id, (current) => ({ ...current, verification: status.verification }));
-    if (status.allVerified) {
-      ok("Oracle feed refreshed — all five checks passing.");
-    } else {
-      setMessage({ tone: "warn", text: "Oracle feed refreshed — checks failing, funds would stay locked." });
-    }
-    log("refreshed the oracle feed");
-  }
-
-  function applyMockConsortium(current) {
-    const base = current.consortium || defaultConsortium();
-    return base.map((member, index) => {
-      if (index === dissentIndex) {
-        return {
-          ...member,
-          attested: true,
-          slashed: true,
-          bond: member.slashed ? member.bond : member.bond / 2,
-          slashes: member.slashed ? member.slashes : member.slashes + 1
-        };
-      }
-      return { ...member, attested: true };
-    });
-  }
-
-  async function submitVerification() {
-    const overrides = buildOverrides();
-    const dissenterName = dissentIndex !== null ? CONSORTIUM[dissentIndex]?.name : null;
-
-    try {
-      const result = await submitOracle(escrow.id, {
-        ...overrides,
-        ...(dissentIndex !== null ? { dissentIndex } : {})
-      });
-      setOracleSources(result.status.sources);
-      if (!isChain) {
-        onUpdate(escrow.id, (current) => ({ ...current, verification: result.status.verification }));
-      }
-      const syncedState = await syncChain();
-      const finalized = syncedState === "Completed" || syncedState === "Refunded";
-
-      const submitted = result.result.attestations || [];
-      const rawCount = submitted.length;
-      const count = rawCount || 1;
-      const noun = count === 1 ? "attestation" : "attestations";
-      const dissentSubmitted = submitted.some((entry) => entry.dissent);
-
-      if (isChain && rawCount === 0 && finalized) {
-        ok("Escrow already settled by an earlier attestation — nothing left to submit.");
-        log("checked oracle status — escrow already settled");
-      } else if (isChain && rawCount < CONSORTIUM.length && finalized) {
-        ok(
-          `${rawCount} oracle ${rawCount === 1 ? "attestation" : "attestations"} submitted on-chain — quorum was reached and the escrow settled before the remaining oracle(s) needed to attest (tx ${result.result.transactionHash.slice(0, 10)}…).`
-        );
-        log(`submitted ${rawCount} oracle ${noun} on-chain — quorum finalized early`);
-      } else if (isChain && count < CONSORTIUM.length) {
-        setMessage({
-          tone: "warn",
-          text: `Only ${count} of ${CONSORTIUM.length} consortium ${noun} submitted — the gateway holds ${count} key(s), so the ${ORACLE_QUORUM}-of-${CONSORTIUM.length} quorum cannot finalize. Set ORACLE_PRIVATE_KEYS in .env to all three consortium keys (Hardhat accounts #1, #4, #5 from the deploy output) and restart npm run backend.`
-        });
-        log(`submitted ${count}/${CONSORTIUM.length} oracle ${noun} — gateway keys incomplete, quorum not reached`);
-      } else if (dissentSubmitted && dissenterName) {
-        ok(
-          `${count} ${noun} submitted on-chain — ${dissenterName} deviated from the ${ORACLE_QUORUM}-of-${CONSORTIUM.length} consensus and its bond was slashed (see consortium panel).`
-        );
-        log(`submitted ${count} oracle ${noun} — ${dissenterName} deviated and was slashed`);
-      } else {
-        ok(`${count} oracle ${noun} submitted on-chain — consensus recorded (tx ${result.result.transactionHash.slice(0, 10)}…).`);
-        log(`submitted ${count} oracle ${noun} on-chain`);
-      }
-    } catch (error) {
-      if (isChain) {
-        // Wallet mode: verification MUST land on-chain. Never pretend with
-        // local mock state — surface the failure and re-read the contract.
-        await syncChain().catch(() => {});
-        fail(
-          `Oracle gateway request failed: ${error.message}. In wallet mode the oracle must submit on-chain — make sure the gateway is running (npm run backend) and its .env points at this contract, then submit again.`
-        );
-        return;
-      }
-
-      // Mock session: evaluate the same feed locally.
-      const status = await getMockStatus(escrow.id, overrides);
-      setOracleSources(status.sources);
-      onUpdate(escrow.id, (current) => ({
-        ...current,
-        verification: status.verification,
-        state: status.allVerified && current.state === "Pending" ? "Verified" : current.state,
-        consortium: applyMockConsortium(current)
-      }));
-
-      if (dissenterName) {
-        log(`consortium consensus reached — ${dissenterName} deviated and was slashed 50% of its bond`);
-      }
-      if (status.allVerified) {
-        ok(
-          dissenterName
-            ? `Consensus ${ORACLE_QUORUM}-of-${CONSORTIUM.length} reached despite ${dissenterName} deviating — dissenter slashed, escrow marked Verified (mock session).`
-            : "All five checks passed by consortium consensus — escrow marked Verified (mock session)."
-        );
-        log("submitted attestations: consensus passed (mock)");
-      } else {
-        setMessage({
-          tone: "warn",
-          text: "Consortium consensus recorded a failing check — funds stay locked."
-        });
-        log("submitted attestations: consensus failed, funds locked (mock)");
-      }
     }
   }
 
@@ -416,11 +286,29 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
 
   async function openDispute() {
     if (isChain) {
+      // Milestone 0 is Milestone.None — a dispute against the escrow as a
+      // whole — and the contract accepts it in exactly one state:
+      //
+      //   require(escrow.state == State.TimelockActive, "general dispute only in timelock");
+      //
+      // This button passed 0 unconditionally, so anywhere else it could only
+      // revert. Contesting a specific milestone needs its challenge window and
+      // its bond, which the Evidence panel already works out from
+      // GET /oracle/evidence/:id — so send the user there rather than guessing
+      // a milestone from this side.
+      if (escrow.state !== "TimelockActive") {
+        fail(
+          "A general dispute is only possible during the timelock. To contest a specific " +
+            "milestone, use the Evidence panel — it names the milestone still inside its " +
+            "challenge window and shows the bond before you sign."
+        );
+        return;
+      }
       const contract = await getBrowserContract();
       const tx = await contract.raiseDispute(escrow.id, 0);
       await tx.wait();
       await syncChain();
-      ok("Dispute opened — funds frozen until a 2-of-3 vote.");
+      ok("Dispute opened — funds frozen until the arbiter resolves it.");
       log("opened a dispute on-chain");
       return;
     }
@@ -434,7 +322,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
       state: "Disputed",
       votes: { importer: null, exporter: null, arbiter: null }
     }));
-    ok("Dispute opened — funds frozen until a 2-of-3 vote.");
+    ok("Dispute opened — funds frozen until the arbiter resolves it.");
     log("opened a dispute");
   }
 
@@ -470,8 +358,8 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
     onUpdate(escrow.id, (current) => ({ ...current, votes, state: nextState }));
     log(`voted ${releaseToExporter ? "release" : "refund"} in the dispute`);
 
-    if (nextState === "Completed") ok("Dispute resolved 2-of-3: funds released to exporter.");
-    else if (nextState === "Refunded") ok("Dispute resolved 2-of-3: funds refunded to importer.");
+    if (nextState === "Completed") ok("Arbiter resolved the dispute: funds released to exporter.");
+    else if (nextState === "Refunded") ok("Arbiter resolved the dispute: funds refunded to importer.");
     else ok(`Vote recorded as ${role}. One more matching vote resolves the dispute.`);
   }
 
@@ -709,98 +597,49 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
               </div>
             </section>
 
-            {/* Conformance harness + submit */}
+            {/* Conformance harness — read-only.
+                This used to carry check toggles, a "dissenting oracle" picker
+                and a Submit verification button. All three existed to let the
+                browser assemble an oracle submission, which is the one thing a
+                frontend must never do: submitMilestoneProof requires a verifier
+                role and a posted bond, and the gateway route behind it is gated
+                by INTERNAL_API_KEY precisely so the browser cannot hold it. The
+                button could only ever return 401.
+
+                Fault simulation is unaffected and lives in the Evidence panel,
+                where it belongs — it changes the mock SOURCE through
+                POST /oracle/simulate/:id and never touches a proof. */}
             <section className="bg-beige px-6 py-5 lg:px-9">
-              <div className="flex flex-wrap items-start justify-between gap-3">
+              <p className="text-2xs uppercase text-teal">Conformance harness</p>
+              <p className="mt-1 max-w-lg font-serif text-xs leading-relaxed text-ink-dim">
+                Deterministic feeds shaped like the real VGM, AIS and CEISA responses. We mock the
+                credentials, not the architecture.
+              </p>
+
+              <div className="mt-3.5 grid gap-4 border-t border-sky pt-3.5 sm:grid-cols-2">
                 <div>
-                  <p className="text-2xs uppercase text-teal">Conformance harness</p>
-                  <p className="mt-1 max-w-md font-serif text-xs leading-relaxed text-ink-dim">
-                    Deterministic feeds shaped like the real VGM, AIS and CEISA responses. We
-                    mock the credentials, not the architecture.
+                  <p className="text-2xs uppercase text-ink-faint">Change what the sources say</p>
+                  <p className="mt-1 font-serif text-xs leading-relaxed text-ink-dim">
+                    Use Fault simulation in the Evidence panel. It rewrites the mock source only —
+                    no proof is written, and none is altered.
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {CHECKS.map((check) => (
-                    <button
-                      key={check.key}
-                      type="button"
-                      onClick={() =>
-                        setChecks((current) => ({ ...current, [check.key]: !current[check.key] }))
-                      }
-                      aria-pressed={!checks[check.key]}
-                      title={`${check.label}: click to simulate ${
-                        checks[check.key] ? "failure" : "success"
-                      }`}
-                      className={`cursor-pointer rounded-full px-2.5 py-1 text-2xs transition-colors duration-150 ${
-                        checks[check.key]
-                          ? "bg-surface text-teal hover:text-navy"
-                          : "bg-state-disputed/10 text-state-disputed"
-                      }`}
-                    >
-                      {check.label.split(" ")[0]} {checks[check.key] ? "✓" : "✗"}
-                    </button>
-                  ))}
+                <div>
+                  <p className="text-2xs uppercase text-ink-faint">Verify the milestones</p>
+                  <p className="mt-1 font-serif text-xs leading-relaxed text-ink-dim">
+                    Use Verify milestones in the Evidence panel. It asks the gateway to run its own
+                    check and commit what passes — the verifier institutions sign, never this page.
+                  </p>
+                  <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">
+                    The backend team can do the same from a terminal:{" "}
+                    <code className="font-mono text-2xs text-navy">scripts/drive-demo.js</code>
+                  </p>
                 </div>
               </div>
 
-              <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                <span className="mr-1 text-2xs uppercase text-ink-faint">
-                  Dissenting oracle
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setDissentIndex(null)}
-                  className={`cursor-pointer rounded-full px-2.5 py-1 text-2xs transition-colors duration-150 ${
-                    dissentIndex === null
-                      ? "bg-state-attested/10 text-state-attested"
-                      : "bg-surface text-teal hover:text-navy"
-                  }`}
-                >
-                  none
-                </button>
-                {CONSORTIUM.map((member) => (
-                  <button
-                    key={member.index}
-                    type="button"
-                    onClick={() => setDissentIndex(member.index)}
-                    title={`Simulate ${member.name} submitting false data. The majority outvotes it and its bond is slashed.`}
-                    className={`cursor-pointer rounded-full px-2.5 py-1 text-2xs transition-colors duration-150 ${
-                      dissentIndex === member.index
-                        ? "bg-state-disputed/10 text-state-disputed"
-                        : "bg-surface text-teal hover:text-navy"
-                    }`}
-                  >
-                    {member.name}
-                  </button>
-                ))}
-              </div>
-
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-sky pt-4">
-                <span className="truncate text-2xs text-ink-faint">
-                  e-BL CID &nbsp;{escrow.cid || "not pinned"}
-                </span>
-                <div className="flex flex-wrap gap-2.5">
-                  <button
-                    type="button"
-                    disabled={busy || terminal}
-                    onClick={() => run(refreshFeed)}
-                    className={`${btnOutline} gap-2`}
-                  >
-                    {busy ? (
-                      <Loader2 size={13} className="animate-spin" aria-hidden="true" />
-                    ) : null}
-                    Refresh oracle feed
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy || terminal || escrow.state === "Disputed"}
-                    onClick={() => run(submitVerification)}
-                    className={btnPrimary}
-                  >
-                    Submit verification
-                  </button>
-                </div>
-              </div>
+              <p className="mt-3.5 truncate border-t border-sky pt-3 text-2xs text-ink-faint">
+                e-BL CID &nbsp;{escrow.cid || "not pinned"}
+              </p>
             </section>
           </article>
 
@@ -843,17 +682,6 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
             </ul>
           </div>
 
-          {oracleSources ? (
-            <details className="mt-5 overflow-hidden rounded-doc bg-surface shadow-card">
-              <summary className="flex cursor-pointer items-center justify-between px-6 py-3.5 text-sm font-medium text-teal hover:text-navy lg:px-9">
-                Raw source payloads: real API response shapes
-                <ChevronDown size={14} aria-hidden="true" />
-              </summary>
-              <pre className="max-h-64 overflow-auto border-t border-sky px-6 py-4 text-2xs leading-relaxed text-teal lg:px-9">
-                {JSON.stringify(oracleSources, null, 2)}
-              </pre>
-            </details>
-          ) : null}
         </div>
 
         {/* ---------- Rail ---------- */}
@@ -925,7 +753,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
           </Panel>
 
           {escrow.state === "Disputed" ? (
-            <Panel title="Dispute · 2-of-3 vote" tone="pending">
+            <Panel title="Dispute · arbiter decision" tone="pending">
               {!isChain ? (
                 <ul className="mb-3 space-y-1.5">
                   {Object.entries(escrow.votes || {}).map(([party, partyVote]) => (
@@ -946,6 +774,15 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
                   ))}
                 </ul>
               ) : null}
+              {/* Named rather than left as two dead buttons. resolveDispute is
+                  `require(msg.sender == escrow.arbiter)`, so a party pressing
+                  these could only ever get a revert. */}
+              {!permissions.vote ? (
+                <p className="mb-3 font-serif text-xs leading-relaxed text-ink-dim">
+                  Only the appointed arbiter resolves a dispute, and the arbiter signs on the ops
+                  console with its own key. Your funds stay frozen until then.
+                </p>
+              ) : null}
               <div className="grid gap-2">
                 <button
                   type="button"
@@ -953,7 +790,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
                   onClick={() => run(() => vote(true))}
                   className={`${railBtn} bg-state-attested/10 text-state-attested hover:bg-state-attested/20`}
                 >
-                  Vote: release to exporter
+                  Resolve: release to exporter
                 </button>
                 <button
                   type="button"
@@ -961,7 +798,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
                   onClick={() => run(() => vote(false))}
                   className={`${railBtn} bg-state-disputed/10 text-state-disputed hover:bg-state-disputed/20`}
                 >
-                  Vote: refund to importer
+                  Resolve: refund to importer
                 </button>
               </div>
             </Panel>

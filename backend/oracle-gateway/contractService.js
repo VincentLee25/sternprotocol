@@ -61,6 +61,13 @@ function getContract(signerOrProvider) {
 }
 
 function normalizeMilestone(milestone) {
+  // MILESTONES is keyed by name, but the contract side of this file works in
+  // numeric ids — so passing one straight back in threw "Unknown milestone: 1".
+  // Accept the id it already returns, so a round-trip is not an error.
+  if (typeof milestone === "number" || typeof milestone === "bigint") {
+    const id = Number(milestone);
+    if (id >= 0 && id < MILESTONE_NAMES.length) return id;
+  }
   const key = String(milestone || "").replace(/[\s-]/g, "_");
   const value = MILESTONES[key] ?? MILESTONES[key.toLowerCase()];
   if (value === undefined) {
@@ -447,6 +454,108 @@ async function getVerifiers() {
   };
 }
 
+/**
+ * Runs the gateway's own verification across all three milestones and commits
+ * whatever passes, in order.
+ *
+ * No new verifier logic: it calls the same milestonePassed() and the same
+ * submitMilestoneProof() everything else uses. The point is only that the work
+ * can now be triggered without a terminal.
+ *
+ * It cannot commit all three in one go on a real contract, and does not pretend
+ * to. The contract requires the previous milestone's challenge window to have
+ * elapsed:
+ *
+ *   require(block.timestamp > proofs[Inspected].challengeDeadline, "challenge window open")
+ *
+ * so a call that lands during that window commits what it can and reports the
+ * rest as "challenge_window_open", with the time it opens. That is not a
+ * failure — the caller repeats the call afterwards. Flattening it into an error
+ * would have an operator retrying immediately and getting the same answer.
+ *
+ * Every status this can return, so the frontend can be written against a closed
+ * set:
+ *   submitted             — proof is now on chain
+ *   already_submitted     — it was already there; nothing to do
+ *   challenge_window_open — the previous milestone is still inside its window
+ *   source_failed         — the automated check says no, so it was NOT submitted
+ *   blocked               — escrow state does not allow this milestone yet
+ *   error                 — the transaction itself reverted or the node refused
+ */
+async function verifyAndSubmitAll(contractId, verification, { proofCidPrefix = "bafy-verified" } = {}) {
+  const provider = getProvider();
+  const contract = getContract(provider);
+  const results = {};
+  let stop = false;
+
+  for (const name of ["inspected", "shipped", "arrived_cleared"]) {
+    const id = normalizeMilestone(name);
+
+    if (stop) {
+      results[name] = { status: "blocked", reason: "An earlier milestone is not committed yet." };
+      continue;
+    }
+
+    const proof = await contract.getMilestoneProof(contractId, id);
+    if (proof[0]) {
+      results[name] = { status: "already_submitted", proofCid: proof[2], verifier: proof[1] };
+      continue;
+    }
+
+    // The contract wants the escrow sitting exactly one state below this
+    // milestone. Asking it anyway would just burn gas on a revert.
+    // Positional, matching the rest of this file — EscrowView puts state at 9.
+    // Named access depends on the ABI carrying output names, and nothing else
+    // here relies on that.
+    const state = Number((await contract.getEscrow(contractId))[9]);
+    if (state !== id - 1) {
+      results[name] = { status: "blocked", reason: `Escrow is ${stateName(state)}; this milestone needs ${stateName(id - 1)}.` };
+      stop = true;
+      continue;
+    }
+
+    if (id > 1) {
+      const prev = await contract.getMilestoneProof(contractId, id - 1);
+      const now = BigInt(Math.floor(Date.now() / 1000));
+      if (prev[0] && now <= prev[4]) {
+        results[name] = {
+          status: "challenge_window_open",
+          reason: "The previous milestone is still inside its challenge window.",
+          retryAfter: toIso(prev[4])
+        };
+        stop = true;
+        continue;
+      }
+    }
+
+    if (!milestonePassed(name, verification)) {
+      // The refusal is the product working. A failing source must never reach
+      // the chain, and the caller should see why rather than a bare "failed".
+      results[name] = {
+        status: "source_failed",
+        reason: "The automated check did not pass, so no proof was written on chain."
+      };
+      stop = true;
+      continue;
+    }
+
+    try {
+      const submitted = await submitMilestoneProof(contractId, name, `${proofCidPrefix}-${contractId}-${name}`, verification);
+      results[name] = {
+        status: "submitted",
+        transactionHash: submitted.transactionHash,
+        blockNumber: submitted.blockNumber,
+        verifier: submitted.verifier
+      };
+    } catch (error) {
+      results[name] = { status: "error", reason: error.reason || error.shortMessage || error.message };
+      stop = true;
+    }
+  }
+
+  return { contractId: String(contractId), results };
+}
+
 async function submitMilestoneProof(contractId, milestone, proofCid, verification) {
   const provider = getProvider();
   const wallets = getVerifierWallets(provider);
@@ -503,6 +612,7 @@ async function resolveDispute(contractId, options = {}) {
 
 module.exports = {
   submitMilestoneProof,
+  verifyAndSubmitAll,
   resolveDispute,
   normalizeMilestone,
   getOracleIdentity,
