@@ -35,6 +35,11 @@ Optional:
 - `DEMO_CLAIMS_FILE=.demo-claims.json`
 - `NATIVE_GAS_WARNING_WEI=1000000000000000`
 
+Company identity and MFA additionally require:
+
+- `AUTH_TOKEN_SECRET`: a random secret of at least 32 characters. Generate and keep this only in Railway variables; changing it invalidates active sessions.
+- `IDENTITY_STORE_FILE`: an absolute path on a Railway persistent volume, for example `/data/identities.json`. The default is a local development file under `backend/data` and is not durable on a Railway ephemeral filesystem.
+
 Never put server private keys or INTERNAL_API_KEY in the frontend or source control. Privileged write endpoints require INTERNAL_API_KEY via X-API-Key or Authorization: Bearer.
 
 ## API groups
@@ -75,6 +80,15 @@ The current MVP read model scans `nextEscrowId()` and calls the contract. It is 
 - `POST /resolve-dispute/:contractId` (internal API key required)
 
 There is deliberately **no backend `raiseDispute` endpoint**. The dispute opener must be the importer/exporter wallet, so FE sends the contract transaction through Particle AA.
+
+### Company identity
+
+- `POST /auth/register-company` creates a company plus its `owner` account using company name, email, username, primary wallet, and password.
+- `POST /auth/login` returns a session or a short-lived MFA challenge.
+- `POST /auth/mfa/setup`, `POST /auth/mfa/confirm`, and `POST /auth/mfa/verify` implement TOTP for Google Authenticator-compatible apps.
+- `GET|POST /companies/:companyId/users` reads or creates `admin` and `operator` accounts. The owner can create either role; an admin can create operators only.
+
+Company identity authorizes the application account. It does not grant a blockchain role or custody a user wallet; escrow permissions remain enforced by the deployed contract.
 
 ## Fault simulation
 

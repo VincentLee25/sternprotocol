@@ -15,7 +15,9 @@ const config = {
   demoBalanceIdrt: process.env.DEMO_BALANCE_IDRT || "150000000.00",
   demoClaimsFile: process.env.DEMO_CLAIMS_FILE,
   contractAddress: process.env.CONTRACT_ADDRESS,
-  nativeGasWarningWei: BigInt(process.env.NATIVE_GAS_WARNING_WEI || "1000000000000000")
+  nativeGasWarningWei: BigInt(process.env.NATIVE_GAS_WARNING_WEI || "1000000000000000"),
+  identityStoreFile: process.env.IDENTITY_STORE_FILE || path.resolve(__dirname, "../data/identities.json"),
+  authTokenSecret: process.env.AUTH_TOKEN_SECRET
 };
 
 function isMissing(v) { return Array.isArray(v) ? v.length === 0 : v == null || v === ""; }

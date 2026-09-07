@@ -6,6 +6,7 @@
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
+    "test:identity": "node --test backend/oracle-gateway/identityService.test.js",
     "deploy:local": "hardhat run scripts/deploy.js --network localhost",
     "mine:128": "hardhat run scripts/mine-blocks.js --network localhost",
     "post-bond": "node scripts/post-bond.js",

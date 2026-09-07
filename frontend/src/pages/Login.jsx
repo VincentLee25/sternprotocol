@@ -3,6 +3,7 @@ import PortPlate from "../components/PortPlate.jsx";
 import { missingCredentials, particleEnabled } from "../lib/particle.js";
 import { contractsWithoutWallet } from "../lib/sternContract.js";
 import sternLogo from "../assets/stern-logo.png";
+import CompanyAccess from "../components/CompanyAccess.jsx";
 
 const FEATURES = [
   { icon: ShieldCheck, text: "Milestone-verified settlement — Sucofindo, the shipping line, and customs each sign off before funds move" },
@@ -113,6 +114,8 @@ export default function Login({ onConnect, error, busy }) {
           <p className="mt-4 text-center text-2xs uppercase text-ink-faint">
             {particleEnabled ? "Powered by Particle Network" : "Demo mode — no wallet created"}
           </p>
+
+          <CompanyAccess />
 
           <div className="mt-10 rounded-doc border border-sky bg-surface p-4">
             <p className="text-2xs uppercase text-ink-faint">What happens after sign-in</p>

@@ -33,19 +33,24 @@ export default defineConfig({
     // runs React 18. Two copies of react-dom in one bundle throw "Invalid hook
     // call" at the first Particle hook, so force a single copy of each.
     dedupe: ["react", "react-dom"],
-    alias: Object.fromEntries(
-      // The Node-only providers in the AWS credential chain, all reached through
-      // lazy imports Particle never takes in a browser. See the stub for why.
-      [
-        "@aws-sdk/credential-provider-ini",
-        "@aws-sdk/credential-provider-process",
-        "@aws-sdk/credential-provider-sso",
-        "@aws-sdk/credential-provider-node",
-        "@aws-sdk/credential-provider-login",
-        "@aws-sdk/token-providers",
-        "@aws-sdk/credential-provider-web-identity"
-      ].map((pkg) => [pkg, path.resolve(__dirname, "src/lib/aws-node-providers-stub.js")])
-    )
+    alias: {
+      // Resolve this peer explicitly. ConnectKit imports `viem` from a nested
+      // package and Rollup otherwise fails to walk back to the app dependency.
+      viem: path.resolve(__dirname, "node_modules/viem"),
+      ...Object.fromEntries(
+        // The Node-only providers in the AWS credential chain, all reached through
+        // lazy imports Particle never takes in a browser. See the stub for why.
+        [
+          "@aws-sdk/credential-provider-ini",
+          "@aws-sdk/credential-provider-process",
+          "@aws-sdk/credential-provider-sso",
+          "@aws-sdk/credential-provider-node",
+          "@aws-sdk/credential-provider-login",
+          "@aws-sdk/token-providers",
+          "@aws-sdk/credential-provider-web-identity"
+        ].map((pkg) => [pkg, path.resolve(__dirname, "src/lib/aws-node-providers-stub.js")])
+      )
+    }
   },
   define: {
     // Several Web3 deps read `global`, which exists in Node but not the browser.

@@ -18,12 +18,27 @@ const {
 } = require("./contractService");
 const { config } = require("./config");
 const { getDemoBalance, claimDemoBalance } = require("./faucetService");
+const { createIdentityService } = require("./identityService");
 
 const app = express();
 app.use(cors({
   origin: config.corsOrigins.includes("*") ? true : config.corsOrigins
 }));
 app.use(express.json({ limit: "1mb" }));
+
+let identities = null;
+function identityService() {
+  if (!identities) identities = createIdentityService({ storeFile: config.identityStoreFile, tokenSecret: config.authTokenSecret });
+  return identities;
+}
+
+function requireSession(req, _res, next) {
+  try {
+    const authorization = req.get("authorization") || "";
+    req.identity = identityService().authenticate(authorization.replace(/^Bearer\s+/i, ""));
+    next();
+  } catch (error) { next(error); }
+}
 
 function requireInternalApiKey(req, _res, next) {
   if (!config.internalApiKey) {
@@ -60,6 +75,38 @@ app.get("/health", async (_req, res, next) => {
       timestamp: new Date().toISOString()
     });
   } catch (error) { next(error); }
+});
+
+app.post("/auth/register-company", (req, res, next) => {
+  try { res.status(201).json(identityService().registerCompany(req.body || {})); } catch (error) { next(error); }
+});
+
+app.post("/auth/login", (req, res, next) => {
+  try { res.json(identityService().login(req.body || {})); } catch (error) { next(error); }
+});
+
+app.get("/auth/me", requireSession, (req, res, next) => {
+  try { res.json({ user: identityService().publicUser(req.identity.user), company: identityService().publicCompany(req.identity.company) }); } catch (error) { next(error); }
+});
+
+app.post("/auth/mfa/setup", requireSession, (req, res, next) => {
+  try { res.json(identityService().setupMfa((req.get("authorization") || "").replace(/^Bearer\s+/i, ""))); } catch (error) { next(error); }
+});
+
+app.post("/auth/mfa/confirm", (req, res, next) => {
+  try { res.json(identityService().confirmMfa(req.body || {})); } catch (error) { next(error); }
+});
+
+app.post("/auth/mfa/verify", (req, res, next) => {
+  try { res.json(identityService().verifyMfa(req.body || {})); } catch (error) { next(error); }
+});
+
+app.get("/companies/:companyId/users", requireSession, (req, res, next) => {
+  try { res.json(identityService().companyUsers((req.get("authorization") || "").replace(/^Bearer\s+/i, ""), req.params.companyId)); } catch (error) { next(error); }
+});
+
+app.post("/companies/:companyId/users", requireSession, (req, res, next) => {
+  try { res.status(201).json(identityService().addCompanyUser((req.get("authorization") || "").replace(/^Bearer\s+/i, ""), req.params.companyId, req.body || {})); } catch (error) { next(error); }
 });
 
 app.post("/demo-balance/claim", async (req, res, next) => {
