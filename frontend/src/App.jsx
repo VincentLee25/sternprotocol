@@ -29,15 +29,58 @@ const MARKETING = { landing: Landing, instrument: Instrument, settlement: Settle
 // the setup that CAN claim: Particle + contracts + gateway all configured.
 const canClaim = sourceIsLive || !onChainConfigured;
 
+// Where you were, kept across a refresh.
+//
+// The view lived only in React state, so every reload dropped you back on the
+// marketing page — mid-demo, mid-escrow, it did not matter. Reloading is what
+// people do when something looks wrong, which is exactly when losing your place
+// is most costly.
+//
+// Only the view name and escrow id are stored. Nothing about the session:
+// Particle restores that itself, and the ops console key is deliberately wiped
+// by a reload.
+const VIEW_KEY = "stern-view";
+const KNOWN_VIEWS = new Set([
+  "landing", "instrument", "settlement", "oracles",
+  "login", "overview", "create", "escrow", "ops"
+]);
+
+function readStoredView() {
+  try {
+    const raw = localStorage.getItem(VIEW_KEY);
+    if (!raw) return { name: "landing" };
+    const parsed = JSON.parse(raw);
+    // Anything unrecognised is treated as absent rather than trusted. A stale
+    // or hand-edited value must not be able to render a view that no longer
+    // exists.
+    if (!parsed || !KNOWN_VIEWS.has(parsed.name)) return { name: "landing" };
+    return parsed.name === "escrow" && parsed.id != null
+      ? { name: "escrow", id: parsed.id }
+      : { name: parsed.name };
+  } catch {
+    // Private windows and blocked site data both throw on access.
+    return { name: "landing" };
+  }
+}
+
 export default function App() {
   const { status, user, error, connect, disconnect, setUser, smartAccountClient } = useSternAuth();
   const [balance, setBalance] = useState("0.00");
   const [claiming, setClaiming] = useState(false);
   const [claimError, setClaimError] = useState("");
-  const [view, setView] = useState({ name: "landing" });
+  const [view, setView] = useState(readStoredView);
   const [escrows, setEscrows] = useState([]);
 
   const address = user?.smartAccountAddress;
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(VIEW_KEY, JSON.stringify(view));
+    } catch {
+      // Storage being unavailable is not worth interrupting anyone over; the
+      // app simply goes back to forgetting.
+    }
+  }, [view]);
 
   // Bumping this re-runs Overview's load. Used after a transaction or a fault
   // simulation, so the list reflects the new state without a page reload.
