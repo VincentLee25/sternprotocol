@@ -69,7 +69,14 @@ export function disputeOpportunity(evidence) {
     windowClosed: committed.length > 0 && !actionable,
     milestone: target?.milestone || null,
     milestoneLabel: target ? milestoneLabel(target.milestone) : null,
-    challengeDeadline: target?.challengeDeadline || null
+    challengeDeadline: target?.challengeDeadline || null,
+    // `actionable` is a snapshot taken when the evidence was fetched, and it
+    // never expires on its own — so a panel left open kept offering a dispute
+    // whose window had already closed, until prepareDispute refused it on the
+    // click. The caller needs the deadline itself to keep the offer honest.
+    challengeDeadlineUnix: target?.challengeDeadlineUnix
+      ? Number(target.challengeDeadlineUnix)
+      : null
   };
 }
 

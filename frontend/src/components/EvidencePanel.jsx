@@ -17,6 +17,10 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
   const [verifyRun, setVerifyRun] = useState(null);
+  // Ticks while a dispute window is counting down. Without it the CTA sat there
+  // offering an action whose deadline had already passed, and the only thing
+  // that noticed was prepareDispute refusing on the click.
+  const [tick, setTick] = useState(() => Math.floor(Date.now() / 1000));
 
   const load = useCallback(
     async (signal) => {
@@ -39,7 +43,28 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
     return () => controller.abort();
   }, [load]);
 
+
   const opportunity = disputeOpportunity(evidence);
+  const secondsLeft =
+    opportunity.challengeDeadlineUnix != null ? opportunity.challengeDeadlineUnix - tick : null;
+  // Trust the gateway's answer, but stop trusting it once its own deadline has
+  // passed. The local clock is only used to withdraw the offer, never to make
+  // one — the contract still has the final say.
+  const stillOpen = opportunity.actionable && (secondsLeft == null || secondsLeft > 0);
+
+  // Re-read once the window lapses, so the panel states the gateway's verdict
+  // rather than this browser's guess about it.
+  useEffect(() => {
+    if (!opportunity.actionable || opportunity.challengeDeadlineUnix == null) return;
+    const id = setInterval(() => setTick(Math.floor(Date.now() / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [opportunity.actionable, opportunity.challengeDeadlineUnix]);
+
+  useEffect(() => {
+    if (opportunity.actionable && secondsLeft != null && secondsLeft <= 0) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [secondsLeft != null && secondsLeft <= 0]);
+
   const rows = milestoneRows(evidence);
   const checks = verificationChecks(evidence);
   const failing = sourceEvidence(evidence).filter((s) => !s.passed);
@@ -298,13 +323,20 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
           {/* The CTA appears only when the gateway says a dispute is actually
               possible. A discrepancy whose challenge window has closed is shown
               as a note instead, so the timeline does not look broken. */}
-          {opportunity.actionable ? (
+          {stillOpen ? (
             <div className="mt-4 rounded-panel border border-state-pending/45 bg-state-pending/[0.08] p-3.5">
               <p className="flex items-center gap-1.5 font-mono text-2xs uppercase text-state-pending">
                 <ShieldAlert size={12} aria-hidden="true" />
                 Dispute available — {opportunity.milestoneLabel}
               </p>
               <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">{opportunity.reason}</p>
+              {secondsLeft != null ? (
+                <p className="mt-1.5 font-mono text-2xs uppercase text-state-pending">
+                  {secondsLeft > 60
+                    ? `${Math.floor(secondsLeft / 60)}m ${secondsLeft % 60}s left`
+                    : `${secondsLeft}s left`}
+                </p>
+              ) : null}
 
               {preview ? (
                 <div className="mt-3 rounded-panel bg-surface px-3 py-2.5">
@@ -337,7 +369,7 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
                 </button>
               )}
             </div>
-          ) : opportunity.windowClosed ? (
+          ) : opportunity.hasDiscrepancy ? (
             <p className="mt-4 flex items-start gap-1.5 rounded-panel bg-sky/25 px-3.5 py-2.5 font-serif text-xs leading-relaxed text-ink-dim">
               <Clock size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
               {opportunity.reason}
