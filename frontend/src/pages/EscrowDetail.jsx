@@ -18,7 +18,14 @@ import { CONSORTIUM, defaultConsortium } from "../lib/oracles.js";
 import { shortAddress } from "../lib/actors.js";
 import { getTimelock, getVerifiers } from "../lib/sternApi.js";
 import { ROLE, ROLE_LABEL, roleOnEscrow } from "../lib/roles.js";
-import { claimRefundAsUser, initiateTimelockAsUser, releasePaymentAsUser } from "../lib/settlementFlow.js";
+import { raiseDisputeAsUser } from "../lib/disputeFlow.js";
+import {
+  approveExtensionAsUser,
+  claimRefundAsUser,
+  initiateTimelockAsUser,
+  proposeExtensionAsUser,
+  releasePaymentAsUser
+} from "../lib/settlementFlow.js";
 import { stateFromIndex, formatEscrowId } from "../lib/escrowState.js";
 
 // The contract has THREE milestones (docs/01_CONTRACT_SPEC.md §4), each gated by
@@ -330,16 +337,13 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
 
   async function openDispute() {
     if (isChain) {
-      // Milestone 0 is Milestone.None — a dispute against the escrow as a
-      // whole — and the contract accepts it in exactly one state:
+      // A dispute against the escrow as a whole — Milestone.None — which the
+      // contract accepts in exactly one state:
       //
       //   require(escrow.state == State.TimelockActive, "general dispute only in timelock");
       //
-      // This button passed 0 unconditionally, so anywhere else it could only
-      // revert. Contesting a specific milestone needs its challenge window and
-      // its bond, which the Evidence panel already works out from
-      // GET /oracle/evidence/:id — so send the user there rather than guessing
-      // a milestone from this side.
+      // Checked here only so the refusal names the reason. The gateway checks it
+      // again against live chain state, and that answer is the one that counts.
       if (escrow.state !== "TimelockActive") {
         fail(
           "A general dispute is only possible during the timelock. To contest a specific " +
@@ -348,12 +352,18 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
         );
         return;
       }
-      const contract = await getBrowserContract();
-      const tx = await contract.raiseDispute(escrow.id, 0);
-      await tx.wait();
-      await syncChain();
-      ok("Dispute opened — funds frozen until the arbiter resolves it.");
-      log("opened a dispute on-chain");
+
+      // Goes through the same path as the Evidence panel's dispute, and for two
+      // reasons. It used to call getBrowserContract(), which reads
+      // window.ethereum — a user who signed in through Particle has no injected
+      // wallet, so it threw before reaching the chain. And raiseDispute pulls a
+      // bond with safeTransferFrom, which needs an ERC-20 approval this button
+      // never sent: even with a wallet it could only revert. prepareDispute
+      // returns both calldatas and they go out as one UserOperation.
+      const { transactionHash, bond } = await raiseDisputeAsUser(smartAccountClient, escrow.id, "none");
+      onRefresh?.();
+      ok(`Dispute opened, ${Number(bond).toLocaleString("id-ID")} bond locked (tx ${transactionHash.slice(0, 10)}…). Funds are frozen until the arbiter resolves it.`);
+      log("opened a general dispute on-chain");
       return;
     }
 
@@ -419,9 +429,8 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
     }
 
     if (isChain) {
-      const contract = await getBrowserContract();
-      const tx = await contract.proposeDeadlineExtension(escrow.id, Math.floor(newDeadlineMs / 1000));
-      await tx.wait();
+      await proposeExtensionAsUser(smartAccountClient, escrow.id, Math.floor(newDeadlineMs / 1000));
+      onRefresh?.();
       ok("Extension proposed — waiting for the counterparty's approval.");
       log("proposed a deadline extension on-chain");
       return;
@@ -447,14 +456,12 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
         escrow.pendingExtension.proposerAddress.toLowerCase() === walletAccount.toLowerCase()
       ) {
         fail(
-          `You proposed this extension — the counterparty must approve it. MetaMask is still on ${shortAddress(walletAccount)}; switch to the other party's account first.`
+          "You proposed this extension, so the counterparty is the one who approves it. The contract refuses an approval from the proposer."
         );
         return;
       }
-      const contract = await getBrowserContract();
-      const tx = await contract.approveDeadlineExtension(escrow.id);
-      await tx.wait();
-      await syncChain();
+      await approveExtensionAsUser(smartAccountClient, escrow.id);
+      onRefresh?.();
       ok("Amendment signed by both parties — deadline extended.");
       log("approved the deadline extension on-chain");
       return;

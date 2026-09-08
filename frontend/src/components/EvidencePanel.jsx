@@ -70,6 +70,11 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
   const failing = sourceEvidence(evidence).filter((s) => !s.passed);
   const faults = faultOptions(evidence);
   const currentFault = activeFault(evidence);
+  // A fault switched on before anything is committed guarantees a refusal: the
+  // gateway will not write a proof its own sources reject. That is correct, but
+  // it looks like a failure, and the order is easy to get backwards — so say it
+  // before the button is pressed rather than after.
+  const faultBeforeAnyProof = currentFault !== "none" && !rows.some((r) => r.submitted);
 
   // A dispute becomes possible only after a fault makes a committed proof
   // disagree with its source, so re-read evidence rather than patching state.
@@ -194,6 +199,14 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
             ? "Each proof is a transaction, and the contract holds a challenge window between them. This can take a while."
             : "The verifier institutions sign these, on the gateway. This asks them to; it does not sign anything here."}
         </p>
+
+        {faultBeforeAnyProof && busy !== "verify" ? (
+          <p className="mt-2 rounded-panel border border-state-pending/40 bg-state-pending/[0.08] px-3 py-2.5 font-serif text-xs leading-relaxed text-state-pending">
+            The <span className="font-mono">{currentFault}</span> fault is on and nothing is
+            committed yet, so this will be refused. Reset the fault, verify, then switch it back on
+            — a discrepancy needs a proof to disagree with.
+          </p>
+        ) : null}
 
         {verifyRun ? (
           <ul className="mt-3 space-y-1.5">
