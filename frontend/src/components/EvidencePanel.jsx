@@ -370,10 +370,21 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
               )}
             </div>
           ) : opportunity.hasDiscrepancy ? (
-            <p className="mt-4 flex items-start gap-1.5 rounded-panel bg-sky/25 px-3.5 py-2.5 font-serif text-xs leading-relaxed text-ink-dim">
-              <Clock size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
-              {opportunity.reason}
-            </p>
+            // The gateway's sentence stops at "the window has closed", which
+            // leaves the consequence unsaid — and the consequence is the whole
+            // point of a challenge window. Without this second line the panel
+            // reads as though a disputed proof is somehow still in limbo, and
+            // settling anyway looks like a bug rather than the design.
+            <div className="mt-4 rounded-panel bg-sky/25 px-3.5 py-2.5">
+              <p className="flex items-start gap-1.5 font-serif text-xs leading-relaxed text-ink-dim">
+                <Clock size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
+                {opportunity.reason}
+              </p>
+              <p className="mt-1.5 pl-[18px] font-serif text-xs leading-relaxed text-ink-dim">
+                The proof now stands, and settlement proceeds on it. Nothing here blocks release —
+                a proof is contested inside its window or not at all.
+              </p>
+            </div>
           ) : null}
 
           {result ? (
