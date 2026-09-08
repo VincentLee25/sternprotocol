@@ -14,7 +14,9 @@ const {
   prepareDispute,
   getActivity,
   getVerifiers,
-  verifyAndSubmitAll
+  verifyAndSubmitAll,
+  chainNow,
+  getProvider
 } = require("./contractService");
 const { config } = require("./config");
 const { getDemoBalance, claimDemoBalance } = require("./faucetService");
@@ -141,27 +143,38 @@ app.get("/oracle/evidence/:contractId", async (req, res, next) => {
       .filter(([, item]) => item.discrepancyAfterCommit)
       .map(([milestone, item]) => ({ milestone, ...item }));
 
+    // Against block.timestamp, not this machine's clock: the contract decides
+    // whether a window is open, and a few seconds of drift here either hides a
+    // dispute the user could still raise, or offers one that reverts.
+    //
+    // Tolerated rather than required. The proof reads above already degrade to
+    // {submitted:false} when the chain is unreachable, so this route serves the
+    // source verdict with no chain at all — letting the clock read throw would
+    // have turned that into a 400 for the whole endpoint. With no chain there
+    // are no committed proofs either, so nothing is actionable regardless.
+    let actionable = false;
+    try {
+      const now = await chainNow(getProvider());
+      actionable = committedDiscrepancies.some(
+        (item) => item.challengeDeadlineUnix && now <= Number(item.challengeDeadlineUnix)
+      );
+    } catch {
+      actionable = false;
+    }
+
     res.json({
       ...status,
       onchain,
       comparison,
       committedDiscrepancies,
       disputeDemo: {
-        actionable: committedDiscrepancies.some(
-          (item) =>
-            item.challengeDeadlineUnix &&
-            Math.floor(Date.now() / 1000) <= Number(item.challengeDeadlineUnix)
-         ),
-        reason: committedDiscrepancies.some(
-          (item) =>
-            item.challengeDeadlineUnix &&
-            Math.floor(Date.now() / 1000) <= Number(item.challengeDeadlineUnix)
-  )
-    ? "A committed on-chain proof conflicts with the current source result and the challenge window is still open. The user may open a dispute."
-    : committedDiscrepancies.length > 0
-      ? "A committed on-chain proof conflicts with the current source result, but the applicable challenge window has closed."
-      : "No committed proof currently conflicts with the current source result."
-}
+        actionable,
+        reason: actionable
+          ? "A committed on-chain proof conflicts with the current source result and the challenge window is still open. The user may open a dispute."
+          : committedDiscrepancies.length > 0
+            ? "A committed on-chain proof conflicts with the current source result, but the applicable challenge window has closed."
+            : "No committed proof currently conflicts with the current source result."
+      }
     });
   } catch (error) { next(error); }
 });

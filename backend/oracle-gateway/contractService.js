@@ -56,6 +56,18 @@ function getArbiterWallet(provider) {
   return new ethers.Wallet(config.arbiterPrivateKey, provider);
 }
 
+/**
+ * Seconds since epoch as the CHAIN sees them.
+ *
+ * Every deadline in this contract is compared against block.timestamp, so any
+ * check written against Date.now() is comparing two different clocks and will
+ * be wrong at exactly the moment it matters — the edge of a window.
+ */
+async function chainNow(provider) {
+  const block = await provider.getBlock("latest");
+  return Number(block.timestamp);
+}
+
 function getContract(signerOrProvider) {
   return new ethers.Contract(config.contractAddress, loadAbi(), signerOrProvider);
 }
@@ -306,7 +318,9 @@ async function getTimelock(contractId) {
   const provider = getProvider();
   const contract = getContract(provider);
   const raw = await contract.getEscrow(contractId);
-  const now = Math.floor(Date.now() / 1000);
+  // Chain clock here too, so the countdown cannot reach zero while
+  // isReleaseEligible still says no — which reads as a stuck button.
+  const now = await chainNow(provider);
   const releaseAt = Number(raw[10]);
   const challengeWindow = await contract.challengeWindowSeconds();
   const dispute = await contract.getDispute(contractId);
@@ -353,7 +367,7 @@ async function prepareDispute(contractId, contestedMilestone = "none") {
   const dispute = await contract.getDispute(contractId);
   const bondBps = await contract.disputeBondBps();
   const bondAmount = (raw[0] * bondBps) / 10000n;
-  const now = BigInt(Math.floor(Date.now() / 1000));
+  const now = BigInt(await chainNow(provider));
   let windowStillOpen = false;
   let challengeDeadline = 0n;
   if (normalized === 0) {
@@ -516,7 +530,15 @@ async function verifyAndSubmitAll(contractId, verification, { proofCidPrefix = "
 
     if (id > 1) {
       const prev = await contract.getMilestoneProof(contractId, id - 1);
-      const now = BigInt(Math.floor(Date.now() / 1000));
+      // The CHAIN's clock, not this machine's. The contract compares against
+      // block.timestamp, and on Amoy that trails wall time by seconds. Using
+      // Date.now() here meant that right at the edge of a window the guard let
+      // the call through and the contract reverted with "challenge window
+      // open" — reported as an error when it was only a matter of waiting.
+      //
+      // Reading the latest block errs the safe way: if the chain has not caught
+      // up we report "still waiting" instead of spending gas on a revert.
+      const now = BigInt(await chainNow(provider));
       if (prev[0] && now <= prev[4]) {
         results[name] = {
           status: "challenge_window_open",
@@ -618,6 +640,8 @@ module.exports = {
   getOracleIdentity,
   getOracleStatus,
   getOnchainEvidence,
+  chainNow,
+  getProvider,
   getEscrow,
   listEscrows,
   getTimelock,
