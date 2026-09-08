@@ -14,31 +14,18 @@ const {
   prepareDispute,
   getActivity,
   getVerifiers,
-  verifyAndSubmitAll
+  verifyAndSubmitAll,
+  chainNow,
+  getProvider
 } = require("./contractService");
 const { config } = require("./config");
 const { getDemoBalance, claimDemoBalance } = require("./faucetService");
-const { createIdentityService } = require("./identityService");
 
 const app = express();
 app.use(cors({
   origin: config.corsOrigins.includes("*") ? true : config.corsOrigins
 }));
 app.use(express.json({ limit: "1mb" }));
-
-let identities = null;
-function identityService() {
-  if (!identities) identities = createIdentityService({ storeFile: config.identityStoreFile, tokenSecret: config.authTokenSecret });
-  return identities;
-}
-
-function requireSession(req, _res, next) {
-  try {
-    const authorization = req.get("authorization") || "";
-    req.identity = identityService().authenticate(authorization.replace(/^Bearer\s+/i, ""));
-    next();
-  } catch (error) { next(error); }
-}
 
 function requireInternalApiKey(req, _res, next) {
   if (!config.internalApiKey) {
@@ -75,38 +62,6 @@ app.get("/health", async (_req, res, next) => {
       timestamp: new Date().toISOString()
     });
   } catch (error) { next(error); }
-});
-
-app.post("/auth/register-company", (req, res, next) => {
-  try { res.status(201).json(identityService().registerCompany(req.body || {})); } catch (error) { next(error); }
-});
-
-app.post("/auth/login", (req, res, next) => {
-  try { res.json(identityService().login(req.body || {})); } catch (error) { next(error); }
-});
-
-app.get("/auth/me", requireSession, (req, res, next) => {
-  try { res.json({ user: identityService().publicUser(req.identity.user), company: identityService().publicCompany(req.identity.company) }); } catch (error) { next(error); }
-});
-
-app.post("/auth/mfa/setup", requireSession, (req, res, next) => {
-  try { res.json(identityService().setupMfa((req.get("authorization") || "").replace(/^Bearer\s+/i, ""))); } catch (error) { next(error); }
-});
-
-app.post("/auth/mfa/confirm", (req, res, next) => {
-  try { res.json(identityService().confirmMfa(req.body || {})); } catch (error) { next(error); }
-});
-
-app.post("/auth/mfa/verify", (req, res, next) => {
-  try { res.json(identityService().verifyMfa(req.body || {})); } catch (error) { next(error); }
-});
-
-app.get("/companies/:companyId/users", requireSession, (req, res, next) => {
-  try { res.json(identityService().companyUsers((req.get("authorization") || "").replace(/^Bearer\s+/i, ""), req.params.companyId)); } catch (error) { next(error); }
-});
-
-app.post("/companies/:companyId/users", requireSession, (req, res, next) => {
-  try { res.status(201).json(identityService().addCompanyUser((req.get("authorization") || "").replace(/^Bearer\s+/i, ""), req.params.companyId, req.body || {})); } catch (error) { next(error); }
 });
 
 app.post("/demo-balance/claim", async (req, res, next) => {
@@ -188,27 +143,38 @@ app.get("/oracle/evidence/:contractId", async (req, res, next) => {
       .filter(([, item]) => item.discrepancyAfterCommit)
       .map(([milestone, item]) => ({ milestone, ...item }));
 
+    // Against block.timestamp, not this machine's clock: the contract decides
+    // whether a window is open, and a few seconds of drift here either hides a
+    // dispute the user could still raise, or offers one that reverts.
+    //
+    // Tolerated rather than required. The proof reads above already degrade to
+    // {submitted:false} when the chain is unreachable, so this route serves the
+    // source verdict with no chain at all — letting the clock read throw would
+    // have turned that into a 400 for the whole endpoint. With no chain there
+    // are no committed proofs either, so nothing is actionable regardless.
+    let actionable = false;
+    try {
+      const now = await chainNow(getProvider());
+      actionable = committedDiscrepancies.some(
+        (item) => item.challengeDeadlineUnix && now <= Number(item.challengeDeadlineUnix)
+      );
+    } catch {
+      actionable = false;
+    }
+
     res.json({
       ...status,
       onchain,
       comparison,
       committedDiscrepancies,
       disputeDemo: {
-        actionable: committedDiscrepancies.some(
-          (item) =>
-            item.challengeDeadlineUnix &&
-            Math.floor(Date.now() / 1000) <= Number(item.challengeDeadlineUnix)
-         ),
-        reason: committedDiscrepancies.some(
-          (item) =>
-            item.challengeDeadlineUnix &&
-            Math.floor(Date.now() / 1000) <= Number(item.challengeDeadlineUnix)
-  )
-    ? "A committed on-chain proof conflicts with the current source result and the challenge window is still open. The user may open a dispute."
-    : committedDiscrepancies.length > 0
-      ? "A committed on-chain proof conflicts with the current source result, but the applicable challenge window has closed."
-      : "No committed proof currently conflicts with the current source result."
-}
+        actionable,
+        reason: actionable
+          ? "A committed on-chain proof conflicts with the current source result and the challenge window is still open. The user may open a dispute."
+          : committedDiscrepancies.length > 0
+            ? "A committed on-chain proof conflicts with the current source result, but the applicable challenge window has closed."
+            : "No committed proof currently conflicts with the current source result."
+      }
     });
   } catch (error) { next(error); }
 });

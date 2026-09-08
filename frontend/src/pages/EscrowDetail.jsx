@@ -16,9 +16,17 @@ import { getBrowserContract } from "../lib/contract.js";
 import { CURRENCY_LABEL } from "../lib/currency.js";
 import { CONSORTIUM, defaultConsortium } from "../lib/oracles.js";
 import { shortAddress } from "../lib/actors.js";
-import { getVerifiers } from "../lib/sternApi.js";
+import { getTimelock, getVerifiers } from "../lib/sternApi.js";
 import { ROLE, ROLE_LABEL, roleOnEscrow } from "../lib/roles.js";
-import { claimRefundAsUser, initiateTimelockAsUser, releasePaymentAsUser } from "../lib/settlementFlow.js";
+import { raiseDisputeAsUser } from "../lib/disputeFlow.js";
+import {
+  approveExtensionAsUser,
+  claimRefundAsUser,
+  initiateTimelockAsUser,
+  proposeExtensionAsUser,
+  readPendingExtension,
+  releasePaymentAsUser
+} from "../lib/settlementFlow.js";
 import { stateFromIndex, formatEscrowId } from "../lib/escrowState.js";
 
 // The contract has THREE milestones (docs/01_CONTRACT_SPEC.md §4), each gated by
@@ -31,6 +39,15 @@ const CHECKS = [
   { key: "ais", milestoneKey: "shipped", field: "aisDeparted", label: "Shipped — vessel departed", source: "Shipping line · AIS", failDetail: "Vessel still in port" },
   { key: "ceisa", milestoneKey: "arrivedCleared", field: "ceisaApproved", label: "Arrived and cleared — customs approved", source: "Customs broker · CEISA", failDetail: "Customs clearance still pending" }
 ];
+
+// "3600 seconds" is not something anyone reads as an hour.
+function formatRemaining(seconds) {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
 
 const PERMISSIONS = {
   importer: { release: true, refund: true, dispute: true, vote: false, amend: true },
@@ -54,6 +71,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
   const [extensionInput, setExtensionInput] = useState("");
   const [chainMeta, setChainMeta] = useState(null);
   const [chainOracles, setChainOracles] = useState(null);
+  const [timelock, setTimelock] = useState(null);
   const [walletAccount, setWalletAccount] = useState(null);
 
   const permissions = PERMISSIONS[role] || PERMISSIONS.observer;
@@ -97,6 +115,26 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
         setChainOracles(null);
       }
     })();
+
+    // The list endpoint does not carry the timelock, so the detail page asks for
+    // it. Without this the Release button had no idea whether the contract would
+    // accept it, and pressing it early came back as a raw
+    // "timelock not elapsed" revert.
+    if (escrow.state === "TimelockActive") {
+      getTimelock(escrow.id)
+        .then(setTimelock)
+        .catch(() => setTimelock(null));
+    } else {
+      setTimelock(null);
+    }
+
+    // A pending amendment has to be visible to the party who did not propose it
+    // — they are the only one who can approve it. This used to load through
+    // window.ethereum, so for a Particle user the proposal never appeared and
+    // the flow could not complete. Plain RPC read; no wallet involved.
+    readPendingExtension(escrow.id)
+      .then((pending) => onUpdate(escrow.id, (current) => ({ ...current, pendingExtension: pending ? { ...pending, proposer: null } : null })))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [escrow.id, isChain]);
 
@@ -308,16 +346,13 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
 
   async function openDispute() {
     if (isChain) {
-      // Milestone 0 is Milestone.None — a dispute against the escrow as a
-      // whole — and the contract accepts it in exactly one state:
+      // A dispute against the escrow as a whole — Milestone.None — which the
+      // contract accepts in exactly one state:
       //
       //   require(escrow.state == State.TimelockActive, "general dispute only in timelock");
       //
-      // This button passed 0 unconditionally, so anywhere else it could only
-      // revert. Contesting a specific milestone needs its challenge window and
-      // its bond, which the Evidence panel already works out from
-      // GET /oracle/evidence/:id — so send the user there rather than guessing
-      // a milestone from this side.
+      // Checked here only so the refusal names the reason. The gateway checks it
+      // again against live chain state, and that answer is the one that counts.
       if (escrow.state !== "TimelockActive") {
         fail(
           "A general dispute is only possible during the timelock. To contest a specific " +
@@ -326,12 +361,18 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
         );
         return;
       }
-      const contract = await getBrowserContract();
-      const tx = await contract.raiseDispute(escrow.id, 0);
-      await tx.wait();
-      await syncChain();
-      ok("Dispute opened — funds frozen until the arbiter resolves it.");
-      log("opened a dispute on-chain");
+
+      // Goes through the same path as the Evidence panel's dispute, and for two
+      // reasons. It used to call getBrowserContract(), which reads
+      // window.ethereum — a user who signed in through Particle has no injected
+      // wallet, so it threw before reaching the chain. And raiseDispute pulls a
+      // bond with safeTransferFrom, which needs an ERC-20 approval this button
+      // never sent: even with a wallet it could only revert. prepareDispute
+      // returns both calldatas and they go out as one UserOperation.
+      const { transactionHash, bond } = await raiseDisputeAsUser(smartAccountClient, escrow.id, "none");
+      onRefresh?.();
+      ok(`Dispute opened, ${Number(bond).toLocaleString("id-ID")} bond locked (tx ${transactionHash.slice(0, 10)}…). Funds are frozen until the arbiter resolves it.`);
+      log("opened a general dispute on-chain");
       return;
     }
 
@@ -397,9 +438,8 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
     }
 
     if (isChain) {
-      const contract = await getBrowserContract();
-      const tx = await contract.proposeDeadlineExtension(escrow.id, Math.floor(newDeadlineMs / 1000));
-      await tx.wait();
+      await proposeExtensionAsUser(smartAccountClient, escrow.id, Math.floor(newDeadlineMs / 1000));
+      onRefresh?.();
       ok("Extension proposed — waiting for the counterparty's approval.");
       log("proposed a deadline extension on-chain");
       return;
@@ -425,14 +465,12 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
         escrow.pendingExtension.proposerAddress.toLowerCase() === walletAccount.toLowerCase()
       ) {
         fail(
-          `You proposed this extension — the counterparty must approve it. MetaMask is still on ${shortAddress(walletAccount)}; switch to the other party's account first.`
+          "You proposed this extension, so the counterparty is the one who approves it. The contract refuses an approval from the proposer."
         );
         return;
       }
-      const contract = await getBrowserContract();
-      const tx = await contract.approveDeadlineExtension(escrow.id);
-      await tx.wait();
-      await syncChain();
+      await approveExtensionAsUser(smartAccountClient, escrow.id);
+      onRefresh?.();
       ok("Amendment signed by both parties — deadline extended.");
       log("approved the deadline extension on-chain");
       return;
@@ -442,7 +480,11 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
       fail("No pending extension to approve.");
       return;
     }
-    if (escrow.pendingExtension.proposer === role) {
+    const proposedByMe =
+      escrow.pendingExtension.proposerAddress &&
+      walletAddress &&
+      escrow.pendingExtension.proposerAddress.toLowerCase() === String(walletAddress).toLowerCase();
+    if (proposedByMe || escrow.pendingExtension.proposer === role) {
       fail("The proposer cannot approve their own extension.");
       return;
     }
@@ -727,6 +769,18 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
           </Panel>
 
           <Panel title={`Actions · ${role}`}>
+            {/* The contract's own isReleaseEligible, surfaced. Saying "not yet"
+                with the time is the difference between a disabled button and a
+                raw "timelock not elapsed" revert. */}
+            {timelock && !timelock.canRelease ? (
+              <p className="mb-3 rounded-panel border border-state-pending/40 bg-state-pending/[0.08] px-3 py-2.5 font-serif text-xs leading-relaxed text-state-pending">
+                Timelock running. Release opens{" "}
+                {new Date(timelock.timelockReleaseAt).toLocaleString("id-ID")}
+                {Number(timelock.secondsRemaining) > 0
+                  ? ` — about ${formatRemaining(Number(timelock.secondsRemaining))} from now.`
+                  : "."}
+              </p>
+            ) : null}
             <div className="space-y-2">
               {/* The step between "all three verified" and "release", and it was
                   missing entirely. releasePayment requires State.TimelockActive,
@@ -744,8 +798,20 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
               ) : null}
               <button
                 type="button"
-                disabled={busy || terminal || escrow.state === "Disputed" || !permissions.release}
-                title={permissions.release ? undefined : "Only importer or exporter trigger release"}
+                disabled={
+                  busy ||
+                  terminal ||
+                  escrow.state === "Disputed" ||
+                  !permissions.release ||
+                  (timelock ? !timelock.canRelease : false)
+                }
+                title={
+                  !permissions.release
+                    ? "Only importer or exporter trigger release"
+                    : timelock && !timelock.canRelease
+                      ? `The timelock has not elapsed. Release opens ${new Date(timelock.timelockReleaseAt).toLocaleString("id-ID")}.`
+                      : undefined
+                }
                 onClick={() => run(release)}
                 className={`${railBtn} bg-state-attested/10 text-state-attested hover:bg-state-attested/20`}
               >
