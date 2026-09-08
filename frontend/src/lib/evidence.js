@@ -106,7 +106,11 @@ const VERIFY_TONE = {
   waiting: "wait",
   challenge_window_open: "wait",
   blocked: "wait",
-  not_ready: "wait"
+  not_ready: "wait",
+  // Not a protocol failure and not something waiting will fix — someone has to
+  // top the wallet up. Amber rather than red: nothing is broken, it is out of
+  // fuel.
+  verifier_out_of_gas: "wait"
 };
 
 export function verifyResultRows(response) {
