@@ -23,7 +23,16 @@ export default function CompanyAccess() {
   if (session) {
     return <div className="mt-5 border-t border-sky pt-4 text-xs text-ink-dim">
       <p><span className="font-medium text-navy">Company session active:</span> {session.company.name} · {session.user.role}</p>
+      {/* Two separate sessions, and nothing said so. This one identifies the
+          company to the backend; the workspace needs a wallet, which only
+          Particle provides. After finishing MFA the panel simply sat there and
+          the page looked stuck — the next step was above it all along. */}
+      <p className="mt-1.5 font-serif leading-relaxed">
+        This signs you in as the company. To open the workspace you still need a wallet —
+        use <span className="text-navy">Continue with Google</span> above.
+      </p>
       {!session.user.mfaEnabled ? <button type="button" disabled={busy} onClick={() => run(async () => setSetup(await beginMfaSetup(session.accessToken)))} className="mt-2 text-xs font-medium text-teal underline underline-offset-2 disabled:opacity-50">Enable MFA</button> : <p className="mt-2 text-teal">MFA enabled</p>}
+      {error ? <p role="alert" className="mt-2 text-xs text-state-disputed">{error}</p> : null}
       {setup ? <div className="mt-3 space-y-2"><p className="break-all font-mono text-2xs text-navy">{setup.secret}</p><input aria-label="MFA verification code" inputMode="numeric" maxLength="6" value={code} onChange={(event) => setCode(event.target.value)} placeholder="Authenticator code" className="w-full border border-sky bg-surface px-3 py-2 text-xs text-navy" /><button type="button" disabled={busy || code.length !== 6} onClick={() => run(async () => { const result = await confirmMfaSetup({ setupToken: setup.setupToken, code }); setSession((current) => ({ ...current, user: result.user })); setSetup(null); setCode(""); })} className="border border-teal px-3 py-2 text-xs font-medium text-teal disabled:opacity-50">Confirm MFA</button></div> : null}
     </div>;
   }

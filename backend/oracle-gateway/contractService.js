@@ -570,7 +570,28 @@ async function verifyAndSubmitAll(contractId, verification, { proofCidPrefix = "
         verifier: submitted.verifier
       };
     } catch (error) {
-      results[name] = { status: "error", reason: error.reason || error.shortMessage || error.message };
+      const raw = error.reason || error.shortMessage || error.message || "";
+      // "insufficient funds for intrinsic transaction cost" is the node telling
+      // us a wallet cannot pay gas, but it names neither the wallet nor the
+      // balance — so the reader has no way to know WHICH of the three verifiers
+      // to top up. The gateway knows both; say them.
+      if (/insufficient funds/i.test(raw)) {
+        let detail = "";
+        try {
+          const wallet = pickVerifier(getVerifierWallets(provider), name);
+          const balance = await provider.getBalance(wallet.address);
+          detail = ` Verifier ${wallet.address} holds ${ethers.formatEther(balance)} MATIC. Fund it from an Amoy faucet and press Verify again.`;
+        } catch {
+          detail = " Fund the verifier wallets with Amoy MATIC and press Verify again.";
+        }
+        results[name] = {
+          status: "verifier_out_of_gas",
+          reason: `The ${name} verifier cannot pay gas.${detail}`
+        };
+        stop = true;
+        continue;
+      }
+      results[name] = { status: "error", reason: raw };
       stop = true;
     }
   }
