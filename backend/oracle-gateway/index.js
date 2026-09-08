@@ -20,12 +20,27 @@ const {
 } = require("./contractService");
 const { config } = require("./config");
 const { getDemoBalance, claimDemoBalance } = require("./faucetService");
+const { createIdentityService } = require("./identityService");
 
 const app = express();
 app.use(cors({
   origin: config.corsOrigins.includes("*") ? true : config.corsOrigins
 }));
 app.use(express.json({ limit: "1mb" }));
+
+let identities = null;
+function identityService() {
+  if (!identities) identities = createIdentityService({ storeFile: config.identityStoreFile, tokenSecret: config.authTokenSecret });
+  return identities;
+}
+
+function requireSession(req, _res, next) {
+  try {
+    const authorization = req.get("authorization") || "";
+    req.identity = identityService().authenticate(authorization.replace(/^Bearer\s+/i, ""));
+    next();
+  } catch (error) { next(error); }
+}
 
 function requireInternalApiKey(req, _res, next) {
   if (!config.internalApiKey) {
@@ -62,6 +77,38 @@ app.get("/health", async (_req, res, next) => {
       timestamp: new Date().toISOString()
     });
   } catch (error) { next(error); }
+});
+
+app.post("/auth/register-company", (req, res, next) => {
+  try { res.status(201).json(identityService().registerCompany(req.body || {})); } catch (error) { next(error); }
+});
+
+app.post("/auth/login", (req, res, next) => {
+  try { res.json(identityService().login(req.body || {})); } catch (error) { next(error); }
+});
+
+app.get("/auth/me", requireSession, (req, res, next) => {
+  try { res.json({ user: identityService().publicUser(req.identity.user), company: identityService().publicCompany(req.identity.company) }); } catch (error) { next(error); }
+});
+
+app.post("/auth/mfa/setup", requireSession, (req, res, next) => {
+  try { res.json(identityService().setupMfa((req.get("authorization") || "").replace(/^Bearer\s+/i, ""))); } catch (error) { next(error); }
+});
+
+app.post("/auth/mfa/confirm", (req, res, next) => {
+  try { res.json(identityService().confirmMfa(req.body || {})); } catch (error) { next(error); }
+});
+
+app.post("/auth/mfa/verify", (req, res, next) => {
+  try { res.json(identityService().verifyMfa(req.body || {})); } catch (error) { next(error); }
+});
+
+app.get("/companies/:companyId/users", requireSession, (req, res, next) => {
+  try { res.json(identityService().companyUsers((req.get("authorization") || "").replace(/^Bearer\s+/i, ""), req.params.companyId)); } catch (error) { next(error); }
+});
+
+app.post("/companies/:companyId/users", requireSession, (req, res, next) => {
+  try { res.status(201).json(identityService().addCompanyUser((req.get("authorization") || "").replace(/^Bearer\s+/i, ""), req.params.companyId, req.body || {})); } catch (error) { next(error); }
 });
 
 app.post("/demo-balance/claim", async (req, res, next) => {
@@ -175,6 +222,34 @@ app.get("/oracle/evidence/:contractId", async (req, res, next) => {
             ? "A committed on-chain proof conflicts with the current source result, but the applicable challenge window has closed."
             : "No committed proof currently conflicts with the current source result."
       }
+    });
+  } catch (error) { next(error); }
+});
+
+// Triggers the gateway's own verification and commits whatever passes.
+//
+// Deliberately NOT behind requireInternalApiKey, unlike /submit-oracle and
+// /milestones/:id/submit. Those two let the caller choose the milestone, the
+// proof CID and the source overrides — hand that to a browser and anyone can
+// forge a proof. This one takes no such input: it reads the sources itself,
+// applies the same automated gate, and refuses anything that fails. There is
+// nothing here for a caller to steer.
+//
+// What it does still hand out is the gateway's gas, so on a public deployment
+// this wants a rate limit, or a scheduled submitter instead of an endpoint —
+// in production nothing triggers this at all; the gateway watches the sources
+// and submits on its own.
+app.post("/oracle/verify/:contractId", async (req, res, next) => {
+  try {
+    const status = getMockStatus(req.params.contractId, mergedOracleOptions(req.body || {}));
+    const outcome = await verifyAndSubmitAll(req.params.contractId, status.verification, {
+      proofCidPrefix: req.body?.proofCidPrefix || "bafy-verified"
+    });
+    res.json({
+      ...outcome,
+      verification: status.verification,
+      evidence: status.evidence,
+      allVerified: status.allVerified
     });
   } catch (error) { next(error); }
 });

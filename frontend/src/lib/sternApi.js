@@ -30,7 +30,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request(path, { method = "GET", body, signal } = {}) {
+async function request(path, { method = "GET", body, signal, headers } = {}) {
   if (!apiConfigured) {
     throw new ApiError(
       "No backend configured. Set VITE_ORACLE_API in .env (the gateway runs on http://localhost:4000 by default).",
@@ -44,7 +44,7 @@ async function request(path, { method = "GET", body, signal } = {}) {
     response = await fetch(url, {
       method,
       signal,
-      headers: body ? { "Content-Type": "application/json" } : undefined,
+      headers: body ? { "Content-Type": "application/json", ...headers } : headers,
       body: body ? JSON.stringify(body) : undefined
     });
   } catch (cause) {
@@ -86,6 +86,19 @@ async function request(path, { method = "GET", body, signal } = {}) {
   }
   return payload;
 }
+
+function identityRequest(path, { token, ...options } = {}) {
+  return request(path, {
+    ...options,
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined
+  });
+}
+
+export const registerCompany = (body) => identityRequest("/auth/register-company", { method: "POST", body });
+export const companyLogin = (body) => identityRequest("/auth/login", { method: "POST", body });
+export const beginMfaSetup = (token) => identityRequest("/auth/mfa/setup", { method: "POST", token });
+export const confirmMfaSetup = (body) => identityRequest("/auth/mfa/confirm", { method: "POST", body });
+export const verifyMfa = (body) => identityRequest("/auth/mfa/verify", { method: "POST", body });
 
 // --- Escrows ---------------------------------------------------------------
 // `address` filters to escrows where the address is importer, exporter or
