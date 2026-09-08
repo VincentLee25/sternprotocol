@@ -254,34 +254,6 @@ app.post("/oracle/verify/:contractId", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// Triggers the gateway's own verification and commits whatever passes.
-//
-// Deliberately NOT behind requireInternalApiKey, unlike /submit-oracle and
-// /milestones/:id/submit. Those two let the caller choose the milestone, the
-// proof CID and the source overrides — hand that to a browser and anyone can
-// forge a proof. This one takes no such input: it reads the sources itself,
-// applies the same automated gate, and refuses anything that fails. There is
-// nothing here for a caller to steer.
-//
-// What it does still hand out is the gateway's gas, so on a public deployment
-// this wants a rate limit, or a scheduled submitter instead of an endpoint —
-// in production nothing triggers this at all; the gateway watches the sources
-// and submits on its own.
-app.post("/oracle/verify/:contractId", async (req, res, next) => {
-  try {
-    const status = getMockStatus(req.params.contractId, mergedOracleOptions(req.body || {}));
-    const outcome = await verifyAndSubmitAll(req.params.contractId, status.verification, {
-      proofCidPrefix: req.body?.proofCidPrefix || "bafy-verified"
-    });
-    res.json({
-      ...outcome,
-      verification: status.verification,
-      evidence: status.evidence,
-      allVerified: status.allVerified
-    });
-  } catch (error) { next(error); }
-});
-
 app.post("/oracle/simulate/:contractId", (req, res, next) => {
   try {
     const body = req.body || {};
