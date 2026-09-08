@@ -24,6 +24,7 @@ import {
   claimRefundAsUser,
   initiateTimelockAsUser,
   proposeExtensionAsUser,
+  readPendingExtension,
   releasePaymentAsUser
 } from "../lib/settlementFlow.js";
 import { stateFromIndex, formatEscrowId } from "../lib/escrowState.js";
@@ -126,6 +127,14 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
     } else {
       setTimelock(null);
     }
+
+    // A pending amendment has to be visible to the party who did not propose it
+    // — they are the only one who can approve it. This used to load through
+    // window.ethereum, so for a Particle user the proposal never appeared and
+    // the flow could not complete. Plain RPC read; no wallet involved.
+    readPendingExtension(escrow.id)
+      .then((pending) => onUpdate(escrow.id, (current) => ({ ...current, pendingExtension: pending ? { ...pending, proposer: null } : null })))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [escrow.id, isChain]);
 
@@ -471,7 +480,11 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
       fail("No pending extension to approve.");
       return;
     }
-    if (escrow.pendingExtension.proposer === role) {
+    const proposedByMe =
+      escrow.pendingExtension.proposerAddress &&
+      walletAddress &&
+      escrow.pendingExtension.proposerAddress.toLowerCase() === String(walletAddress).toLowerCase();
+    if (proposedByMe || escrow.pendingExtension.proposer === role) {
       fail("The proposer cannot approve their own extension.");
       return;
     }

@@ -13,6 +13,7 @@
 // signing path with disputeFlow.js.
 import { encodeFunctionData } from "viem";
 import { ESCROW_ADDRESS } from "./sternContract.js";
+import { publicClient } from "./smartAccount.js";
 
 const ABI = [
   { type: "function", name: "initiateTimelock", stateMutability: "nonpayable", inputs: [{ name: "escrowId", type: "uint256" }], outputs: [] },
@@ -109,3 +110,31 @@ export const approveExtensionAsUser = (client, escrowId) =>
     [escrowId],
     "Only the other party approves — whoever proposed the extension cannot approve it."
   );
+
+const READ_ABI = [
+  { type: "function", name: "pendingDeadline", stateMutability: "view", inputs: [{ type: "uint256" }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "extensionProposer", stateMutability: "view", inputs: [{ type: "uint256" }], outputs: [{ type: "address" }] }
+];
+
+/**
+ * The pending deadline extension, if there is one.
+ *
+ * Read over plain RPC rather than through a wallet. This used to come from
+ * getBrowserContract(), so for a Particle user it never loaded at all — and the
+ * whole amendment flow depends on the counterparty being able to SEE a proposal
+ * before they can approve it. An invisible proposal is an unapprovable one.
+ *
+ * Returns null when nothing is pending, which is the common case.
+ */
+export async function readPendingExtension(escrowId) {
+  if (!ESCROW_ADDRESS) return null;
+  const [deadline, proposer] = await Promise.all([
+    publicClient.readContract({ address: ESCROW_ADDRESS, abi: READ_ABI, functionName: "pendingDeadline", args: [BigInt(escrowId)] }),
+    publicClient.readContract({ address: ESCROW_ADDRESS, abi: READ_ABI, functionName: "extensionProposer", args: [BigInt(escrowId)] })
+  ]);
+  if (!deadline || deadline === 0n) return null;
+  return {
+    newDeadline: new Date(Number(deadline) * 1000).toISOString(),
+    proposerAddress: proposer
+  };
+}
