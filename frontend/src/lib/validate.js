@@ -46,8 +46,16 @@ export function validateEscrowForm(form, cid) {
     const deadlineMs = new Date(form.deadline).getTime();
     if (!Number.isFinite(deadlineMs)) {
       errors.deadline = "Invalid date.";
-    } else if (deadlineMs < Date.now() + 60 * 60 * 1000) {
-      errors.deadline = "Deadline must be at least 1 hour in the future — the contract rejects past deadlines.";
+    } else if (deadlineMs < Date.now() + 2 * 60 * 1000) {
+      // The contract asks only for `globalDeadline > block.timestamp`. The two
+      // minutes here are for clock drift between this browser and the chain,
+      // nothing more.
+      //
+      // This used to demand a full hour, which is not a rule the contract has —
+      // and it made claimRefund impossible to exercise, since a refund needs the
+      // deadline to have PASSED. An hour of waiting to test one button is not a
+      // safety property, it is an obstacle.
+      errors.deadline = "Deadline must be at least a couple of minutes ahead — the contract rejects a deadline that is already past.";
     }
   }
 

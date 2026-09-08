@@ -817,10 +817,25 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
               >
                 Release settlement
               </button>
+              {/* Two corrections. The deadline was never checked, so the button
+                  was live from the moment the escrow existed and came back
+                  "global deadline not passed" — the same shape of revert the
+                  timelock used to produce.
+
+                  And a dispute was treated as blocking, which the contract does
+                  not do: claimRefund runs while disputed and returns the bond to
+                  whoever raised it. Refusing here withheld a remedy the contract
+                  grants, from the party whose funds are frozen. */}
               <button
                 type="button"
-                disabled={busy || terminal || escrow.state === "Disputed" || !permissions.refund}
-                title={permissions.refund ? undefined : "Only the importer can claim a refund"}
+                disabled={busy || terminal || !permissions.refund || !deadlinePassed}
+                title={
+                  !permissions.refund
+                    ? "Only the importer can claim a refund"
+                    : !deadlinePassed
+                      ? `Refund opens after the settlement deadline, ${new Date(escrow.deadline).toLocaleString("id-ID")}.`
+                      : undefined
+                }
                 onClick={() => run(refund)}
                 className={`${railBtn} bg-beige text-navy hover:bg-sky/50`}
               >
