@@ -1,14 +1,31 @@
 import { ArrowUpRight } from "lucide-react";
 
-// PLACEHOLDER PROFILES. Names are deliberately shown as empty mono slots so a
-// half-filled team block can never be mistaken for real credentials in a deck.
-// Replace `name` with real values before any public deployment.
+// --- TEAM PHOTOS ------------------------------------------------------------
+// Drop the files in src/assets/, then uncomment the matching import and set
+// `photo` on that person. Anyone without a photo keeps the dashed placeholder,
+// so the block reads correctly while it is half filled.
+//
+// Format: square JPG or WebP, 400×400 or larger, under ~200 KB each. Vite
+// fingerprints and inlines the URL at build time, which is why these are
+// imports rather than a "/assets/..." string — a plain path would 404 in the
+// production build.
+//
+// import photoContracts from "../assets/team-contracts.jpg";
+// import photoGateway from "../assets/team-gateway.jpg";
+// import photoFrontend from "../assets/team-frontend.jpg";
+// import photoTrade from "../assets/team-trade.jpg";
+
+// Fill `name` before any public deploy. An empty name keeps the slot visibly
+// blank rather than letting a half-filled team block pass as real credentials.
 const TEAM = [
-  { role: "Smart contracts", name: "", credential: "Solidity, Hardhat, OpenZeppelin. Owns SternEscrow and IDRTDemo." },
-  { role: "Oracle gateway", name: "", credential: "Node and Express. Owns the automated gate and the verifier relay." },
-  { role: "Frontend and design", name: "", credential: "React, Vite, Tailwind. Owns the workspace and this site." },
-  { role: "Trade and compliance", name: "", credential: "Export documentation, PEB and CEISA workflow, surveyor liaison." }
+  { role: "Smart contracts", name: "", photo: null, credential: "Solidity, Hardhat, OpenZeppelin. Owns SternEscrow and IDRTDemo." },
+  { role: "Oracle gateway", name: "", photo: null, credential: "Node and Express. Owns the automated gate and the verifier relay." },
+  { role: "Frontend and design", name: "", photo: null, credential: "React, Vite, Tailwind. Owns the workspace and this site." },
+  { role: "Trade and compliance", name: "", photo: null, credential: "Export documentation, PEB and CEISA workflow, surveyor liaison." }
 ];
+
+// The warning only makes sense while the slots are actually empty.
+const teamIncomplete = TEAM.some((person) => !person.name);
 
 const NAV = [
   { id: "instrument", label: "Instrument" },
@@ -34,22 +51,41 @@ export default function CredentialsFooter({ onNavigate, onEnter }) {
                 Professional credentials
               </h2>
             </div>
-            <p className="max-w-[46ch] rounded-panel bg-state-pending/10 px-4 py-2.5 text-2xs uppercase leading-relaxed text-state-pending">
-              Placeholder profiles. Fill the name slots before any public deploy.
-            </p>
+            {teamIncomplete ? (
+              <p className="max-w-[46ch] rounded-panel bg-state-pending/10 px-4 py-2.5 text-2xs uppercase leading-relaxed text-state-pending">
+                Placeholder profiles. Fill the name slots before any public deploy.
+              </p>
+            ) : null}
           </div>
 
           <div className="grid gap-px overflow-hidden rounded-doc bg-alabaster/10 sm:grid-cols-2 lg:grid-cols-4">
             {TEAM.map((person) => (
               <div key={person.role} className="flex flex-col gap-3 bg-onyx p-6">
-                <span
-                  aria-hidden="true"
-                  className="grid h-11 w-11 place-items-center rounded-full border border-dashed border-alabaster/35 text-sm text-alabaster/60"
-                >
-                  ?
-                </span>
+                {/* object-cover so a portrait that is not square crops rather
+                    than squashing the face. */}
+                {person.photo ? (
+                  <img
+                    src={person.photo}
+                    alt={person.name || person.role}
+                    width="44"
+                    height="44"
+                    loading="lazy"
+                    className="h-11 w-11 shrink-0 rounded-full object-cover"
+                  />
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    className="grid h-11 w-11 place-items-center rounded-full border border-dashed border-alabaster/35 text-sm text-alabaster/60"
+                  >
+                    ?
+                  </span>
+                )}
                 <div>
-                  <p className="text-sm text-alabaster/60">[ full name ]</p>
+                  {person.name ? (
+                    <p className="text-[15px] font-medium text-alabaster">{person.name}</p>
+                  ) : (
+                    <p className="text-sm text-alabaster/60">[ full name ]</p>
+                  )}
                   <p className="mt-1.5 text-[15px] font-medium text-alabaster">{person.role}</p>
                 </div>
                 <p className="mt-auto font-serif text-[14px] leading-relaxed text-alabaster/90">
