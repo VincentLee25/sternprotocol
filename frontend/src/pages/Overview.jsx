@@ -4,10 +4,11 @@ import {
 } from "lucide-react";
 import StatusPill from "../components/StatusPill.jsx";
 import ActivityRail from "../components/ActivityRail.jsx";
+import { Button, EmptyState, Metric, Notice, Th } from "../components/ui.jsx";
 import { loadEscrowRows, sourceIsLive, sourceLabel } from "../lib/escrowSource.js";
 import { CURRENCY_LABEL } from "../lib/currency.js";
 import { formatEscrowId } from "../lib/escrowState.js";
-import { MILESTONES, STATE_ORDER, STATE_LABELS } from "../lib/milestones.js";
+import { MILESTONES, STATE_ORDER } from "../lib/milestones.js";
 
 const PAGE_SIZE = 6;
 
@@ -121,9 +122,20 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
     const bondAtRisk = disputes.reduce((sum, e) => sum + (Number(e.value) || 0) * 0.02, 0);
     const perMilestone = MILESTONES.map((m, i) => ({
       label: m.label,
-      done: active.filter((e) => (e.verified ?? 0) > i).length,
+      done: active.filter((e) => (e.verified ?? verifiedFromState(e.state)) > i).length,
       of: active.length
     }));
+    // Deadlines inside 72 hours, the horizon DESIGN.md asks the overview to
+    // surface: it is the number that decides what an operator does today.
+    const soon = active.filter((e) => {
+      if (!e.deadline) return false;
+      const ms = new Date(e.deadline).getTime() - Date.now();
+      return ms > 0 && ms <= 72 * 3600 * 1000;
+    }).length;
+    const overdue = active.filter(
+      (e) => e.deadline && new Date(e.deadline).getTime() < Date.now()
+    ).length;
+
     return {
       locked,
       byBucket,
@@ -132,7 +144,9 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
       settledValue: settled.reduce((s, e) => s + (Number(e.value) || 0), 0),
       disputeCount: disputes.length,
       bondAtRisk,
-      perMilestone
+      perMilestone,
+      soon,
+      overdue
     };
   }, [rows]);
 
@@ -151,72 +165,46 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
 
   return (
     <div className="w-full">
-      <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-2xs uppercase text-ink-faint">
-            {sourceIsLive ? "Settlement registry" : "Mock session"}
-          </p>
-          <h1 className="mt-1.5 text-[30px] font-bold leading-none tracking-display text-navy">
-            Escrows
-          </h1>
-          <p className="mt-2 font-serif text-[15px] text-teal">
-            {sourceIsLive
-              ? sourceLabel
-              : "Demo data. Set VITE_ORACLE_API to read escrows from the gateway."}
-          </p>
-        </div>
-        <div className="flex gap-2.5">
-          {sourceIsLive ? (
-            <button
-              type="button"
-              onClick={() => load()}
-              disabled={loading}
-              className="flex cursor-pointer items-center gap-2 rounded-full border border-sky bg-surface px-5 py-2.5 text-[13px] font-medium text-navy transition-colors duration-150 hover:border-teal/40 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <RefreshCcw size={13} aria-hidden="true" />
-              Refresh
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={onCreate}
-            className="cursor-pointer rounded-full bg-navy px-6 py-2.5 text-[13px] font-medium text-beige transition-colors duration-150 hover:bg-teal-solid"
-          >
-            New escrow
-          </button>
-        </div>
-      </header>
+      {!sourceIsLive ? (
+        <Notice tone="pending" className="mb-5">
+          Demo data. Set <code className="font-mono text-[12px]">VITE_ORACLE_API</code> to read
+          escrows from the gateway.
+        </Notice>
+      ) : null}
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_336px]">
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0">
-          {/* ---------- KPI row ---------- */}
+          {/* ---------- KPI strip ----------
+              Four numbers, one row, no decorative tint per card. DESIGN.md is
+              explicit that the overview should not become a grid of colourful
+              dashboard cards, so the composition bar lives inside the value
+              card rather than becoming a fifth box. */}
           <section className="mb-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-doc bg-surface p-5 shadow-card xl:col-span-2">
-              <p className="text-2xs uppercase text-ink-faint">Value locked</p>
-              <p className="mt-2 text-[28px] font-medium leading-none tabular-nums tracking-display text-navy">
-                {stats.locked.toLocaleString()}
-                <span className="ml-2 align-middle text-2xs uppercase text-ink-faint">
-                  {CURRENCY_LABEL}
-                </span>
-              </p>
+            <Metric
+              label="Active escrow value"
+              value={stats.locked.toLocaleString()}
+              unit={CURRENCY_LABEL}
+              className="xl:col-span-2"
+            >
               <CompositionBar total={stats.locked} byBucket={stats.byBucket} />
-            </div>
+            </Metric>
 
-            <div className="rounded-doc bg-surface p-5 shadow-card">
-              <p className="text-2xs uppercase text-ink-faint">Milestones verified</p>
-              <p className="mt-2 text-[28px] font-medium leading-none tabular-nums tracking-display text-navy">
-                {stats.perMilestone.reduce((s, m) => s + m.done, 0)}
-                <span className="text-ink-faint">
-                  /{stats.activeCount * MILESTONES.length}
-                </span>
-              </p>
+            <Metric
+              label="Milestones verified"
+              value={
+                <>
+                  {stats.perMilestone.reduce((s, m) => s + m.done, 0)}
+                  <span className="text-ink-faint">/{stats.activeCount * MILESTONES.length}</span>
+                </>
+              }
+            >
               <div className="mt-4 space-y-2">
                 {stats.perMilestone.map((m) => (
                   <div key={m.label} className="flex items-center gap-2.5">
-                    <span className="w-[86px] shrink-0 truncate text-[12px] text-ink-dim">
+                    <span className="w-[104px] shrink-0 truncate text-[12px] text-ink-dim">
                       {m.label}
                     </span>
-                    <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-sky/50">
+                    <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-sky">
                       <span
                         className="block h-full rounded-full bg-state-attested"
                         style={{ width: `${m.of ? (m.done / m.of) * 100 : 0}%` }}
@@ -228,23 +216,28 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                   </div>
                 ))}
               </div>
-            </div>
+            </Metric>
 
-            <div className="rounded-doc bg-surface p-5 shadow-card">
-              <p className="text-2xs uppercase text-ink-faint">Open disputes</p>
-              <p
-                className={`mt-2 text-[28px] font-medium leading-none tabular-nums tracking-display ${
-                  stats.disputeCount > 0 ? "text-state-disputed" : "text-navy"
-                }`}
-              >
-                {stats.disputeCount}
-              </p>
+            <Metric
+              label="Open disputes"
+              value={stats.disputeCount}
+              tone={stats.disputeCount > 0 ? "disputed" : "default"}
+            >
               <div className="mt-4 space-y-1.5 border-t border-sky pt-3">
-                <Row label="Bond locked" value={`${Math.round(stats.bondAtRisk).toLocaleString()}`} />
-                <Row label="Settled" value={String(stats.settledCount)} />
+                <Row
+                  label="Deadlines in 72h"
+                  value={String(stats.soon)}
+                  tone={stats.soon > 0 ? "pending" : undefined}
+                />
+                <Row
+                  label="Past deadline"
+                  value={String(stats.overdue)}
+                  tone={stats.overdue > 0 ? "disputed" : undefined}
+                />
+                <Row label="Bond locked" value={Math.round(stats.bondAtRisk).toLocaleString()} />
                 <Row label="Settled value" value={stats.settledValue.toLocaleString()} />
               </div>
-            </div>
+            </Metric>
           </section>
 
           {/* ---------- toolbar ---------- */}
@@ -256,22 +249,25 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                   type="button"
                   onClick={() => setFilter(f.key)}
                   aria-pressed={filter === f.key}
-                  className={`cursor-pointer rounded-full px-3.5 py-1.5 text-[13px] transition-colors duration-150 ${
+                  className={`cursor-pointer whitespace-nowrap rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition-colors duration-150 ${
                     filter === f.key
-                      ? "bg-navy text-beige"
-                      : "bg-surface text-ink-dim hover:text-navy"
+                      ? "border-teal-solid bg-teal-solid text-white"
+                      : "border-sky bg-surface text-ink-dim hover:border-teal/40 hover:text-navy"
                   }`}
                 >
                   {f.label}
-                  <span className={`ml-1.5 tabular-nums ${filter === f.key ? "opacity-70" : "opacity-60"}`}>
+                  <span className={`ml-1.5 tabular-nums ${filter === f.key ? "opacity-75" : "opacity-70"}`}>
                     {counts[f.key] ?? 0}
                   </span>
                 </button>
               ))}
             </div>
 
-            <div className="flex items-center gap-2">
-              <label className="relative">
+            {/* Wraps below sm, and the search takes the full row there: at 390px
+                a fixed 240px field plus the sort and refresh controls pushed
+                past the viewport edge. */}
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+              <label className="relative w-full sm:w-auto">
                 <span className="sr-only">Search escrows</span>
                 <Search
                   size={14}
@@ -282,10 +278,10 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search commodity or container"
-                  className="w-[240px] rounded-full border border-sky bg-surface py-2 pl-8 pr-3.5 text-[13px] text-navy placeholder:text-ink-faint focus:border-teal focus:outline-none"
+                  className="h-10 w-full rounded-panel border border-sky bg-surface pl-8 pr-3.5 text-[13px] text-navy placeholder:text-ink-faint focus:border-teal focus:outline-none sm:w-[240px]"
                 />
               </label>
-              <label className="flex items-center gap-1.5 rounded-full border border-sky bg-surface py-2 pl-3 pr-2 text-[13px] text-ink-dim">
+              <label className="flex h-10 items-center gap-1.5 rounded-panel border border-sky bg-surface pl-3 pr-2 text-[13px] text-ink-dim">
                 <ArrowUpDown size={13} aria-hidden="true" />
                 <span className="sr-only">Sort by</span>
                 <select
@@ -300,6 +296,11 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                   ))}
                 </select>
               </label>
+              {sourceIsLive ? (
+                <Button size="md" icon={RefreshCcw} onClick={() => load()} disabled={loading}>
+                  Refresh
+                </Button>
+              ) : null}
             </div>
           </div>
 
@@ -316,23 +317,21 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
             </div>
           ) : null}
 
-          {chainStatus ? (
-            <p className="mb-3 font-serif text-sm text-ink-dim">{chainStatus}</p>
-          ) : null}
+          {chainStatus ? <Notice className="mb-3">{chainStatus}</Notice> : null}
 
           {/* ---------- table ---------- */}
           <div className="overflow-hidden rounded-doc bg-surface shadow-card">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[860px] border-collapse text-left">
                 <thead>
-                  <tr className="border-b border-sky">
+                  <tr className="border-b border-sky bg-surface-soft">
                     <Th className="w-10 pl-5">
                       <input
                         type="checkbox"
                         checked={allOnPageSelected}
                         onChange={toggleAll}
                         aria-label="Select all escrows on this page"
-                        className="h-3.5 w-3.5 cursor-pointer accent-[rgb(var(--rgb-ink))]"
+                        className="h-3.5 w-3.5 cursor-pointer accent-[rgb(var(--rgb-teal-solid))]"
                       />
                     </Th>
                     <Th>Escrow</Th>
@@ -350,7 +349,7 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                         <tr
                           key={`${e.source}-${e.id}`}
                           onClick={() => onOpen(e.id)}
-                          className="cursor-pointer border-b border-sky/60 transition-colors duration-150 last:border-b-0 hover:bg-beige"
+                          className="cursor-pointer border-b border-sky/70 transition-colors duration-150 last:border-b-0 hover:bg-surface-soft"
                         >
                           <td className="pl-5" onClick={(ev) => ev.stopPropagation()}>
                             <input
@@ -358,44 +357,44 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                               checked={selected.has(e.id)}
                               onChange={() => toggleOne(e.id)}
                               aria-label={`Select escrow ${e.id}`}
-                              className="h-3.5 w-3.5 cursor-pointer accent-[rgb(var(--rgb-ink))]"
+                              className="h-3.5 w-3.5 cursor-pointer accent-[rgb(var(--rgb-teal-solid))]"
                             />
                           </td>
-                          <td className="py-3.5 pr-4">
-                            <p className="text-[15px] font-medium tracking-[-0.012em] text-navy">
-                              {e.commodity}
-                            </p>
+                          <td className="py-4 pr-4">
+                            <p className="text-[15px] font-semibold text-navy">{e.commodity}</p>
                             <p className="mt-0.5 text-[12.5px] text-ink-dim">
-                              &#8470;&thinsp;{formatEscrowId(e.id)} · {e.containerRef}
+                              &#8470;&thinsp;{formatEscrowId(e.id)} &middot; {e.containerRef}
                             </p>
                           </td>
-                          <td className="py-3.5 pr-4 text-right">
-                            <p className="text-[14px] font-medium tabular-nums text-navy">
+                          <td className="py-4 pr-4 text-right">
+                            <p className="text-[14px] font-semibold tabular-nums text-navy">
                               {Number(e.value).toLocaleString()}
                             </p>
-                            <p className="mt-0.5 text-2xs uppercase text-ink-faint">
-                              {CURRENCY_LABEL}
-                            </p>
+                            <p className="mt-0.5 text-2xs text-ink-faint">{CURRENCY_LABEL}</p>
                           </td>
-                          <td className="py-3.5 pr-4">
-                            <MilestoneMeter verified={e.verified ?? 0} total={e.total ?? 3} />
+                          <td className="py-4 pr-4">
+                            <MilestoneMeter
+                              verified={e.verified ?? verifiedFromState(e.state)}
+                              total={e.total ?? 3}
+                            />
                           </td>
-                          <td className="py-3.5 pr-4">
+                          <td className="py-4 pr-4">
                             <p className="text-[13.5px] text-navy">
                               {e.deadline ? new Date(e.deadline).toLocaleDateString() : "—"}
                             </p>
-                            <p className="mt-0.5 text-2xs uppercase text-ink-faint">
+                            <p className="mt-0.5 text-2xs text-ink-faint">
                               {relativeDays(e.deadline)}
                             </p>
                           </td>
-                          <td className="py-3.5 pr-4">
-                            <StatusPill state={e.state} />
+                          <td className="py-4 pr-4">
+                            <StatusPill state={e.state} size="sm" />
                           </td>
                           <td className="pr-5 text-right" onClick={(ev) => ev.stopPropagation()}>
                             <button
                               type="button"
-                              aria-label={`Actions for escrow ${e.id}`}
-                              className="cursor-pointer rounded-full p-1.5 text-ink-faint transition-colors duration-150 hover:bg-sky/40 hover:text-navy"
+                              onClick={() => onOpen(e.id)}
+                              aria-label={`Open escrow ${formatEscrowId(e.id)}`}
+                              className="cursor-pointer rounded-panel p-1.5 text-ink-faint transition-colors duration-150 hover:bg-sky/50 hover:text-navy"
                             >
                               <MoreHorizontal size={15} aria-hidden="true" />
                             </button>
@@ -407,26 +406,21 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
             </div>
 
             {!loading && visible.length === 0 ? (
-              <div className="grid place-items-center px-6 py-14 text-center">
-                <Inbox size={20} className="mb-3 text-ink-faint" aria-hidden="true" />
-                <p className="text-[15px] font-medium text-navy">
-                  {rows.length === 0 ? "No escrows yet" : "Nothing matches that filter"}
-                </p>
-                <p className="mt-2 max-w-sm font-serif text-[14.5px] leading-relaxed text-ink-dim">
-                  {rows.length === 0
-                    ? "Lock the first shipment. The importer deposits funds, and the contract releases them only once all three milestones are verified."
-                    : "Try a different status or clear the search."}
-                </p>
-                {rows.length === 0 ? (
-                  <button
-                    type="button"
-                    onClick={onCreate}
-                    className="mt-5 cursor-pointer rounded-full bg-navy px-6 py-2.5 text-[13px] font-medium text-beige transition-colors duration-150 hover:bg-teal-solid"
-                  >
-                    Create escrow
-                  </button>
-                ) : null}
-              </div>
+              <EmptyState
+                icon={Inbox}
+                title={rows.length === 0 ? "No escrows yet" : "Nothing matches that filter"}
+                action={
+                  rows.length === 0 ? (
+                    <Button tone="primary" onClick={onCreate}>
+                      Create escrow
+                    </Button>
+                  ) : null
+                }
+              >
+                {rows.length === 0
+                  ? "Lock the first shipment. The importer deposits funds, and the contract releases them only once all three milestones are verified."
+                  : "Try a different status or clear the search."}
+              </EmptyState>
             ) : null}
 
             {visible.length > 0 ? (
@@ -434,7 +428,7 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                 <p className="text-[12.5px] text-ink-dim">
                   Showing{" "}
                   <span className="tabular-nums text-navy">
-                    {(current - 1) * PAGE_SIZE + 1}–{Math.min(current * PAGE_SIZE, visible.length)}
+                    {(current - 1) * PAGE_SIZE + 1}&ndash;{Math.min(current * PAGE_SIZE, visible.length)}
                   </span>{" "}
                   of <span className="tabular-nums text-navy">{visible.length}</span>
                 </p>
@@ -448,10 +442,10 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                       type="button"
                       onClick={() => setPage(i + 1)}
                       aria-current={current === i + 1 ? "page" : undefined}
-                      className={`h-7 min-w-[28px] cursor-pointer rounded-panel px-2 text-[12.5px] tabular-nums transition-colors duration-150 ${
+                      className={`h-8 min-w-[32px] cursor-pointer rounded-panel px-2 text-[12.5px] tabular-nums transition-colors duration-150 ${
                         current === i + 1
-                          ? "bg-navy text-beige"
-                          : "text-ink-dim hover:bg-sky/40 hover:text-navy"
+                          ? "bg-teal-solid font-semibold text-white"
+                          : "text-ink-dim hover:bg-sky/50 hover:text-navy"
                       }`}
                     >
                       {i + 1}
@@ -464,6 +458,10 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
               </div>
             ) : null}
           </div>
+
+          {sourceIsLive ? (
+            <p className="mt-3 text-[12.5px] text-ink-faint">{sourceLabel}</p>
+          ) : null}
         </div>
 
         <ActivityRail onOpen={onOpen} escrows={rows} />
@@ -474,19 +472,21 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
 
 /* ---------------------------------- parts --------------------------------- */
 
-function Th({ children, className = "" }) {
-  return (
-    <th scope="col" className={`py-2.5 pr-4 text-2xs font-medium uppercase text-ink-faint ${className}`}>
-      {children}
-    </th>
-  );
-}
-
-function Row({ label, value }) {
+function Row({ label, value, tone }) {
   return (
     <div className="flex items-baseline justify-between gap-3 text-[12.5px]">
       <span className="text-ink-dim">{label}</span>
-      <span className="tabular-nums text-navy">{value}</span>
+      <span
+        className={`font-medium tabular-nums ${
+          tone === "pending"
+            ? "text-state-pending"
+            : tone === "disputed"
+              ? "text-state-disputed"
+              : "text-navy"
+        }`}
+      >
+        {value}
+      </span>
     </div>
   );
 }
@@ -498,7 +498,7 @@ function PagerBtn({ children, onClick, disabled, label }) {
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
-      className="grid h-7 w-7 cursor-pointer place-items-center rounded-panel text-ink-dim transition-colors duration-150 hover:bg-sky/40 hover:text-navy disabled:cursor-not-allowed disabled:opacity-30"
+      className="grid h-8 w-8 cursor-pointer place-items-center rounded-panel text-ink-dim transition-colors duration-150 hover:bg-sky/50 hover:text-navy disabled:cursor-not-allowed disabled:opacity-30"
     >
       {children}
     </button>
@@ -513,7 +513,7 @@ function MilestoneMeter({ verified, total }) {
         {Array.from({ length: total }).map((_, i) => (
           <span
             key={i}
-            className={`h-1.5 flex-1 rounded-full ${i < verified ? "bg-state-attested" : "bg-sky/60"}`}
+            className={`h-1.5 flex-1 rounded-full ${i < verified ? "bg-state-attested" : "bg-sky"}`}
           />
         ))}
       </span>
@@ -530,24 +530,26 @@ function CompositionBar({ total, byBucket }) {
   const shown = BUCKETS.filter((b) => byBucket[b.key] > 0);
   return (
     <div className="mt-4">
-      <div className="flex h-2.5 gap-[2px] overflow-hidden rounded-full bg-sky/40">
-        {total > 0 ? (
-          shown.map((b) => (
-            <span
-              key={b.key}
-              className={`h-full ${b.cls} first:rounded-l-full last:rounded-r-full`}
-              style={{ width: `${(byBucket[b.key] / total) * 100}%` }}
-              title={`${b.label}: ${byBucket[b.key].toLocaleString()} ${CURRENCY_LABEL}`}
-            />
-          ))
-        ) : null}
+      <div className="flex h-2.5 gap-[2px] overflow-hidden rounded-full bg-sky">
+        {total > 0
+          ? shown.map((b) => (
+              <span
+                key={b.key}
+                className={`h-full ${b.cls} first:rounded-l-full last:rounded-r-full`}
+                style={{ width: `${(byBucket[b.key] / total) * 100}%` }}
+                title={`${b.label}: ${byBucket[b.key].toLocaleString()} ${CURRENCY_LABEL}`}
+              />
+            ))
+          : null}
       </div>
       <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5">
         {BUCKETS.map((b) => (
           <li key={b.key} className="flex items-center gap-2 text-[12.5px]">
             <span className={`h-2 w-2 shrink-0 rounded-full ${b.dot}`} aria-hidden="true" />
             <span className="text-ink-dim">{b.label}</span>
-            <span className="tabular-nums text-navy">{byBucket[b.key].toLocaleString()}</span>
+            <span className="font-medium tabular-nums text-navy">
+              {byBucket[b.key].toLocaleString()}
+            </span>
           </li>
         ))}
       </ul>
@@ -557,13 +559,18 @@ function CompositionBar({ total, byBucket }) {
 
 function SkeletonRow() {
   return (
-    <tr className="border-b border-sky/60 last:border-b-0">
-      <td className="pl-5 py-4">
-        <span className="block h-3.5 w-3.5 rounded-[3px] bg-sky/50" />
+    <tr className="border-b border-sky/70 last:border-b-0">
+      <td className="py-4 pl-5">
+        <span className="block h-3.5 w-3.5 rounded-[3px] bg-sky" />
       </td>
       {[3, 1, 1, 1, 1, 0].map((flex, i) => (
         <td key={i} className="py-4 pr-4">
-          {flex ? <span className="block h-3 rounded-full bg-sky/50" style={{ width: `${flex * 28}%`, minWidth: 48 }} /> : null}
+          {flex ? (
+            <span
+              className="block h-3 rounded-full bg-sky"
+              style={{ width: `${flex * 28}%`, minWidth: 48 }}
+            />
+          ) : null}
         </td>
       ))}
     </tr>

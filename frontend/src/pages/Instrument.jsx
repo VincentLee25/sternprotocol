@@ -141,10 +141,10 @@ export default function Instrument({ onNavigate, onEnter }) {
                 <div className="bg-onyx px-5 py-4 text-[15px] font-medium text-alabaster">
                   {row.k}
                 </div>
-                <div className="bg-onyx px-5 py-4 font-serif text-[15px] leading-relaxed text-alabaster/90">
+                <div className="bg-onyx px-5 py-4 text-[15px] leading-relaxed text-alabaster/90">
                   {row.lc}
                 </div>
-                <div className="bg-onyx px-5 py-4 font-serif text-[15px] leading-relaxed text-alabaster/90">
+                <div className="bg-onyx px-5 py-4 text-[15px] leading-relaxed text-alabaster/90">
                   {row.stern}
                 </div>
               </div>
@@ -163,7 +163,7 @@ export default function Instrument({ onNavigate, onEnter }) {
             <div key={article.n} className="rounded-doc border border-alabaster/10 p-6">
               <p className="text-2xs uppercase text-teal">{article.n}</p>
               <h3 className="mt-3 text-[20px] font-medium tracking-[-0.02em]">{article.t}</h3>
-              <p className="mt-2 font-serif text-[15px] leading-relaxed text-alabaster/90">
+              <p className="mt-2 text-[15px] leading-relaxed text-alabaster/90">
                 {article.d}
               </p>
               <div className="mt-4 border-t border-alabaster/10 pt-1">
@@ -185,7 +185,7 @@ export default function Instrument({ onNavigate, onEnter }) {
           {LIMITS.map((limit) => (
             <div key={limit.t} className="bg-onyx p-6">
               <h3 className="text-[17px] font-medium text-alabaster">{limit.t}</h3>
-              <p className="mt-2.5 font-serif text-[15px] leading-relaxed text-alabaster/90">
+              <p className="mt-2.5 text-[15px] leading-relaxed text-alabaster/90">
                 {limit.d}
               </p>
             </div>

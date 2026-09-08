@@ -28,7 +28,7 @@ export default function MarketingShell({ current, onNavigate, onEnter, children 
                 type="button"
                 onClick={() => onNavigate(item.id)}
                 aria-current={current === item.id ? "page" : undefined}
-                className={`cursor-pointer rounded-full px-4 py-2 transition-colors duration-150 ${
+                className={`cursor-pointer whitespace-nowrap rounded-panel px-4 py-2 font-medium transition-colors duration-150 ${
                   current === item.id
                     ? "bg-teal/15 text-teal"
                     : "text-alabaster/80 hover:bg-alabaster/10 hover:text-alabaster"
@@ -43,9 +43,9 @@ export default function MarketingShell({ current, onNavigate, onEnter, children 
             <button
               type="button"
               onClick={onEnter}
-              className="cursor-pointer rounded-full bg-alabaster px-5 py-2.5 text-[13px] font-medium text-onyx transition-colors duration-150 hover:bg-white"
+              className="cursor-pointer whitespace-nowrap rounded-panel bg-teal-solid px-5 py-2.5 text-[13px] font-medium text-white shadow-card transition-[filter] duration-150 hover:brightness-110"
             >
-              Open workspace
+              Access workspace
             </button>
           </div>
         </nav>
@@ -64,10 +64,10 @@ export function PageHeader({ eyebrow, title, lede }) {
   return (
     <header className="mx-auto max-w-[1180px] px-6 py-12 lg:px-14 lg:py-[76px]">
       <p className="text-2xs uppercase tracking-macro text-teal">{eyebrow}</p>
-      <h1 className="mt-6 max-w-[18ch] text-balance text-[38px] font-medium leading-[1.04] tracking-display lg:text-[60px]">
+      <h1 className="mt-6 max-w-[18ch] text-balance text-[38px] font-bold leading-[1.04] lg:text-[60px]">
         {title}
       </h1>
-      <p className="mt-6 max-w-[62ch] font-serif text-[19px] font-light leading-[1.62] text-alabaster/90">
+      <p className="mt-6 max-w-[62ch] text-[19px] leading-[1.62] text-alabaster/90">
         {lede}
       </p>
     </header>
@@ -91,7 +91,7 @@ export function Section({ eyebrow, title, intro, children, tone, wide }) {
         ) : null}
         {title ? (
           <h2
-            className={`mt-4 text-balance text-[28px] font-medium leading-[1.08] tracking-display lg:text-[40px] ${
+            className={`mt-4 text-balance text-[28px] font-bold leading-[1.08] lg:text-[40px] ${
               wide ? "max-w-[34ch]" : "max-w-[22ch]"
             }`}
           >
@@ -100,7 +100,7 @@ export function Section({ eyebrow, title, intro, children, tone, wide }) {
         ) : null}
         {intro ? (
           <p
-            className={`mt-5 max-w-[64ch] font-serif text-[17px] font-light leading-[1.6] ${
+            className={`mt-5 max-w-[64ch] text-[17px] leading-[1.6] ${
               tone === "teal" ? "text-white/90" : "text-alabaster/90"
             }`}
           >
@@ -117,7 +117,7 @@ export function Section({ eyebrow, title, intro, children, tone, wide }) {
 export function DarkTermRow({ label, value, tone }) {
   return (
     <div className="flex items-baseline gap-2.5 py-3">
-      <span className="whitespace-nowrap font-serif text-[16px] text-alabaster/90">{label}</span>
+      <span className="whitespace-nowrap text-[16px] text-alabaster/90">{label}</span>
       <span
         aria-hidden="true"
         className="h-1 min-w-[24px] flex-1 -translate-y-[3px] bg-[radial-gradient(circle,rgba(229,228,226,0.28)_1.1px,transparent_1.2px)] bg-[length:6px_4px] bg-left-bottom bg-repeat-x"

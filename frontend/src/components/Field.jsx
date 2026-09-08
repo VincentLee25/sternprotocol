@@ -1,25 +1,28 @@
 export default function Field({ label, htmlFor, required, error, hint, children }) {
   return (
     <div>
-      <label
-        htmlFor={htmlFor}
-        className="mb-2 block text-2xs font-medium uppercase text-ink-faint"
-      >
+      <label htmlFor={htmlFor} className="mb-1.5 block text-[13px] font-medium text-navy">
         {label}
-        {required ? <span className="ml-1 text-state-disputed">*</span> : null}
+        {required ? (
+          <span className="ml-1 text-state-disputed" title="Required">
+            *
+          </span>
+        ) : null}
       </label>
       {children}
       {error ? (
-        <p role="alert" className="mt-2 font-serif text-xs text-state-disputed">
+        <p role="alert" className="mt-1.5 text-[12.5px] leading-relaxed text-state-disputed">
           {error}
         </p>
       ) : hint ? (
-        <p className="mt-2 font-serif text-xs text-ink-dim">{hint}</p>
+        <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-dim">{hint}</p>
       ) : null}
     </div>
   );
 }
 
+// 40px control, 12px radius, white ground, slate hairline, teal focus ring -
+// the form field DESIGN.md specifies. Focus never uses an ambient glow.
 export const inputClass = (hasError) =>
   `w-full rounded-panel border bg-surface px-3.5 py-2.5 text-sm text-navy placeholder:text-ink-faint transition-colors duration-150 focus:outline-none ${
     hasError

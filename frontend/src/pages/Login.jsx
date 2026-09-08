@@ -1,14 +1,24 @@
 import { FileCheck2, ShieldCheck, Zap } from "lucide-react";
 import PortPlate from "../components/PortPlate.jsx";
+import { Notice } from "../components/ui.jsx";
 import { missingCredentials, particleEnabled } from "../lib/particle.js";
 import { contractsWithoutWallet } from "../lib/sternContract.js";
 import sternLogo from "../assets/stern-logo.png";
 import CompanyAccess from "../components/CompanyAccess.jsx";
 
 const FEATURES = [
-  { icon: ShieldCheck, text: "Milestone-verified settlement — Sucofindo, the shipping line, and customs each sign off before funds move" },
-  { icon: Zap, text: "Gasless transactions — every action is sponsored, no POL or gas fee ever shown to you" },
-  { icon: FileCheck2, text: "IDRT-demo balance provisioned automatically the moment you sign in" }
+  {
+    icon: ShieldCheck,
+    text: "Milestone-verified settlement — Sucofindo, the shipping line and customs each sign off before funds move"
+  },
+  {
+    icon: Zap,
+    text: "Gasless transactions — every action is sponsored, and no gas fee is ever shown to you"
+  },
+  {
+    icon: FileCheck2,
+    text: "IDRT-demo balance provisioned automatically the moment you sign in"
+  }
 ];
 
 export default function Login({ onConnect, error, busy }) {
@@ -22,7 +32,7 @@ export default function Login({ onConnect, error, busy }) {
             on the gantry cranes and read as noise however high the nominal
             contrast is. It fades left-to-right rather than flat, so the text
             column is backed while the sun and the right of the plate stay
-            visible — the plate is half the argument (07_DESIGN_SYSTEM §5.6). */}
+            visible — the plate is half the argument. */}
         <div
           aria-hidden="true"
           className="absolute inset-0 bg-gradient-to-r from-onyx/95 via-onyx/70 to-transparent"
@@ -31,10 +41,10 @@ export default function Login({ onConnect, error, busy }) {
           <img src={sternLogo} alt="STERN" className="h-6 w-auto self-start" />
 
           <div className="max-w-md">
-            <span className="mb-5 block text-2xs uppercase tracking-macro text-[#7FA9BC]">
-              Smart escrow for export&ndash;import settlement
+            <span className="mb-5 block text-2xs font-semibold uppercase tracking-macro text-teal">
+              Evidence-led escrow for export&ndash;import settlement
             </span>
-            <h1 className="text-[36px] font-bold leading-[1.04] tracking-display text-alabaster">
+            <h1 className="text-[36px] font-bold leading-[1.06] text-alabaster">
               Paid the moment it leaves the port.
             </h1>
             <ul className="mt-8 space-y-4">
@@ -43,33 +53,30 @@ export default function Login({ onConnect, error, busy }) {
                   <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border border-teal/40 bg-teal/10 text-teal">
                     <Icon size={14} aria-hidden="true" />
                   </span>
-                  <span className="font-serif text-sm leading-relaxed text-alabaster/90">{text}</span>
+                  <span className="text-sm leading-relaxed text-ink-dim">{text}</span>
                 </li>
               ))}
             </ul>
           </div>
 
-          <p className="text-2xs uppercase text-alabaster/90">Polygon Amoy testnet · Fase 0 preview</p>
+          <p className="text-2xs text-ink-faint">Polygon Amoy testnet &middot; Phase 0 preview</p>
         </div>
       </div>
 
-      <div className="flex items-center justify-center bg-beige p-8">
-        <div className="w-full max-w-sm">
+      <div className="flex items-center justify-center bg-beige p-6 lg:p-8">
+        <div className="w-full max-w-sm py-10">
           <div className="mb-8 lg:hidden">
             <img src={sternLogo} alt="STERN" className="h-6 w-auto invert dark:invert-0" />
           </div>
 
-          <h2 className="text-[26px] font-bold tracking-display text-navy">Sign in to continue</h2>
-          <p className="mt-1.5 font-serif text-sm text-ink-dim">
+          <h2 className="text-[26px] font-bold leading-tight text-navy">Sign in to continue</h2>
+          <p className="mt-2 text-sm leading-relaxed text-ink-dim">
             Your wallet is created automatically — no seed phrase, no browser extension.
           </p>
 
           {error ? (
-            <div
-              role="alert"
-              className="mt-4 rounded-panel border border-state-disputed/40 bg-state-disputed/10 px-3.5 py-2.5 font-serif text-xs leading-relaxed text-state-disputed"
-            >
-              {error}
+            <Notice tone="disputed" role="alert" className="mt-4">
+              <span className="block">{error}</span>
               {/* Only offer the popup explanation when the error does not already
                   carry its own. Appending it to every failure sent people
                   hunting for a popup blocker while the real cause — an
@@ -80,48 +87,52 @@ export default function Login({ onConnect, error, busy }) {
                   site and try again.
                 </span>
               ) : null}
-            </div>
+            </Notice>
           ) : null}
 
           {contractsWithoutWallet ? (
-            <div className="mt-4 rounded-panel border border-state-pending/40 bg-state-pending/10 px-3.5 py-2.5 font-serif text-xs leading-relaxed text-state-pending">
-              Contract addresses are set, but the Particle keys are not — so there is no real
-              wallet to transact with and the app stays on demo data. Fill in the three
-              <code className="font-mono"> VITE_PARTICLE_ </code> keys to go on chain.
-            </div>
+            <Notice tone="pending" className="mt-4">
+              Contract addresses are set, but the Particle keys are not — so there is no real wallet
+              to transact with and the app stays on demo data. Fill in the three{" "}
+              <code className="font-mono text-[12px]">VITE_PARTICLE_</code> keys to go on chain.
+            </Notice>
           ) : missingCredentials ? (
-            <div className="mt-4 rounded-panel border border-state-pending/40 bg-state-pending/10 px-3.5 py-2.5 font-serif text-xs leading-relaxed text-state-pending">
-              Particle credentials are missing from <code className="font-mono">.env</code>, so this
-              is running on demo data. Copy <code className="font-mono">.env.example</code> and fill
-              in the three keys to sign in for real.
-            </div>
+            <Notice tone="pending" className="mt-4">
+              Particle credentials are missing from{" "}
+              <code className="font-mono text-[12px]">.env</code>, so this is running on demo data.
+              Copy <code className="font-mono text-[12px]">.env.example</code> and fill in the three
+              keys to sign in for real.
+            </Notice>
           ) : null}
 
           <button
             type="button"
             onClick={onConnect}
             disabled={busy}
-            className="mt-6 flex w-full cursor-pointer items-center justify-center gap-2.5 rounded-full border border-sky bg-surface px-4 py-3 text-sm font-medium text-navy shadow-card transition-colors duration-150 hover:border-teal/50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-6 flex w-full cursor-pointer items-center justify-center gap-2.5 whitespace-nowrap rounded-panel border border-sky bg-surface px-4 py-3 text-sm font-medium text-navy shadow-card transition-colors duration-150 hover:border-teal/50 hover:bg-surface-soft disabled:cursor-not-allowed disabled:opacity-60"
           >
             {busy ? (
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-teal border-t-transparent" aria-hidden="true" />
+              <span
+                className="h-4 w-4 animate-spin rounded-full border-2 border-teal border-t-transparent"
+                aria-hidden="true"
+              />
             ) : (
               <GoogleMark />
             )}
             {busy ? "Opening sign-in…" : "Continue with Google"}
           </button>
 
-          <p className="mt-4 text-center text-2xs uppercase text-ink-faint">
+          <p className="mt-3 text-center text-2xs text-ink-faint">
             {particleEnabled ? "Powered by Particle Network" : "Demo mode — no wallet created"}
           </p>
 
           <CompanyAccess />
 
-          <div className="mt-10 rounded-doc border border-sky bg-surface p-4">
-            <p className="text-2xs uppercase text-ink-faint">What happens after sign-in</p>
-            <ol className="mt-2.5 space-y-1.5 font-serif text-xs text-ink-dim">
+          <div className="mt-8 rounded-doc border border-sky bg-surface p-4">
+            <p className="text-[13px] font-semibold text-navy">What happens after sign-in</p>
+            <ol className="mt-2.5 space-y-1.5 text-[13px] leading-relaxed text-ink-dim">
               <li>1. A Smart Account wallet is created for you in the background</li>
-              <li>2. 150,000,000 IDRT-demo is credited automatically (one-time)</li>
+              <li>2. 150,000,000 IDRT-demo is credited automatically, once</li>
               <li>3. You can create or act on escrows immediately — no gas ever required</li>
             </ol>
           </div>

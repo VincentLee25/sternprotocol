@@ -74,17 +74,17 @@ export default function ActivityRail({ onOpen, escrows }) {
   return (
     <aside className="rounded-doc bg-surface shadow-card">
       <div className="flex items-center justify-between border-b border-sky px-5 py-3.5">
-        <h2 className="text-2xs uppercase text-ink-faint">Activity</h2>
-        <span className="text-2xs uppercase text-ink-faint">{rows.length}</span>
+        <h2 className="text-[14px] font-semibold text-navy">Activity</h2>
+        <span className="text-2xs tabular-nums text-ink-faint">{rows.length}</span>
       </div>
 
       <div className="max-h-[560px] overflow-y-auto px-5 pb-5">
         {rows.length === 0 ? (
-          <p className="py-6 font-serif text-sm text-ink-dim">Nothing has happened yet.</p>
+          <p className="py-6 text-sm text-ink-dim">Nothing has happened yet.</p>
         ) : (
           Object.entries(groups).map(([day, entries]) => (
             <section key={day}>
-              <h3 className="sticky top-0 bg-surface pb-2 pt-4 text-2xs uppercase text-ink-faint">
+              <h3 className="sticky top-0 bg-surface pb-2 pt-4 text-2xs font-semibold uppercase tracking-micro text-ink-faint">
                 {day}
               </h3>
               <ol className="space-y-3">
@@ -95,11 +95,11 @@ export default function ActivityRail({ onOpen, escrows }) {
                       <button
                         type="button"
                         onClick={() => onOpen?.(entry.escrowId)}
-                        className="flex w-full cursor-pointer gap-3 rounded-panel p-2 text-left transition-colors duration-150 hover:bg-beige"
+                        className="flex w-full cursor-pointer gap-3 rounded-panel p-2 text-left transition-colors duration-150 hover:bg-surface-soft"
                       >
                         <span
                           className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full ${
-                            TONES[entry.type] || "bg-sky/40 text-ink-dim"
+                            TONES[entry.type] || "bg-sky text-ink-dim"
                           }`}
                         >
                           <Icon size={13} aria-hidden="true" />
@@ -108,7 +108,7 @@ export default function ActivityRail({ onOpen, escrows }) {
                           <span className="block text-[13.5px] leading-snug text-navy">
                             {entry.text}
                           </span>
-                          <span className="mt-1 flex flex-wrap items-center gap-x-2 text-2xs uppercase text-ink-faint">
+                          <span className="mt-1 flex flex-wrap items-center gap-x-2 text-2xs text-ink-faint">
                             <span>{entry.actor}</span>
                             <span aria-hidden="true">·</span>
                             <span>
@@ -118,7 +118,7 @@ export default function ActivityRail({ onOpen, escrows }) {
                               })}
                             </span>
                           </span>
-                          <span className="mt-1.5 inline-block rounded-full bg-beige px-2 py-0.5 text-2xs uppercase text-teal">
+                          <span className="mt-1.5 inline-block rounded-full border border-sky bg-surface-soft px-2 py-0.5 text-2xs font-medium text-teal">
                             &#8470;&thinsp;{entry.escrowId} · {entry.commodity}
                           </span>
                         </span>

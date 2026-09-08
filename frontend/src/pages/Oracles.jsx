@@ -76,7 +76,7 @@ export default function Oracles({ onNavigate, onEnter }) {
             <div key={v.role} className="flex flex-col rounded-doc border border-alabaster/10 p-6">
               <p className="text-2xs text-teal">{v.role}</p>
               <h3 className="mt-3 text-[20px] font-medium tracking-[-0.02em]">{v.who}</h3>
-              <p className="mt-3 font-serif text-[15px] leading-relaxed text-alabaster/90">
+              <p className="mt-3 text-[15px] leading-relaxed text-alabaster/90">
                 {v.why}
               </p>
               <div className="mt-5 border-t border-alabaster/10 pt-1">
@@ -99,7 +99,7 @@ export default function Oracles({ onNavigate, onEnter }) {
             <div key={step.n} className="bg-onyx p-5">
               <p className="text-2xs text-teal">{step.n}</p>
               <h3 className="mt-2.5 text-[16px] font-medium">{step.t}</h3>
-              <p className="mt-2 font-serif text-[14px] leading-relaxed text-alabaster/90">
+              <p className="mt-2 text-[14px] leading-relaxed text-alabaster/90">
                 {step.d}
               </p>
             </div>
@@ -151,11 +151,11 @@ export default function Oracles({ onNavigate, onEnter }) {
               Split of the slashed half only
             </p>
 
-            <p className="mt-5 font-serif text-[15px] leading-relaxed text-alabaster/90">
+            <p className="mt-5 text-[15px] leading-relaxed text-alabaster/90">
               The importer is the injured party in every milestone case, because the importer is the
               one whose funds sat locked on the strength of a claim that turned out to be false.
             </p>
-            <p className="mt-4 font-serif text-[15px] leading-relaxed text-alabaster/90">
+            <p className="mt-4 text-[15px] leading-relaxed text-alabaster/90">
               The other half stays staked. One wrong call does not remove an institution from the
               register, because a surveyor who is occasionally wrong is still more useful than no
               surveyor. It takes three before the role is revoked automatically.
@@ -172,7 +172,7 @@ export default function Oracles({ onNavigate, onEnter }) {
               <DarkTermRow label="Frivolous dispute" value="100% to exporter" />
               <DarkTermRow label="Auto-revoke at" value="3 slashes" tone="warn" />
             </div>
-            <p className="mt-5 font-serif text-[15px] leading-relaxed text-alabaster/90">
+            <p className="mt-5 text-[15px] leading-relaxed text-alabaster/90">
               A frivolous dispute never slashes a verifier. The two pools are separate on purpose:
               punishing a buyer for objecting badly is not the same thing as punishing an institution
               for signing falsely.
@@ -190,7 +190,7 @@ export default function Oracles({ onNavigate, onEnter }) {
           {ASSUMPTIONS.map((a) => (
             <div key={a.t} className="bg-onyx p-6">
               <h3 className="text-[17px] font-medium">{a.t}</h3>
-              <p className="mt-2.5 font-serif text-[15px] leading-relaxed text-alabaster/90">
+              <p className="mt-2.5 text-[15px] leading-relaxed text-alabaster/90">
                 {a.d}
               </p>
             </div>

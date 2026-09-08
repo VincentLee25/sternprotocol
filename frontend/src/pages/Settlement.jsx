@@ -114,7 +114,7 @@ export default function Settlement({ onNavigate, onEnter }) {
                 <span className="text-2xs text-teal">{m.n}</span>
                 <h3 className="text-[20px] font-medium tracking-[-0.02em]">{m.state}</h3>
               </div>
-              <p className="mt-3 flex-1 font-serif text-[15px] leading-relaxed text-alabaster/90">
+              <p className="mt-3 flex-1 text-[15px] leading-relaxed text-alabaster/90">
                 {m.d}
               </p>
               <div className="mt-5 border-t border-alabaster/10 pt-1">
@@ -140,7 +140,7 @@ export default function Settlement({ onNavigate, onEnter }) {
                 <DarkTermRow key={label} label={label} value={value} />
               ))}
             </div>
-            <p className="mt-4 font-serif text-[15px] leading-relaxed text-alabaster/90">
+            <p className="mt-4 text-[15px] leading-relaxed text-alabaster/90">
               Three six-hour challenge windows plus a twenty-four hour timelock is roughly forty-two
               hours of deliberate waiting. That is the cost of letting anyone object before money is
               irreversible, and it is still the fastest part of the whole trade.
@@ -156,13 +156,13 @@ export default function Settlement({ onNavigate, onEnter }) {
                 <div key={op} className="flex flex-wrap items-baseline gap-x-4 px-6 py-3.5">
                   <span className="min-w-[190px] flex-1 text-xs text-alabaster">{op}</span>
                   <span className="text-xs tabular-nums text-state-attested">{cost}</span>
-                  <span className="w-full font-serif text-[14px] text-alabaster/90 sm:w-auto sm:min-w-[190px] sm:text-right">
+                  <span className="w-full text-[14px] text-alabaster/90 sm:w-auto sm:min-w-[190px] sm:text-right">
                     {payer}
                   </span>
                 </div>
               ))}
             </div>
-            <p className="border-t border-alabaster/10 px-6 py-4 font-serif text-[14px] leading-relaxed text-alabaster/90">
+            <p className="border-t border-alabaster/10 px-6 py-4 text-[14px] leading-relaxed text-alabaster/90">
               The importer never pays gas directly. A sponsored paymaster covers their operations, so
               an exporter with no crypto at all can still be a counterparty.
             </p>
@@ -179,11 +179,11 @@ export default function Settlement({ onNavigate, onEnter }) {
           {OUTCOMES.map((o) => (
             <div key={o.t} className={`rounded-doc border p-6 ${TONE_RING[o.tone]}`}>
               <h3 className="text-[18px] font-medium tracking-[-0.015em]">{o.t}</h3>
-              <p className="mt-3 font-serif text-[15px] leading-relaxed text-alabaster/90">{o.d}</p>
+              <p className="mt-3 text-[15px] leading-relaxed text-alabaster/90">{o.d}</p>
             </div>
           ))}
         </div>
-        <p className="mt-6 font-serif text-[15px] leading-relaxed text-alabaster/90">
+        <p className="mt-6 text-[15px] leading-relaxed text-alabaster/90">
           The 3% figure sits between the roughly 10% that BANI and Kleros both land on and the 2%
           the contract originally defaulted to. Ten percent prices out the small exporters this is
           built for. Two percent is cheap enough that a large buyer can treat a dispute as a
