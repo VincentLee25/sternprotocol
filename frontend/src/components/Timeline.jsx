@@ -66,7 +66,7 @@ export default function Timeline({ state }) {
       {isDisputed ? (
         <li className="mt-1 flex items-center gap-2 rounded-panel bg-state-pending/10 px-3 py-2.5 font-serif text-sm text-state-pending">
           <Scale size={13} aria-hidden="true" className="shrink-0" />
-          Disputed: funds frozen until a 2-of-3 party vote resolves it
+          Disputed: funds frozen until the appointed arbiter resolves it
         </li>
       ) : null}
       {isRefunded ? (
