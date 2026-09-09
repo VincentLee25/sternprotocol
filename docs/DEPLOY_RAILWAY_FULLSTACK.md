@@ -130,7 +130,16 @@ Kalau gagal `insufficient funds`, ada dompet yang belum dapat POL. Kalau gagal
 |---|---|
 | Service Name | `stern-gateway` |
 | Root Directory | *(kosongkan)* |
-| Start Command | `node backend/oracle-gateway/index.js` |
+| Start Command | `npm start` |
+
+`package.json` di root sudah punya `"start": "node backend/oracle-gateway/index.js"`, jadi
+Railway bisa mendeteksinya sendiri dan kolom Start Command sebenarnya boleh dikosongkan.
+
+> **Jangan pakai `npm run backend` di Railway**, meskipun Railway sendiri yang
+> menyarankannya. Skrip itu menjalankan `post-bond.js` lebih dulu, yang mengirim transaksi
+> ke rantai **setiap kali service dimulai** — boros gas, dan kalau skrip itu gagal karena
+> alasan apa pun, `&&` membuat gerbangnya tidak pernah menyala sama sekali. Jaminan
+> verifikator sudah dipasang oleh `scripts/deploy.js`; tidak perlu diulang saat boot.
 
 ### 2.2 Pasang volume — lakukan sekarang, jangan nanti
 

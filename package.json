@@ -4,6 +4,7 @@
   "private": true,
   "description": "STERN Protocol smart escrow MVP for export-import settlement.",
   "scripts": {
+    "start": "node backend/oracle-gateway/index.js",
     "compile": "hardhat compile",
     "test": "hardhat test",
     "test:identity": "node --test backend/oracle-gateway/identityService.test.js",
