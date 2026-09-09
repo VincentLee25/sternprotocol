@@ -130,10 +130,21 @@ Kalau gagal `insufficient funds`, ada dompet yang belum dapat POL. Kalau gagal
 |---|---|
 | Service Name | `stern-gateway` |
 | Root Directory | *(kosongkan)* |
+| Build Command | `npm run build` |
 | Start Command | `npm start` |
 
-`package.json` di root sudah punya `"start": "node backend/oracle-gateway/index.js"`, jadi
-Railway bisa mendeteksinya sendiri dan kolom Start Command sebenarnya boleh dikosongkan.
+Keduanya sudah ada di `package.json` root, jadi Railway bisa mendeteksinya sendiri dan
+kedua kolom itu sebenarnya boleh dikosongkan.
+
+**Build-nya wajib, bukan opsional.** `npm run build` menjalankan `hardhat compile`, dan
+gerbang membaca ABI dari `artifacts/contracts/SternEscrow.sol/SternEscrow.json` saat
+berjalan. Folder `artifacts/` ada di `.gitignore`, jadi tidak ikut ter-clone dari GitHub —
+kalau tidak dikompilasi saat build, gerbang menyala tapi setiap panggilan yang menyentuh
+kontrak gagal dengan `Contract artifact not found. Run npm run compile first.`
+
+> Jangan set `NODE_ENV=production` di service ini. Kalau diset, npm melewatkan
+> devDependencies — Hardhat termasuk di dalamnya — dan build gagal karena perintah
+> `hardhat` tidak ada.
 
 > **Jangan pakai `npm run backend` di Railway**, meskipun Railway sendiri yang
 > menyarankannya. Skrip itu menjalankan `post-bond.js` lebih dulu, yang mengirim transaksi
