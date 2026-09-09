@@ -86,7 +86,7 @@ export default function CompanyAccess() {
             the page looked stuck — the next step was above it all along. */}
         <p className="mt-2.5 text-[13px] leading-relaxed text-ink-dim">
           This signs you in as the company. To open the workspace you still need a wallet — use{" "}
-          <span className="font-medium text-navy">Continue with Google</span> above.
+          <span className="font-medium text-navy">Sign in to continue</span> above.
         </p>
 
         {error ? (

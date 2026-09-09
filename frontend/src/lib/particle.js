@@ -36,7 +36,7 @@ export const particleConfig = particleEnabled
         // EOAs managed by the backend (docs/03 §2), so no external-wallet
         // connector is registered here.
         authWalletConnectors({
-          authTypes: ["google", "email"]
+          authTypes: ["google", "email", "phone", "twitter", "apple", "facebook", "linkedin", "github"]
         })
       ],
       // No `aa()` plugin. The smart account is built in lib/smartAccount.js
