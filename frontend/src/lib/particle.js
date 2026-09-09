@@ -35,8 +35,23 @@ export const particleConfig = particleEnabled
         // Social login only. Institutional verifiers deliberately stay on plain
         // EOAs managed by the backend (docs/03 §2), so no external-wallet
         // connector is registered here.
+        //
+        // The list below is what Particle's modal offers. It used to be just
+        // google + email, which read as a Google-only product — a real problem
+        // for exporters who run their business off a phone number or a Facebook
+        // page rather than a Google account.
+        //
+        // Order is the display order; the first entry is the primary button.
+        // Google stays first because it is the path the demo script uses.
+        //
+        // Every value Particle accepts, so this can be trimmed or extended in
+        // one line: email, phone, google, apple, twitter (this is X), facebook,
+        // linkedin, github, discord, twitch, microsoft, telegram, jwt.
+        // Left out on purpose: discord, twitch and telegram (no audience here),
+        // microsoft (overlaps linkedin), and jwt (that one is for bringing your
+        // own identity provider, not a social button).
         authWalletConnectors({
-          authTypes: ["google", "email"]
+          authTypes: ["google", "email", "phone", "twitter", "apple", "facebook", "linkedin", "github"]
         })
       ],
       // No `aa()` plugin. The smart account is built in lib/smartAccount.js

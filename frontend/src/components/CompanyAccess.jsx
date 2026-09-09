@@ -29,7 +29,7 @@ export default function CompanyAccess() {
           the page looked stuck — the next step was above it all along. */}
       <p className="mt-1.5 font-serif leading-relaxed">
         This signs you in as the company. To open the workspace you still need a wallet —
-        use <span className="text-navy">Continue with Google</span> above.
+        use <span className="text-navy">Sign in to continue</span> above.
       </p>
       {!session.user.mfaEnabled ? <button type="button" disabled={busy} onClick={() => run(async () => setSetup(await beginMfaSetup(session.accessToken)))} className="mt-2 text-xs font-medium text-teal underline underline-offset-2 disabled:opacity-50">Enable MFA</button> : <p className="mt-2 text-teal">MFA enabled</p>}
       {error ? <p role="alert" className="mt-2 text-xs text-state-disputed">{error}</p> : null}
