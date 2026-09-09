@@ -1,5 +1,23 @@
 # Deploying STERN Protocol for real — Polygon Amoy testnet
 
+> **OUT OF DATE — do not follow this file.**
+>
+> It describes an earlier architecture: MetaMask instead of Particle, an "oracle
+> consortium" with `ORACLE_QUORUM` and `ORACLE_BOND_ETH`, and `postBond()` /
+> `submitAttestation` calls. None of those exist in the contract any more, which
+> now uses three named roles (`ROLE_QUALITY_AUDITOR`, `ROLE_LOGISTICS`,
+> `ROLE_CUSTOMS`), `postVerifierBond()` and `submitMilestoneProof()`. It also
+> omits every variable the gateway needs today — `ARBITER_PRIVATE_KEY`,
+> `IDRT_MINTER_PRIVATE_KEY`, `AUTH_TOKEN_SECRET`, `INTERNAL_API_KEY`,
+> `CORS_ORIGINS` — and all of the `VITE_PARTICLE_*` keys, without which the
+> frontend runs on demo data.
+>
+> Use instead:
+> - [`TRIAL_DEMO_AND_DEPLOY.md`](TRIAL_DEMO_AND_DEPLOY.md) — first deployment
+> - [`DEPLOY_ULANG.md`](DEPLOY_ULANG.md) — redeploying something already live
+>
+> Kept only as a record of the earlier design.
+
 Step-by-step runbook to take the MVP off `localhost` and onto a public URL backed by a
 real (test) blockchain: **Polygon Amoy testnet + Vercel (frontend) + Render (oracle
 gateway)**. Everything here uses **testnet POL, not real money** — Amoy is Polygon's
