@@ -1,4 +1,9 @@
-const API_BASE = import.meta.env.VITE_ORACLE_API || "http://localhost:4000";
+// Trailing slashes stripped, exactly as sternApi.js does. Without this a base
+// ending in "/" builds "//health", which Express treats as a different route and
+// answers 404 — and the only caller is the Sidebar's health ping, so the whole
+// app reports "Oracle offline" while every other request still succeeds through
+// sternApi.js. A gateway that is plainly up, reported as down, by one character.
+const API_BASE = (import.meta.env.VITE_ORACLE_API || "http://localhost:4000").replace(/\/+$/, "");
 
 async function request(path, options) {
   const response = await fetch(`${API_BASE}${path}`, {
