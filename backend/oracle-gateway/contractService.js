@@ -408,24 +408,11 @@ async function prepareDispute(contractId, contestedMilestone = "none") {
   };
 }
 
-// Amoy targets roughly two seconds a block. Only used to turn an escrow's
-// creation timestamp into an approximate block to start scanning from, and the
-// margin below absorbs the error.
+// Amoy targets roughly two seconds a block. Only used to turn a creation
+// timestamp into an approximate block to start scanning from; the margin below
+// absorbs the error.
 const AVG_BLOCK_SECONDS = 2;
 
-/**
- * Where to start scanning logs for one escrow.
- *
- * queryFilter defaults fromBlock to 0. On a chain 47 million blocks deep that
- * asks a public RPC for the entire history, eight times per escrow, and every
- * provider worth using refuses it — usually with a range-limit error that the
- * frontend then swallowed into an empty list. The activity feed was not empty;
- * it was never fetched.
- *
- * The escrow knows when it was created, so the scan starts from there rather
- * than from the beginning of the chain. CONTRACT_DEPLOY_BLOCK overrides it when
- * set, which is both cheaper and exact.
- */
 // The head barely moves between requests, and the dashboard asks for a dozen
 // escrows at once. Reading it once per couple of seconds instead of once per
 // escrow removes a round trip per row for a value that would be identical.
@@ -437,55 +424,105 @@ async function latestBlock(provider) {
   return block;
 }
 
-async function activityFromBlock(provider, contract, id) {
-  if (config.contractDeployBlock != null) return config.contractDeployBlock;
-
+/**
+ * Where to start scanning, for the CONTRACT rather than for one escrow.
+ *
+ * queryFilter defaults fromBlock to 0. On a chain 47 million blocks deep that
+ * asks a public RPC for the whole history, which every provider refuses — and
+ * the refusal was being swallowed into an empty list, so the activity feed was
+ * not empty, it was never fetched.
+ *
+ * Anchored on the OLDEST escrow, because one window then serves every escrow and
+ * the scan below can be shared. CONTRACT_DEPLOY_BLOCK replaces the estimate
+ * entirely and is worth setting: the guess has to allow a wide margin, and the
+ * margin is what makes the scan expensive.
+ */
+async function activityWindow(provider, contract) {
   const latest = await latestBlock(provider);
+  const to = latest?.number ?? (await provider.getBlockNumber());
+  if (config.contractDeployBlock != null) return { from: config.contractDeployBlock, to };
+
   try {
-    const createdAt = Number((await contract.getEscrow(id))[8]);
+    const createdAt = Number((await contract.getEscrow(0))[8]);
     if (createdAt > 0 && latest?.timestamp > createdAt) {
-      const secondsAgo = latest.timestamp - createdAt;
-      const blocksAgo = Math.ceil(secondsAgo / AVG_BLOCK_SECONDS);
-      // 20% plus a flat cushion, because the block time is a target, not a
-      // guarantee. Starting too early costs a little; too late loses events.
+      const blocksAgo = Math.ceil((latest.timestamp - createdAt) / AVG_BLOCK_SECONDS);
       const margin = Math.ceil(blocksAgo * 0.2) + 5000;
-      return Math.max(0, latest.number - blocksAgo - margin);
+      return { from: Math.max(0, to - blocksAgo - margin), to };
     }
   } catch {
-    // Fall through to the bounded window below.
+    // No escrow 0, or the chain is unreachable — fall through.
   }
-  // Nothing to anchor on: look back a fixed distance rather than to block 0.
-  return Math.max(0, (latest?.number || 0) - 500_000);
+  return { from: Math.max(0, to - 500_000), to };
 }
 
-// Only a range complaint is worth splitting for. Splitting on ANY error was a
-// bad idea: a rate-limited provider answers 429, the range halves, both halves
-// are rate-limited, and the retry count doubles every level — turning one slow
-// request into hundreds. Anything that is not about the range is re-thrown.
+/**
+ * Whether the provider is complaining about the RANGE, as opposed to anything
+ * else.
+ *
+ * Every layer of the message has to be looked at, not just the first. ethers
+ * wraps a provider error as `shortMessage: "could not coalesce error"` with the
+ * real complaint — "exceed maximum block range: 10000" — nested inside. Reading
+ * `shortMessage || message` therefore matched nothing, and the scan gave up
+ * instead of narrowing, which is exactly what it was written to survive.
+ */
 const RANGE_COMPLAINT =
-  /more than \d+ results|range|block range|limit exceeded|query timeout|too many|exceeds/i;
+  /more than \d+ results|block range|range is too|limit exceeded|query timeout|too many|exceeds|-32701/i;
+
+function isRangeComplaint(error) {
+  const parts = [
+    error?.shortMessage,
+    error?.message,
+    error?.error?.message,
+    error?.info?.error?.message
+  ].filter(Boolean).join(" | ");
+  return RANGE_COMPLAINT.test(parts);
+}
 
 /**
- * getLogs over a range, split only when the provider says the range is too big.
+ * getLogs across a wide range, in windows the provider will actually accept.
  *
- * Providers cap the range and do not agree on the cap, so rather than guessing a
- * number that works today, this halves and retries — but only on that specific
- * complaint, and only so many times. `depth` stops a pathological provider from
- * turning one query into thousands.
+ * Forward chunking rather than bisecting a failure. Bisecting spends a failed
+ * request at every level before it finds a size that works — six of them, for
+ * the range this hits in practice — and each failure is a round trip that
+ * returns nothing. Starting at a size providers accept costs none of that, and
+ * the window still shrinks if this one is stricter than most.
  */
-async function getLogsInRange(provider, filter, fromBlock, toBlock, depth = 0) {
-  try {
-    return await provider.getLogs({ ...filter, fromBlock, toBlock });
-  } catch (error) {
-    const message = String(error?.shortMessage || error?.message || "");
-    if (depth >= 6 || toBlock - fromBlock < 2 || !RANGE_COMPLAINT.test(message)) throw error;
-    const mid = Math.floor((fromBlock + toBlock) / 2);
-    // Sequential, not parallel: the provider has just told us it is unhappy, and
-    // doubling the concurrency at that moment is the wrong response.
-    const left = await getLogsInRange(provider, filter, fromBlock, mid, depth + 1);
-    const right = await getLogsInRange(provider, filter, mid + 1, toBlock, depth + 1);
-    return [...left, ...right];
+async function getLogsInRange(provider, filter, fromBlock, toBlock) {
+  const logs = [];
+  let window = config.logScanChunk;
+  let start = fromBlock;
+
+  while (start <= toBlock) {
+    const end = Math.min(start + window - 1, toBlock);
+    try {
+      logs.push(...(await provider.getLogs({ ...filter, fromBlock: start, toBlock: end })));
+      start = end + 1;
+    } catch (error) {
+      // Shrink and retry the SAME window. Anything not about the range is the
+      // caller's problem — a rate limit answered by splitting would only
+      // multiply the requests that provoked it.
+      if (!isRangeComplaint(error) || window <= 500) throw error;
+      window = Math.max(500, Math.floor(window / 4));
+    }
   }
+  return logs;
+}
+
+// One scan serves every escrow.
+//
+// The range is the same for all of them, so scanning it once per escrow meant
+// doing identical work a dozen times over — with the window this needs, 42
+// requests each instead of 42 in total. Cached briefly: long enough for one
+// dashboard load, short enough that a new transaction shows up on the next one.
+let logCache = { key: null, logs: null, at: 0 };
+const LOG_CACHE_MS = 15_000;
+
+async function contractLogs(provider, contract, filter, from, to) {
+  const key = `${filter.address}:${from}:${Math.floor(to / 50)}`;
+  if (logCache.key === key && Date.now() - logCache.at < LOG_CACHE_MS) return logCache.logs;
+  const logs = await getLogsInRange(provider, filter, from, to);
+  logCache = { key, logs, at: Date.now() };
+  return logs;
 }
 
 async function getActivity(contractId) {
@@ -503,26 +540,27 @@ async function getActivity(contractId) {
     ["DisputeResolved", "dispute_resolved"],
     ["VerifierSlashed", "verifier_slashed"]
   ];
-  const fromBlock = await activityFromBlock(provider, contract, id);
-  const toBlock = (await latestBlock(provider))?.number ?? (await provider.getBlockNumber());
+  const { from, to } = await activityWindow(provider, contract);
 
-  // ONE getLogs for all eight events, not eight.
+  // ONE filter for all eight events, and no escrow id in it.
   //
   // Every one of these declares escrowId as its first indexed parameter, so a
-  // single filter can carry all eight signatures in topic0 and the escrow id in
-  // topic1. Eight separate queryFilter calls per escrow is what made the
-  // dashboard crawl: with a dozen escrows on screen that was a hundred round
-  // trips before a single row could render.
+  // single filter carries all eight signatures in topic0. Leaving topic1 open
+  // means the scan is identical for every escrow, so it can be done once and
+  // shared — the difference between 42 requests and 588 on a dashboard holding a
+  // dozen escrows. The id is matched below, on data already in hand.
   const byTopic = new Map();
   for (const [eventName, type] of specs) {
     byTopic.set(contract.interface.getEvent(eventName).topicHash, { eventName, type });
   }
   const filter = {
     address: await contract.getAddress(),
-    topics: [[...byTopic.keys()], ethers.zeroPadValue(ethers.toBeHex(id), 32)]
+    topics: [[...byTopic.keys()]]
   };
 
-  const logs = await getLogsInRange(provider, filter, fromBlock, toBlock);
+  const idTopic = ethers.zeroPadValue(ethers.toBeHex(id), 32).toLowerCase();
+  const all = await contractLogs(provider, contract, filter, from, to);
+  const logs = all.filter((log) => String(log.topics[1] || "").toLowerCase() === idTopic);
 
   // One read per block, not one per event. Three milestones committed in the
   // same block used to cost three identical round trips.
