@@ -1,21 +1,43 @@
 import { useEffect, useState } from "react";
-import { CircleDot, FileCheck2, Gavel, PlusCircle, Wallet } from "lucide-react";
+import { CircleDot, FileCheck2, Gavel, PlusCircle, ShieldAlert, Timer, Undo2, Wallet } from "lucide-react";
 import { listActivity } from "../lib/mockRegistry.js";
 import { sourceIsLive } from "../lib/escrowSource.js";
+import TxLink from "./TxLink.jsx";
 
+// The gateway and the mock ledger do not use identical type names for the same
+// event — `refunded` against `refund_claimed` — so both spellings are listed
+// rather than leaving one of them to fall through to the generic dot.
 const ICONS = {
   escrow_created: PlusCircle,
   milestone_verified: FileCheck2,
+  timelock_started: Timer,
   dispute_raised: Gavel,
-  payment_released: Wallet
+  dispute_resolved: Gavel,
+  verifier_slashed: ShieldAlert,
+  payment_released: Wallet,
+  refunded: Undo2,
+  refund_claimed: Undo2
 };
 
 const TONES = {
   escrow_created: "text-teal bg-teal/10",
   milestone_verified: "text-state-attested bg-state-attested/10",
+  timelock_started: "text-state-pending bg-state-pending/10",
   dispute_raised: "text-state-disputed bg-state-disputed/10",
-  payment_released: "text-state-attested bg-state-attested/10"
+  dispute_resolved: "text-state-pending bg-state-pending/10",
+  verifier_slashed: "text-state-disputed bg-state-disputed/10",
+  payment_released: "text-state-attested bg-state-attested/10",
+  refunded: "text-state-pending bg-state-pending/10",
+  refund_claimed: "text-state-pending bg-state-pending/10"
 };
+
+// Live rows name the actor by address; the mock names it by role. A raw 0x…
+// address at full length pushes the timestamp off the row.
+function actorLabel(actor) {
+  return typeof actor === "string" && /^0x[0-9a-fA-F]{40}$/.test(actor)
+    ? `${actor.slice(0, 6)}…${actor.slice(-4)}`
+    : actor;
+}
 
 // "Today" / "Yesterday" / an actual date, so the rail reads as a diary
 // rather than a wall of timestamps.
@@ -91,11 +113,14 @@ export default function ActivityRail({ onOpen, escrows }) {
                 {entries.map((entry, i) => {
                   const Icon = ICONS[entry.type] || CircleDot;
                   return (
-                    <li key={`${entry.time}-${i}`}>
+                    // The explorer link sits OUTSIDE the button. An <a> nested
+                    // inside a <button> is invalid HTML, and browsers resolve it
+                    // by swallowing one of the two — usually the link.
+                    <li key={`${entry.transactionHash || entry.time}-${i}`} className="rounded-panel transition-colors duration-150 hover:bg-beige">
                       <button
                         type="button"
                         onClick={() => onOpen?.(entry.escrowId)}
-                        className="flex w-full cursor-pointer gap-3 rounded-panel p-2 text-left transition-colors duration-150 hover:bg-beige"
+                        className="flex w-full cursor-pointer gap-3 p-2 pb-1 text-left"
                       >
                         <span
                           className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full ${
@@ -109,7 +134,7 @@ export default function ActivityRail({ onOpen, escrows }) {
                             {entry.text}
                           </span>
                           <span className="mt-1 flex flex-wrap items-center gap-x-2 text-2xs uppercase text-ink-faint">
-                            <span>{entry.actor}</span>
+                            <span>{actorLabel(entry.actor)}</span>
                             <span aria-hidden="true">·</span>
                             <span>
                               {new Date(entry.time).toLocaleTimeString([], {
@@ -123,6 +148,11 @@ export default function ActivityRail({ onOpen, escrows }) {
                           </span>
                         </span>
                       </button>
+                      {entry.transactionHash ? (
+                        <span className="block pb-2 pl-[52px]">
+                          <TxLink hash={entry.transactionHash} />
+                        </span>
+                      ) : null}
                     </li>
                   );
                 })}

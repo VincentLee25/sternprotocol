@@ -3,6 +3,7 @@ import { Check, Copy, FilePlus2, KeyRound, LayoutList, LogOut, RadioTower, Walle
 import { shortAddress } from "../lib/actors.js";
 import { getHealth } from "../lib/api.js";
 import { onChainConfigured } from "../lib/sternContract.js";
+import { CHAIN_LABEL } from "../lib/explorer.js";
 import ThemeToggle from "./ThemeToggle.jsx";
 import sternLogo from "../assets/stern-logo.png";
 
@@ -87,7 +88,12 @@ export default function Sidebar({
 
       <div className="mx-3 border-t border-sky px-1.5 pt-3.5">
         <div className="flex items-center justify-between px-1 py-1 text-2xs uppercase text-ink-faint">
-          <span>{isOnChainReady ? "Local chain · 31337" : "Mock session"}</span>
+          {/* This said "Local chain · 31337" on every live deployment. Harmless
+              looking, and wrong in the one way this product cannot afford: it
+              names the network a visitor would go and check the proofs on, so a
+              hardcoded chain id sends them to an explorer where none of the
+              transactions exist. Read from VITE_CHAIN_ID like everything else. */}
+          <span>{isOnChainReady ? CHAIN_LABEL : "Mock session"}</span>
           <span
             className={`h-1.5 w-1.5 rounded-full ${
               isOnChainReady ? "bg-state-attested" : "bg-state-pending"

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   Check,
@@ -28,6 +28,9 @@ import {
   releasePaymentAsUser
 } from "../lib/settlementFlow.js";
 import { stateFromIndex, formatEscrowId } from "../lib/escrowState.js";
+import TxLink, { AddressLink } from "../components/TxLink.jsx";
+import ProgressModal from "../components/ProgressModal.jsx";
+import { loadEscrowDetail } from "../lib/escrowSource.js";
 
 // The contract has THREE milestones (docs/01_CONTRACT_SPEC.md §4), each gated by
 // one automated feed plus one role-holder's signed proof. The earlier five-check
@@ -73,6 +76,11 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
   const [chainOracles, setChainOracles] = useState(null);
   const [timelock, setTimelock] = useState(null);
   const [walletAccount, setWalletAccount] = useState(null);
+  const [reloading, setReloading] = useState(false);
+  // Set by EvidencePanel while it drives a verification run, so the overlay can
+  // cover the whole page rather than one panel — the state it changes is spread
+  // across the document, the timeline and the rail.
+  const [verifying, setVerifying] = useState(false);
 
   const permissions = PERMISSIONS[role] || PERMISSIONS.observer;
   // escrowSource labels live rows "gateway"; only the retired window.ethereum
@@ -240,6 +248,54 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
     return state;
   }
 
+  /**
+   * Re-reads THIS escrow from the gateway and puts the fresh row into app state.
+   *
+   * This is what was missing. Every action called onRefresh, which bumps a
+   * refreshKey that only Overview consumes — and Overview is unmounted while the
+   * detail page is showing. So nothing reloaded: the state, the milestones and
+   * the timelock all stayed as they were until the whole page was reloaded by
+   * hand. The Refresh button had the same problem, which is why pressing it
+   * appeared to do nothing at all.
+   *
+   * syncChain() below cannot serve this purpose either: it reads through
+   * getBrowserContract(), i.e. window.ethereum, which a Particle user does not
+   * have. This goes over HTTP like the rest of the page.
+   *
+   * Only the fields the gateway is authoritative for are merged. pendingExtension
+   * is loaded separately and comes back null here, so copying the whole row
+   * would erase a proposal the counterparty still has to approve.
+   */
+  const reload = useCallback(async () => {
+    if (!isChain) return;
+    setReloading(true);
+    try {
+      const fresh = await loadEscrowDetail(escrow.id);
+      onUpdate(escrow.id, (current) => ({
+        ...current,
+        state: fresh.state,
+        milestones: fresh.milestones,
+        timelock: fresh.timelock,
+        releaseEligible: fresh.releaseEligible,
+        disputeOpen: fresh.disputeOpen,
+        verified: fresh.verified,
+        value: fresh.value,
+        deadline: fresh.deadline,
+        activity: fresh.activity
+      }));
+      if (fresh.state === "TimelockActive") {
+        await getTimelock(escrow.id).then(setTimelock).catch(() => {});
+      }
+    } catch {
+      // A failed re-read must not replace the result notice the user is reading;
+      // the page simply keeps showing what it had.
+    } finally {
+      setReloading(false);
+    }
+    // Keeps the Overview list in step for when they navigate back.
+    onRefresh?.();
+  }, [escrow.id, isChain, onUpdate, onRefresh]);
+
   function log(event) {
     onUpdate(escrow.id, (current) => ({
       ...current,
@@ -251,8 +307,12 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
     setMessage({ tone: "fail", text });
   }
 
-  function ok(text) {
-    setMessage({ tone: "ok", text });
+  // `hash` renders as a link to the explorer beneath the sentence. The notices
+  // used to paste `tx 0x1234abcd…` into the text, which is the least useful
+  // form a hash can take: too short to search for, not clickable, and gone the
+  // moment the notice is replaced.
+  function ok(text, hash) {
+    setMessage({ tone: "ok", text, hash });
   }
 
   function surfaceTxError(error) {
@@ -299,16 +359,16 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
       return;
     }
     const { transactionHash } = await initiateTimelockAsUser(smartAccountClient, escrow.id);
-    onRefresh?.();
-    ok(`Timelock started (tx ${transactionHash.slice(0, 10)}…). Release opens once it elapses.`);
+    await reload();
+    ok("Timelock started. Release opens once it elapses.", transactionHash);
     log("started the timelock on-chain");
   }
 
   async function release() {
     if (isChain) {
       const { transactionHash } = await releasePaymentAsUser(smartAccountClient, escrow.id);
-      onRefresh?.();
-      ok(`Funds released to exporter (tx ${transactionHash.slice(0, 10)}…).`);
+      await reload();
+      ok("Funds released to exporter.", transactionHash);
       log("released the settlement on-chain");
       return;
     }
@@ -325,8 +385,8 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
   async function refund() {
     if (isChain) {
       const { transactionHash } = await claimRefundAsUser(smartAccountClient, escrow.id);
-      onRefresh?.();
-      ok(`Refund claimed (tx ${transactionHash.slice(0, 10)}…).`);
+      await reload();
+      ok("Refund claimed.", transactionHash);
       log("claimed a refund on-chain");
       return;
     }
@@ -370,8 +430,8 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
       // never sent: even with a wallet it could only revert. prepareDispute
       // returns both calldatas and they go out as one UserOperation.
       const { transactionHash, bond } = await raiseDisputeAsUser(smartAccountClient, escrow.id, "none");
-      onRefresh?.();
-      ok(`Dispute opened, ${Number(bond).toLocaleString("id-ID")} bond locked (tx ${transactionHash.slice(0, 10)}…). Funds are frozen until the arbiter resolves it.`);
+      await reload();
+      ok(`Dispute opened, ${Number(bond).toLocaleString("id-ID")} bond locked. Funds are frozen until the arbiter resolves it.`, transactionHash);
       log("opened a general dispute on-chain");
       return;
     }
@@ -439,7 +499,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
 
     if (isChain) {
       await proposeExtensionAsUser(smartAccountClient, escrow.id, Math.floor(newDeadlineMs / 1000));
-      onRefresh?.();
+      await reload();
       ok("Extension proposed — waiting for the counterparty's approval.");
       log("proposed a deadline extension on-chain");
       return;
@@ -470,7 +530,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
         return;
       }
       await approveExtensionAsUser(smartAccountClient, escrow.id);
-      onRefresh?.();
+      await reload();
       ok("Amendment signed by both parties — deadline extended.");
       log("approved the deadline extension on-chain");
       return;
@@ -522,6 +582,25 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
 
   return (
     <div className="w-full">
+      {/* Two overlays, deliberately worded differently. Verification writes to
+          the chain and can run for the better part of a minute; a re-read is
+          quick and only says so in case it is not. */}
+      <ProgressModal
+        open={verifying}
+        title="Verifying milestones on chain"
+        detail="The gateway is checking each source and committing the proofs that pass. Nothing is signed by this browser."
+        steps={[
+          "Reading VGM, inspection, AIS and CEISA",
+          "Committing each passing milestone as its own transaction",
+          "A failing source is refused, not written"
+        ]}
+      />
+      <ProgressModal
+        open={reloading && !verifying}
+        title="Reading the latest state"
+        detail="Re-reading this escrow from the gateway."
+      />
+
       <button
         type="button"
         onClick={onBack}
@@ -537,6 +616,12 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
           className={`mb-4 rounded-panel px-4 py-3 font-serif text-sm ${messageTone}`}
         >
           {message.text}
+          {message.hash ? (
+            <span className="mt-1.5 flex items-center gap-1.5">
+              <span className="text-2xs uppercase opacity-70">Transaction</span>
+              <TxLink hash={message.hash} />
+            </span>
+          ) : null}
         </div>
       ) : null}
 
@@ -722,9 +807,15 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
                   className={`px-5 py-4 ${member.slashed ? "bg-state-disputed/5" : "bg-surface"}`}
                 >
                   <p className="text-sm font-medium text-navy">{member.name}</p>
-                  <p className="truncate text-2xs text-ink-faint">
-                    {member.address ? shortAddress(member.address) : member.descr}
-                  </p>
+                  {/* Linked, because "is the verifier actually working?" is a
+                      fair question and this is where it gets answered: the
+                      explorer shows the wallet's real transactions, its balance,
+                      and whether it has been signing proofs at all. */}
+                  {member.address ? (
+                    <AddressLink address={member.address} label={shortAddress(member.address)} />
+                  ) : (
+                    <p className="truncate text-2xs text-ink-faint">{member.descr}</p>
+                  )}
                   <div className="mt-2 flex items-center justify-between gap-2">
                     <span className="text-2xs tabular-nums text-teal">
                       bond {Number(member.bond).toFixed(2)}
@@ -746,6 +837,25 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
             </ul>
           </div>
 
+          {/* Lifecycle and Activity moved out of the right rail and into this
+              column. Measured on a live escrow, the rail ran 1974px against the
+              centre's 1125 — half a screen of white space beside a wall of
+              panels. Both of these are read-only reference; the rail is for
+              things you act on, so they were also in the wrong place by meaning,
+              not only by height. */}
+          <div className="mt-5 grid gap-5 md:grid-cols-2">
+            <Panel title="Lifecycle">
+              <Timeline state={escrow.state} />
+              <p className="mt-4 border-t border-sky pt-3 font-serif text-xs leading-relaxed text-ink-dim">
+                Each milestone opens a challenge window, and the timelock runs after the third. Both are set at deploy time.
+              </p>
+            </Panel>
+
+            <Panel title="Activity">
+              <ActivityLog entries={escrow.activity} />
+            </Panel>
+          </div>
+
         </div>
 
         {/* ---------- Rail ---------- */}
@@ -757,16 +867,10 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
             <EvidencePanel
               escrowId={escrow.id}
               smartAccountClient={smartAccountClient}
-              onStateChanged={onRefresh}
+              onStateChanged={reload}
+              onBusyChange={setVerifying}
             />
           ) : null}
-
-          <Panel title="Lifecycle">
-            <Timeline state={escrow.state} />
-            <p className="mt-4 border-t border-sky pt-3 font-serif text-xs leading-relaxed text-ink-dim">
-              Each milestone opens a challenge window, and the timelock runs after the third. Both are set at deploy time.
-            </p>
-          </Panel>
 
           <Panel title={`Actions · ${role}`}>
             {/* The contract's own isReleaseEligible, surfaced. Saying "not yet"
@@ -963,9 +1067,6 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
             </Panel>
           ) : null}
 
-          <Panel title="Activity">
-            <ActivityLog entries={escrow.activity} />
-          </Panel>
         </aside>
       </div>
     </div>

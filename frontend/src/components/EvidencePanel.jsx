@@ -3,13 +3,14 @@ import { AlertTriangle, Check, Clock, Loader2, PenLine, RefreshCcw, ShieldAlert,
 import { getEvidence, simulateFault, verifyMilestones, apiConfigured } from "../lib/sternApi.js";
 import { disputeOpportunity, faultOptions, activeFault, milestoneRows, sourceEvidence, verificationChecks, verifyResultRows } from "../lib/evidence.js";
 import { previewDispute, raiseDisputeAsUser } from "../lib/disputeFlow.js";
+import TxLink, { AddressLink, BlockLink } from "./TxLink.jsx";
 
 // Renders GET /oracle/evidence/:id: the committed on-chain proofs, the current
 // source verdict, and where the two now disagree.
 //
 // No verification logic lives here. The gateway has already done the comparison
 // (docs/FRONTEND_HANDOFF_UPDATED.md closing note); this only renders its answer.
-export default function EvidencePanel({ escrowId, smartAccountClient, onStateChanged }) {
+export default function EvidencePanel({ escrowId, smartAccountClient, onStateChanged, onBusyChange }) {
   const [evidence, setEvidence] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -97,13 +98,22 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
   // the verifier keys stay on the gateway, and this only triggers the work.
   async function onVerify() {
     setBusy("verify");
+    // Raises the page-wide overlay. A spinner inside this button was the only
+    // signal that anything was happening, through a run that sends up to three
+    // transactions and can take most of a minute.
+    onBusyChange?.(true);
     setError("");
     setVerifyRun(null);
     try {
       const res = await verifyMilestones(escrowId);
       setVerifyRun(verifyResultRows(res));
+      // Order matters: the evidence panel re-reads itself, then the page re-reads
+      // the escrow. Both are needed — this panel knows about proofs, the page
+      // knows about state, timelock and activity, and a verification changes all
+      // of them. Awaiting the second is what makes the result visible without a
+      // manual page reload.
       await load();
-      onStateChanged?.();
+      await onStateChanged?.();
     } catch (err) {
       // A 404 here means the gateway simply has not shipped the route yet.
       // Saying "could not verify" would send someone hunting through their
@@ -113,6 +123,18 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
           ? "This gateway has no POST /oracle/verify/:id yet. Until the backend ships it, milestones are submitted by the verifier service directly."
           : err.message
       );
+    } finally {
+      setBusy("");
+      onBusyChange?.(false);
+    }
+  }
+
+  // Both halves of the page, not just this panel — see the button.
+  async function onRefreshAll() {
+    setBusy("refresh");
+    try {
+      await load();
+      await onStateChanged?.();
     } finally {
       setBusy("");
     }
@@ -164,14 +186,22 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
     <Panel>
       <div className="flex items-start justify-between gap-3">
         <Head title="Evidence &amp; verification" />
+        {/* This re-read only its own evidence, so the state, timeline and
+            timelock on the page around it stayed stale — pressing it looked
+            like nothing happened, because nothing visible did. It now refreshes
+            the page's escrow too, and says when it is working. */}
         <button
           type="button"
-          onClick={() => load()}
+          onClick={onRefreshAll}
           disabled={Boolean(busy)}
           className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-sky px-3 py-1.5 text-2xs font-medium uppercase text-navy transition-colors duration-150 hover:border-teal/50 disabled:opacity-50"
         >
-          <RefreshCcw size={11} aria-hidden="true" />
-          Refresh
+          <RefreshCcw
+            size={11}
+            className={busy === "refresh" ? "animate-spin" : ""}
+            aria-hidden="true"
+          />
+          {busy === "refresh" ? "Refreshing" : "Refresh"}
         </button>
       </div>
 
@@ -217,6 +247,14 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
                   <span className="ml-1.5 font-serif text-ink-faint">{r.oracle}</span>
                   {r.detail ? (
                     <span className="mt-0.5 block font-serif text-ink-dim">{r.detail}</span>
+                  ) : null}
+                  {/* "submitted" is this app describing itself. The hash beside
+                      it is the part a sceptic can check without us. */}
+                  {r.transactionHash ? (
+                    <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <TxLink hash={r.transactionHash} />
+                      {r.verifier ? <AddressLink address={r.verifier} label="signer" /> : null}
+                    </span>
                   ) : null}
                 </span>
                 <span
@@ -272,8 +310,24 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
                 {row.proofCid ? (
                   <dl className="mt-2.5 space-y-1 border-t border-sky/60 pt-2.5 text-2xs">
                     <Row label="Proof CID" value={row.proofCid} mono truncate />
-                    {row.verifier ? <Row label="Verifier" value={row.verifier} mono truncate /> : null}
-                    {row.blockNumber != null ? <Row label="Block" value={String(row.blockNumber)} mono /> : null}
+                    {/* The verifier address is the one thing here worth checking
+                        elsewhere: it is what proves a real, funded, role-holding
+                        wallet signed this proof rather than the app drawing a
+                        green tick for itself. */}
+                    {row.verifier ? (
+                      <div className="flex items-baseline justify-between gap-3">
+                        <dt className="uppercase text-ink-faint">Verifier</dt>
+                        <dd className="min-w-0 text-right"><AddressLink address={row.verifier} /></dd>
+                      </div>
+                    ) : null}
+                    {row.blockNumber != null ? (
+                      <div className="flex items-baseline justify-between gap-3">
+                        <dt className="uppercase text-ink-faint">Block</dt>
+                        <dd className="min-w-0 text-right">
+                          <BlockLink blockNumber={row.blockNumber} />
+                        </dd>
+                      </div>
+                    ) : null}
                     {row.challengeDeadline ? (
                       <Row label="Challenge until" value={new Date(row.challengeDeadline).toLocaleString("id-ID")} />
                     ) : null}
@@ -403,7 +457,7 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
           {result ? (
             <p className="mt-3 rounded-panel border border-state-attested/40 bg-state-attested/10 px-3.5 py-2.5 font-serif text-xs leading-relaxed text-state-attested">
               Dispute raised on {result.milestone}, {Number(result.bond).toLocaleString("id-ID")} bond locked.
-              <span className="mt-1 block break-all font-mono text-2xs">{result.transactionHash}</span>
+              <span className="mt-1 block"><TxLink hash={result.transactionHash} /></span>
             </p>
           ) : null}
 
