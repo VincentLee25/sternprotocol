@@ -426,10 +426,21 @@ const AVG_BLOCK_SECONDS = 2;
  * than from the beginning of the chain. CONTRACT_DEPLOY_BLOCK overrides it when
  * set, which is both cheaper and exact.
  */
+// The head barely moves between requests, and the dashboard asks for a dozen
+// escrows at once. Reading it once per couple of seconds instead of once per
+// escrow removes a round trip per row for a value that would be identical.
+let headCache = { block: null, at: 0 };
+async function latestBlock(provider) {
+  if (headCache.block && Date.now() - headCache.at < 2000) return headCache.block;
+  const block = await provider.getBlock("latest");
+  headCache = { block, at: Date.now() };
+  return block;
+}
+
 async function activityFromBlock(provider, contract, id) {
   if (config.contractDeployBlock != null) return config.contractDeployBlock;
 
-  const latest = await provider.getBlock("latest");
+  const latest = await latestBlock(provider);
   try {
     const createdAt = Number((await contract.getEscrow(id))[8]);
     if (createdAt > 0 && latest?.timestamp > createdAt) {
@@ -447,24 +458,32 @@ async function activityFromBlock(provider, contract, id) {
   return Math.max(0, (latest?.number || 0) - 500_000);
 }
 
+// Only a range complaint is worth splitting for. Splitting on ANY error was a
+// bad idea: a rate-limited provider answers 429, the range halves, both halves
+// are rate-limited, and the retry count doubles every level — turning one slow
+// request into hundreds. Anything that is not about the range is re-thrown.
+const RANGE_COMPLAINT =
+  /more than \d+ results|range|block range|limit exceeded|query timeout|too many|exceeds/i;
+
 /**
- * getLogs over a range, split until the provider stops complaining.
+ * getLogs over a range, split only when the provider says the range is too big.
  *
- * Providers cap the range and they do not agree on the cap, so rather than
- * guessing a number that works today, this halves on failure and retries. A
- * range that genuinely cannot be served collapses to single blocks and the
- * error is then real.
+ * Providers cap the range and do not agree on the cap, so rather than guessing a
+ * number that works today, this halves and retries — but only on that specific
+ * complaint, and only so many times. `depth` stops a pathological provider from
+ * turning one query into thousands.
  */
-async function getLogsInRange(contract, filter, fromBlock, toBlock) {
+async function getLogsInRange(provider, filter, fromBlock, toBlock, depth = 0) {
   try {
-    return await contract.queryFilter(filter, fromBlock, toBlock);
+    return await provider.getLogs({ ...filter, fromBlock, toBlock });
   } catch (error) {
-    if (toBlock - fromBlock < 2) throw error;
+    const message = String(error?.shortMessage || error?.message || "");
+    if (depth >= 6 || toBlock - fromBlock < 2 || !RANGE_COMPLAINT.test(message)) throw error;
     const mid = Math.floor((fromBlock + toBlock) / 2);
-    const [left, right] = await Promise.all([
-      getLogsInRange(contract, filter, fromBlock, mid),
-      getLogsInRange(contract, filter, mid + 1, toBlock)
-    ]);
+    // Sequential, not parallel: the provider has just told us it is unhappy, and
+    // doubling the concurrency at that moment is the wrong response.
+    const left = await getLogsInRange(provider, filter, fromBlock, mid, depth + 1);
+    const right = await getLogsInRange(provider, filter, mid + 1, toBlock, depth + 1);
     return [...left, ...right];
   }
 }
@@ -485,7 +504,25 @@ async function getActivity(contractId) {
     ["VerifierSlashed", "verifier_slashed"]
   ];
   const fromBlock = await activityFromBlock(provider, contract, id);
-  const toBlock = await provider.getBlockNumber();
+  const toBlock = (await latestBlock(provider))?.number ?? (await provider.getBlockNumber());
+
+  // ONE getLogs for all eight events, not eight.
+  //
+  // Every one of these declares escrowId as its first indexed parameter, so a
+  // single filter can carry all eight signatures in topic0 and the escrow id in
+  // topic1. Eight separate queryFilter calls per escrow is what made the
+  // dashboard crawl: with a dozen escrows on screen that was a hundred round
+  // trips before a single row could render.
+  const byTopic = new Map();
+  for (const [eventName, type] of specs) {
+    byTopic.set(contract.interface.getEvent(eventName).topicHash, { eventName, type });
+  }
+  const filter = {
+    address: await contract.getAddress(),
+    topics: [[...byTopic.keys()], ethers.zeroPadValue(ethers.toBeHex(id), 32)]
+  };
+
+  const logs = await getLogsInRange(provider, filter, fromBlock, toBlock);
 
   // One read per block, not one per event. Three milestones committed in the
   // same block used to cost three identical round trips.
@@ -495,31 +532,30 @@ async function getActivity(contractId) {
     return blockCache.get(number);
   };
 
-  for (const [eventName, type] of specs) {
-    const filter = contract.filters[eventName](id);
-    const logs = await getLogsInRange(contract, filter, fromBlock, toBlock);
-    for (const log of logs) {
-      const block = await blockAt(log.blockNumber);
-      const parsed = log.args || [];
-      const actorIndex = {
-        EscrowCreated: 1,
-        MilestoneVerified: 2,
-        PaymentReleased: 1,
-        Refunded: 1,
-        DisputeRaised: 1,
-        VerifierSlashed: 1
-      }[eventName];
-      const candidate = actorIndex == null ? null : parsed[actorIndex];
-      const actorAddress = typeof candidate === "string" && ethers.isAddress(candidate) ? candidate : null;
-      events.push({
-        blockNumber: log.blockNumber,
-        transactionHash: log.transactionHash,
-        time: block ? new Date(block.timestamp * 1000).toISOString() : null,
-        type,
-        actorAddress,
-        text: eventName
-      });
-    }
+  for (const log of logs) {
+    const spec = byTopic.get(log.topics[0]);
+    if (!spec) continue;
+    const { eventName, type } = spec;
+    const parsed = contract.interface.parseLog(log)?.args || [];
+    const block = await blockAt(log.blockNumber);
+    const actorIndex = {
+      EscrowCreated: 1,
+      MilestoneVerified: 2,
+      PaymentReleased: 1,
+      Refunded: 1,
+      DisputeRaised: 1,
+      VerifierSlashed: 1
+    }[eventName];
+    const candidate = actorIndex == null ? null : parsed[actorIndex];
+    const actorAddress = typeof candidate === "string" && ethers.isAddress(candidate) ? candidate : null;
+    events.push({
+      blockNumber: log.blockNumber,
+      transactionHash: log.transactionHash,
+      time: block ? new Date(block.timestamp * 1000).toISOString() : null,
+      type,
+      actorAddress,
+      text: eventName
+    });
   }
   events.sort((a, b) => (a.blockNumber - b.blockNumber) || a.transactionHash.localeCompare(b.transactionHash));
   return { escrowId: String(id), activity: events };

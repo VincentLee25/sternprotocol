@@ -135,17 +135,43 @@ export async function loadEscrowRows({ address, signal } = {}) {
 
   const res = await api.listEscrows({ address, signal });
   const rows = res.escrows || res || [];
+  // Activity is NOT fetched here any more. It is an event scan per escrow, and
+  // making the list wait for every one of them left the whole dashboard on
+  // skeleton rows until the slowest finished — for data that appears in a single
+  // side panel. The table needs only the escrow detail; loadActivityForRows
+  // below fills the rest in once the page is already useful.
   return Promise.all(
     rows.map(async (row) => {
-      // Activity is a per-escrow event scan on the gateway. A failure there
-      // should not blank the whole list, so degrade to an empty log.
-      const [detail, log] = await Promise.all([
-        api.getEscrow(row.escrowId, { signal }),
-        api.getActivity(row.escrowId, { signal }).catch((error) => ({ activity: [], error }))
-      ]);
-      const full = toRow(detail, log.activity, "gateway");
-      full.activityError = log.error?.message || null;
+      const detail = await api.getEscrow(row.escrowId, { signal });
+      const full = toRow(detail, [], "gateway");
+      full.activityPending = true;
       return full;
+    })
+  );
+}
+
+/**
+ * Activity for rows that are already on screen.
+ *
+ * Deliberately separate, and deliberately second. Each escrow resolves on its
+ * own, so one slow or failing scan delays only its own row rather than the page.
+ */
+export async function loadActivityForRows(rows, { signal } = {}) {
+  if (!sourceIsLive) return rows.map((row) => ({ ...row, activityPending: false }));
+  return Promise.all(
+    rows.map(async (row) => {
+      try {
+        const log = await api.getActivity(row.id, { signal });
+        return {
+          ...row,
+          activity: normaliseActivity(log.activity),
+          activityError: null,
+          activityPending: false
+        };
+      } catch (error) {
+        if (error?.name === "AbortError") throw error;
+        return { ...row, activityError: error.message, activityPending: false };
+      }
     })
   );
 }

@@ -89,6 +89,7 @@ export default function ActivityRail({ onOpen, escrows }) {
 
   // Any escrow failing its log read explains an empty feed better than silence.
   const readError = (escrows || []).find((e) => e.activityError)?.activityError || null;
+  const pending = (escrows || []).some((e) => e.activityPending);
 
   const groups = rows.reduce((acc, row) => {
     const key = dayLabel(row.time);
@@ -104,7 +105,15 @@ export default function ActivityRail({ onOpen, escrows }) {
       </div>
 
       <div className="max-h-[560px] overflow-y-auto px-5 pb-5">
-        {readError && rows.length === 0 ? (
+        {pending && rows.length === 0 ? (
+          // The scan runs after the table renders, so this window really is
+          // still filling. Saying "nothing has happened yet" during it is a
+          // claim, and a wrong one.
+          <p className="flex items-center gap-2 py-6 font-serif text-sm text-ink-dim">
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-teal border-t-transparent" aria-hidden="true" />
+            Reading the chain…
+          </p>
+        ) : readError && rows.length === 0 ? (
           <p role="alert" className="py-6 font-serif text-sm leading-relaxed text-state-disputed">
             The activity log could not be read from the chain.
             <span className="mt-1 block text-xs text-ink-dim">{readError}</span>
