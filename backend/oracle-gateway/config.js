@@ -21,6 +21,11 @@ const config = {
   contractDeployBlock: process.env.CONTRACT_DEPLOY_BLOCK
     ? Number(process.env.CONTRACT_DEPLOY_BLOCK)
     : null,
+  // Blocks per eth_getLogs request. 10,000 is the cap most public Amoy RPCs
+  // enforce, so the default sits just under it; the scan shrinks further on its
+  // own if a provider is stricter. Raise it only against an RPC you know allows
+  // more — a paid endpoint usually does, and fewer, wider requests are faster.
+  logScanChunk: Number(process.env.LOG_SCAN_CHUNK || 9000),
   nativeGasWarningWei: BigInt(process.env.NATIVE_GAS_WARNING_WEI || "1000000000000000"),
   identityStoreFile: process.env.IDENTITY_STORE_FILE || path.resolve(__dirname, "../data/identities.json"),
   authTokenSecret: process.env.AUTH_TOKEN_SECRET
