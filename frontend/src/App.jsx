@@ -262,7 +262,13 @@ export default function App() {
         isOnChainReady={sourceIsLive}
       />
 
-      <main className="flex-1 overflow-y-auto px-6 py-6 lg:px-10 lg:py-8">
+      {/* `relative` is load-bearing, not decoration. Without a positioned
+          ancestor, absolutely-positioned descendants resolve against the initial
+          containing block and escape this element's overflow entirely — the
+          screen-reader labels on the explorer links did exactly that, stretching
+          the document 324px past the viewport and leaving a band of dead space
+          below the app that scrolled but showed nothing. */}
+      <main className="relative flex-1 overflow-y-auto px-6 py-6 lg:px-10 lg:py-8">
         {activeView.name === "create" ? (
           <NewEscrow
             balance={balance}

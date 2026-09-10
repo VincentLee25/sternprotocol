@@ -408,6 +408,67 @@ async function prepareDispute(contractId, contestedMilestone = "none") {
   };
 }
 
+// Amoy targets roughly two seconds a block. Only used to turn an escrow's
+// creation timestamp into an approximate block to start scanning from, and the
+// margin below absorbs the error.
+const AVG_BLOCK_SECONDS = 2;
+
+/**
+ * Where to start scanning logs for one escrow.
+ *
+ * queryFilter defaults fromBlock to 0. On a chain 47 million blocks deep that
+ * asks a public RPC for the entire history, eight times per escrow, and every
+ * provider worth using refuses it — usually with a range-limit error that the
+ * frontend then swallowed into an empty list. The activity feed was not empty;
+ * it was never fetched.
+ *
+ * The escrow knows when it was created, so the scan starts from there rather
+ * than from the beginning of the chain. CONTRACT_DEPLOY_BLOCK overrides it when
+ * set, which is both cheaper and exact.
+ */
+async function activityFromBlock(provider, contract, id) {
+  if (config.contractDeployBlock != null) return config.contractDeployBlock;
+
+  const latest = await provider.getBlock("latest");
+  try {
+    const createdAt = Number((await contract.getEscrow(id))[8]);
+    if (createdAt > 0 && latest?.timestamp > createdAt) {
+      const secondsAgo = latest.timestamp - createdAt;
+      const blocksAgo = Math.ceil(secondsAgo / AVG_BLOCK_SECONDS);
+      // 20% plus a flat cushion, because the block time is a target, not a
+      // guarantee. Starting too early costs a little; too late loses events.
+      const margin = Math.ceil(blocksAgo * 0.2) + 5000;
+      return Math.max(0, latest.number - blocksAgo - margin);
+    }
+  } catch {
+    // Fall through to the bounded window below.
+  }
+  // Nothing to anchor on: look back a fixed distance rather than to block 0.
+  return Math.max(0, (latest?.number || 0) - 500_000);
+}
+
+/**
+ * getLogs over a range, split until the provider stops complaining.
+ *
+ * Providers cap the range and they do not agree on the cap, so rather than
+ * guessing a number that works today, this halves on failure and retries. A
+ * range that genuinely cannot be served collapses to single blocks and the
+ * error is then real.
+ */
+async function getLogsInRange(contract, filter, fromBlock, toBlock) {
+  try {
+    return await contract.queryFilter(filter, fromBlock, toBlock);
+  } catch (error) {
+    if (toBlock - fromBlock < 2) throw error;
+    const mid = Math.floor((fromBlock + toBlock) / 2);
+    const [left, right] = await Promise.all([
+      getLogsInRange(contract, filter, fromBlock, mid),
+      getLogsInRange(contract, filter, mid + 1, toBlock)
+    ]);
+    return [...left, ...right];
+  }
+}
+
 async function getActivity(contractId) {
   const provider = getProvider();
   const contract = getContract(provider);
@@ -423,11 +484,22 @@ async function getActivity(contractId) {
     ["DisputeResolved", "dispute_resolved"],
     ["VerifierSlashed", "verifier_slashed"]
   ];
+  const fromBlock = await activityFromBlock(provider, contract, id);
+  const toBlock = await provider.getBlockNumber();
+
+  // One read per block, not one per event. Three milestones committed in the
+  // same block used to cost three identical round trips.
+  const blockCache = new Map();
+  const blockAt = async (number) => {
+    if (!blockCache.has(number)) blockCache.set(number, await provider.getBlock(number));
+    return blockCache.get(number);
+  };
+
   for (const [eventName, type] of specs) {
     const filter = contract.filters[eventName](id);
-    const logs = await contract.queryFilter(filter);
+    const logs = await getLogsInRange(contract, filter, fromBlock, toBlock);
     for (const log of logs) {
-      const block = await log.getBlock();
+      const block = await blockAt(log.blockNumber);
       const parsed = log.args || [];
       const actorIndex = {
         EscrowCreated: 1,

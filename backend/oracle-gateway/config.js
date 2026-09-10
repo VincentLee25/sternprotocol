@@ -15,6 +15,12 @@ const config = {
   demoBalanceIdrt: process.env.DEMO_BALANCE_IDRT || "150000000.00",
   demoClaimsFile: process.env.DEMO_CLAIMS_FILE,
   contractAddress: process.env.CONTRACT_ADDRESS,
+  // The block the contract was deployed at. Optional, but worth setting: the
+  // activity scan otherwise has to estimate a start block from each escrow's
+  // creation timestamp. Printed by scripts/deploy.js.
+  contractDeployBlock: process.env.CONTRACT_DEPLOY_BLOCK
+    ? Number(process.env.CONTRACT_DEPLOY_BLOCK)
+    : null,
   nativeGasWarningWei: BigInt(process.env.NATIVE_GAS_WARNING_WEI || "1000000000000000"),
   identityStoreFile: process.env.IDENTITY_STORE_FILE || path.resolve(__dirname, "../data/identities.json"),
   authTokenSecret: process.env.AUTH_TOKEN_SECRET
