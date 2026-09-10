@@ -7,7 +7,18 @@ import TxLink from "./TxLink.jsx";
 // appeared cut off, with no scrollbar to explain why.
 const IS_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 
-export default function ActivityLog({ entries, error }) {
+function TruncationNote({ before }) {
+  if (before == null) return null;
+  return (
+    <p className="mt-2.5 border-t border-sky/50 pt-2.5 font-serif text-xs leading-relaxed text-ink-faint">
+      Earlier events are not shown: this RPC keeps only recent history and has discarded
+      blocks before #{before}. Point <code className="font-mono">RPC_URL</code> at a node that
+      retains more to see the full log.
+    </p>
+  );
+}
+
+export default function ActivityLog({ entries, error, truncatedBefore }) {
   // "Nothing happened" and "the read failed" look identical to a reader and are
   // completely different to whoever has to fix it.
   if (error) {
@@ -19,10 +30,16 @@ export default function ActivityLog({ entries, error }) {
     );
   }
   if (!entries || entries.length === 0) {
-    return <p className="font-serif text-sm text-ink-dim">No activity recorded yet.</p>;
+    return (
+      <>
+        <p className="font-serif text-sm text-ink-dim">No activity recorded yet.</p>
+        <TruncationNote before={truncatedBefore} />
+      </>
+    );
   }
 
   return (
+    <>
     <ol className="space-y-0">
       {[...entries].reverse().map((entry, index) => {
         const actorIsAddress = IS_ADDRESS.test(String(entry.actor || ""));
@@ -49,5 +66,7 @@ export default function ActivityLog({ entries, error }) {
         );
       })}
     </ol>
+    <TruncationNote before={truncatedBefore} />
+    </>
   );
 }

@@ -466,17 +466,29 @@ async function activityWindow(provider, contract) {
  * instead of narrowing, which is exactly what it was written to survive.
  */
 const RANGE_COMPLAINT =
-  /more than \d+ results|block range|range is too|limit exceeded|query timeout|too many|exceeds|-32701/i;
+  /more than \d+ results|block range|range is too|limit exceeded|query timeout|too many|exceeds/i;
 
-function isRangeComplaint(error) {
-  const parts = [
+// A different refusal entirely, and one no amount of narrowing can fix: the node
+// has discarded the blocks. Public RPCs keep only recent history — this one about
+// ten days of it — so a contract older than that simply has no early logs there.
+//
+// Worth separating because the JSON-RPC code is the same (-32701) for both on at
+// least one provider. Treating this as a range problem made the scan shrink to
+// its 500-block floor and then fail, which is the worst of both: slow, and still
+// nothing to show.
+const PRUNED = /pruned|history has been|not available|missing trie node|state.*unavailable/i;
+
+function errorText(error) {
+  return [
     error?.shortMessage,
     error?.message,
     error?.error?.message,
     error?.info?.error?.message
   ].filter(Boolean).join(" | ");
-  return RANGE_COMPLAINT.test(parts);
 }
+
+const isPruned = (error) => PRUNED.test(errorText(error));
+const isRangeComplaint = (error) => !isPruned(error) && RANGE_COMPLAINT.test(errorText(error));
 
 /**
  * getLogs across a wide range, in windows the provider will actually accept.
@@ -491,6 +503,9 @@ async function getLogsInRange(provider, filter, fromBlock, toBlock) {
   const logs = [];
   let window = config.logScanChunk;
   let start = fromBlock;
+  // The oldest block the node still holds, once it has told us. Reported upwards
+  // so the UI can say the log is partial rather than implying it is complete.
+  let prunedThrough = null;
 
   while (start <= toBlock) {
     const end = Math.min(start + window - 1, toBlock);
@@ -498,14 +513,22 @@ async function getLogsInRange(provider, filter, fromBlock, toBlock) {
       logs.push(...(await provider.getLogs({ ...filter, fromBlock: start, toBlock: end })));
       start = end + 1;
     } catch (error) {
-      // Shrink and retry the SAME window. Anything not about the range is the
-      // caller's problem — a rate limit answered by splitting would only
-      // multiply the requests that provoked it.
+      if (isPruned(error)) {
+        // Skip forward instead of giving up. The node cannot serve these blocks
+        // and never will, but the recent ones are fine — and a partial history
+        // is far more useful than an error where a timeline should be.
+        prunedThrough = end;
+        start = end + 1;
+        continue;
+      }
+      // Shrink and retry the SAME window. Anything else is the caller's problem —
+      // a rate limit answered by splitting would only multiply the requests that
+      // provoked it.
       if (!isRangeComplaint(error) || window <= 500) throw error;
       window = Math.max(500, Math.floor(window / 4));
     }
   }
-  return logs;
+  return { logs, prunedThrough };
 }
 
 // One scan serves every escrow.
@@ -514,15 +537,15 @@ async function getLogsInRange(provider, filter, fromBlock, toBlock) {
 // doing identical work a dozen times over — with the window this needs, 42
 // requests each instead of 42 in total. Cached briefly: long enough for one
 // dashboard load, short enough that a new transaction shows up on the next one.
-let logCache = { key: null, logs: null, at: 0 };
+let logCache = { key: null, result: null, at: 0 };
 const LOG_CACHE_MS = 15_000;
 
 async function contractLogs(provider, contract, filter, from, to) {
   const key = `${filter.address}:${from}:${Math.floor(to / 50)}`;
-  if (logCache.key === key && Date.now() - logCache.at < LOG_CACHE_MS) return logCache.logs;
-  const logs = await getLogsInRange(provider, filter, from, to);
-  logCache = { key, logs, at: Date.now() };
-  return logs;
+  if (logCache.key === key && Date.now() - logCache.at < LOG_CACHE_MS) return logCache.result;
+  const result = await getLogsInRange(provider, filter, from, to);
+  logCache = { key, result, at: Date.now() };
+  return result;
 }
 
 async function getActivity(contractId) {
@@ -559,7 +582,7 @@ async function getActivity(contractId) {
   };
 
   const idTopic = ethers.zeroPadValue(ethers.toBeHex(id), 32).toLowerCase();
-  const all = await contractLogs(provider, contract, filter, from, to);
+  const { logs: all, prunedThrough } = await contractLogs(provider, contract, filter, from, to);
   const logs = all.filter((log) => String(log.topics[1] || "").toLowerCase() === idTopic);
 
   // One read per block, not one per event. Three milestones committed in the
@@ -596,7 +619,15 @@ async function getActivity(contractId) {
     });
   }
   events.sort((a, b) => (a.blockNumber - b.blockNumber) || a.transactionHash.localeCompare(b.transactionHash));
-  return { escrowId: String(id), activity: events };
+  // `truncatedBefore` is the honest half of a partial answer: these are all the
+  // events the node still holds, and anything earlier than this block is gone
+  // from it. Without saying so, a short list looks like a complete one.
+  return {
+    escrowId: String(id),
+    activity: events,
+    truncatedBefore: prunedThrough,
+    scannedFrom: from
+  };
 }
 
 async function getVerifiers() {

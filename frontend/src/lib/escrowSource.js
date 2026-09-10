@@ -166,6 +166,7 @@ export async function loadActivityForRows(rows, { signal } = {}) {
           ...row,
           activity: normaliseActivity(log.activity),
           activityError: null,
+          activityTruncatedBefore: log.truncatedBefore ?? null,
           activityPending: false
         };
       } catch (error) {
@@ -192,5 +193,6 @@ export async function loadEscrowDetail(id, { signal } = {}) {
   ]);
   const row = toRow({ ...detail, timelock }, log.activity, "gateway");
   row.activityError = log.error?.message || null;
+  row.activityTruncatedBefore = log.truncatedBefore ?? null;
   return row;
 }
