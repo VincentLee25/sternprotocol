@@ -110,13 +110,16 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
           name: v.name || CONSORTIUM[index]?.name || `Oracle ${index + 1}`,
           descr: CONSORTIUM[index]?.descr || v.role || "",
           bond: Number(v.bond) / 100,
+          // Lifetime, across every escrow this verifier has ever worked on.
+          // Kept separate from the status below for exactly that reason.
           slashes: Number(v.slashCount) || 0,
           // The escrow's own proofs say who has actually attested on THIS
           // escrow; a verifier being registered says nothing about that.
           attested: Boolean(
             escrow.milestones?.[["inspected", "shipped", "arrived_cleared"][index]]?.submitted
           ),
-          slashed: Number(v.slashCount) > 0
+          // Three strikes and the contract revokes the role permanently.
+          revoked: v.active === false
         }));
         setChainOracles(rows);
       } catch {
@@ -212,9 +215,11 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
             name: CONSORTIUM[index]?.name || `Oracle ${index + 1}`,
             descr: CONSORTIUM[index]?.descr || "",
             bond: Number(bond) / 100,
+            // Same split as the gateway path above: strikes are lifetime, the
+            // status is about this escrow, and only three strikes revokes.
             slashes: Number(slashes),
             attested: proof.submitted,
-            slashed: Number(slashes) > 0
+            revoked: Number(slashes) >= 3
           };
         })
       );
@@ -806,7 +811,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
               {consortium.map((member) => (
                 <li
                   key={member.address || member.name}
-                  className={`px-5 py-4 ${member.slashed ? "bg-state-disputed/5" : "bg-surface"}`}
+                  className={`px-5 py-4 ${member.revoked ? "bg-state-disputed/5" : "bg-surface"}`}
                 >
                   <p className="text-sm font-medium text-navy">{member.name}</p>
                   {/* Linked, because "is the verifier actually working?" is a
@@ -818,22 +823,34 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
                   ) : (
                     <p className="truncate text-2xs text-ink-faint">{member.descr}</p>
                   )}
+                  {/* Two different facts, and collapsing them was wrong.
+                      `slashCount` is a lifetime figure that never resets, so
+                      showing it as the status made a verifier read "SLASHED" on
+                      a brand-new escrow it had not touched — as though the first
+                      milestone had already failed. The status is about THIS
+                      escrow; the strikes are the verifier's own history. */}
                   <div className="mt-2 flex items-center justify-between gap-2">
                     <span className="text-2xs tabular-nums text-teal">
                       bond {Number(member.bond).toFixed(2)}
                     </span>
                     <span
                       className={`text-2xs uppercase ${
-                        member.slashed
+                        member.revoked
                           ? "text-state-disputed"
                           : member.attested
                             ? "text-state-attested"
                             : "text-ink-faint"
                       }`}
                     >
-                      {member.slashed ? "slashed" : member.attested ? "attested" : "pending"}
+                      {member.revoked ? "revoked" : member.attested ? "attested" : "pending"}
                     </span>
                   </div>
+                  {member.slashes > 0 && !member.revoked ? (
+                    <p className="mt-1.5 text-2xs uppercase text-state-pending">
+                      {member.slashes} of 3 strikes
+                      <span className="ml-1 normal-case text-ink-faint">· earlier escrow</span>
+                    </p>
+                  ) : null}
                 </li>
               ))}
             </ul>
