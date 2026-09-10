@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, Copy, FilePlus2, KeyRound, LayoutList, LogOut, RadioTower, Wallet } from "lucide-react";
+import { Check, Copy, FilePlus2, KeyRound, LayoutList, LogOut, RadioTower, Wallet, X } from "lucide-react";
 import { shortAddress } from "../lib/actors.js";
 import { getHealth } from "../lib/api.js";
 import { onChainConfigured } from "../lib/sternContract.js";
@@ -13,6 +13,8 @@ const NAV = [
 ];
 
 export default function Sidebar({
+  open,
+  onClose,
   view,
   onNavigate,
   user,
@@ -48,7 +50,11 @@ export default function Sidebar({
   }, []);
 
   return (
-    <aside className="flex h-full w-[238px] shrink-0 flex-col border-r border-sky bg-surface pb-3.5">
+    <aside
+      className={`flex h-full w-[280px] max-w-[85vw] shrink-0 flex-col overflow-y-auto border-r border-sky bg-surface pb-3.5 transition-transform duration-200 max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:z-40 lg:w-[238px] lg:translate-x-0 lg:overflow-visible ${
+        open ? "translate-x-0" : "-translate-x-full"
+      }`}
+    >
       <div className="flex items-center justify-between gap-2 px-5 py-5">
         <button
           type="button"
@@ -59,7 +65,19 @@ export default function Sidebar({
           <img src={sternLogo} alt="STERN" className="h-5 w-auto invert dark:invert-0" />
           <span className="mt-0.5 block text-2xs uppercase text-teal">Settlement engine</span>
         </button>
-        <ThemeToggle />
+        <div className="flex items-center gap-1.5">
+          <ThemeToggle />
+          {/* Only on phones, where this is a drawer. The backdrop closes it too,
+              but a visible control is what people look for first. */}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close navigation"
+            className="grid h-9 w-9 cursor-pointer place-items-center rounded-full text-ink-dim transition-colors duration-150 hover:bg-beige hover:text-navy lg:hidden"
+          >
+            <X size={17} aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       <nav className="flex-1" aria-label="Primary">

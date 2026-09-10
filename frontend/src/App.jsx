@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Menu } from "lucide-react";
 import Sidebar from "./components/Sidebar.jsx";
+import sternLogo from "./assets/stern-logo.png";
 import SessionBoot from "./components/SessionBoot.jsx";
 import Landing from "./pages/Landing.jsx";
 import Instrument from "./pages/Instrument.jsx";
@@ -70,6 +72,7 @@ export default function App() {
   const [claimError, setClaimError] = useState("");
   const [view, setView] = useState(readStoredView);
   const [escrows, setEscrows] = useState([]);
+  const [navOpen, setNavOpen] = useState(false);
 
   const address = user?.smartAccountAddress;
 
@@ -248,19 +251,51 @@ export default function App() {
 
   return (
     <div className="flex h-dvh overflow-hidden bg-beige text-navy">
+      {/* Backdrop for the mobile drawer. Tapping it closes the nav, which is the
+          gesture people try first — a drawer that only closes from its own
+          button feels stuck. */}
+      {navOpen ? (
+        <div
+          role="presentation"
+          onClick={() => setNavOpen(false)}
+          className="fixed inset-0 z-30 bg-onyx/50 lg:hidden"
+        />
+      ) : null}
+
       <Sidebar
+        open={navOpen}
+        onClose={() => setNavOpen(false)}
         view={activeView.name}
-        onNavigate={(name) => setView({ name })}
+        onNavigate={(name) => { setView({ name }); setNavOpen(false); }}
         user={user}
         balance={balance}
         claiming={claiming}
         claimError={claimError}
         onClaim={handleClaim}
         canClaim={canClaim}
-        onOpenOps={() => setView({ name: "ops" })}
+        onOpenOps={() => { setView({ name: "ops" }); setNavOpen(false); }}
         onSignOut={handleSignOut}
         isOnChainReady={sourceIsLive}
       />
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* On a phone the sidebar cannot simply sit there: at 238px fixed it took
+            most of a 390px screen and the workspace was clipped rather than
+            narrowed — the page title itself was cut in half. It becomes a drawer,
+            and this bar is what opens it. */}
+        <header className="flex items-center gap-3 border-b border-sky bg-surface px-4 py-3 lg:hidden">
+          <button
+            type="button"
+            onClick={() => setNavOpen(true)}
+            aria-label="Open navigation"
+            className="grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-full border border-sky text-navy transition-colors duration-150 hover:border-teal/40"
+          >
+            <Menu size={18} aria-hidden="true" />
+          </button>
+          {/* `invert` matches the sidebar: the asset is light-on-transparent, so
+              without it the mark is almost invisible on the light chrome. */}
+          <img src={sternLogo} alt="STERN" className="h-4 w-auto invert dark:invert-0" />
+        </header>
 
       {/* `relative` is load-bearing, not decoration. Without a positioned
           ancestor, absolutely-positioned descendants resolve against the initial
@@ -268,7 +303,7 @@ export default function App() {
           screen-reader labels on the explorer links did exactly that, stretching
           the document 324px past the viewport and leaving a band of dead space
           below the app that scrolled but showed nothing. */}
-      <main className="relative flex-1 overflow-y-auto px-6 py-6 lg:px-10 lg:py-8">
+        <main className="relative flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-10 lg:py-8">
         {activeView.name === "create" ? (
           <NewEscrow
             balance={balance}
@@ -296,7 +331,8 @@ export default function App() {
             onRegistryLoad={loadRegistryEscrows}
           />
         )}
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

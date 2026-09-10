@@ -281,8 +281,11 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
               ))}
             </div>
 
-            <div className="flex items-center gap-2">
-              <label className="relative">
+            {/* Wraps, and the search field is fluid rather than a fixed 240px.
+                Side by side at that width the pair ran past a 375px screen and
+                the sort control was clipped off the edge. */}
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+              <label className="relative min-w-0 flex-1 sm:flex-none">
                 <span className="sr-only">Search escrows</span>
                 <Search
                   size={14}
@@ -293,10 +296,10 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search commodity or container"
-                  className="w-[240px] rounded-full border border-sky bg-surface py-2 pl-8 pr-3.5 text-[13px] text-navy placeholder:text-ink-faint focus:border-teal focus:outline-none"
+                  className="w-full rounded-full border border-sky bg-surface py-2 pl-8 pr-3.5 text-[13px] text-navy placeholder:text-ink-faint focus:border-teal focus:outline-none sm:w-[240px]"
                 />
               </label>
-              <label className="flex items-center gap-1.5 rounded-full border border-sky bg-surface py-2 pl-3 pr-2 text-[13px] text-ink-dim">
+              <label className="flex shrink-0 items-center gap-1.5 rounded-full border border-sky bg-surface py-2 pl-3 pr-2 text-[13px] text-ink-dim">
                 <ArrowUpDown size={13} aria-hidden="true" />
                 <span className="sr-only">Sort by</span>
                 <select
