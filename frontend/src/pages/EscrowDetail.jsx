@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   Check,
@@ -8,10 +8,10 @@ import {
   X
 } from "lucide-react";
 import ActivityLog from "../components/ActivityLog.jsx";
+import StatusPill from "../components/StatusPill.jsx";
 import Timeline from "../components/Timeline.jsx";
 import EvidencePanel from "../components/EvidencePanel.jsx";
 import { inputClass } from "../components/Field.jsx";
-import { Button, Tag, TermRow as SharedTermRow } from "../components/ui.jsx";
 import { getBrowserContract } from "../lib/contract.js";
 import { CURRENCY_LABEL } from "../lib/currency.js";
 import { CONSORTIUM, defaultConsortium } from "../lib/oracles.js";
@@ -28,6 +28,9 @@ import {
   releasePaymentAsUser
 } from "../lib/settlementFlow.js";
 import { stateFromIndex, formatEscrowId } from "../lib/escrowState.js";
+import TxLink, { AddressLink } from "../components/TxLink.jsx";
+import ProgressModal from "../components/ProgressModal.jsx";
+import { loadEscrowDetail } from "../lib/escrowSource.js";
 
 // The contract has THREE milestones (docs/01_CONTRACT_SPEC.md §4), each gated by
 // one automated feed plus one role-holder's signed proof. The earlier five-check
@@ -73,6 +76,11 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
   const [chainOracles, setChainOracles] = useState(null);
   const [timelock, setTimelock] = useState(null);
   const [walletAccount, setWalletAccount] = useState(null);
+  const [reloading, setReloading] = useState(false);
+  // Set by EvidencePanel while it drives a verification run, so the overlay can
+  // cover the whole page rather than one panel — the state it changes is spread
+  // across the document, the timeline and the rail.
+  const [verifying, setVerifying] = useState(false);
 
   const permissions = PERMISSIONS[role] || PERMISSIONS.observer;
   // escrowSource labels live rows "gateway"; only the retired window.ethereum
@@ -240,6 +248,54 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
     return state;
   }
 
+  /**
+   * Re-reads THIS escrow from the gateway and puts the fresh row into app state.
+   *
+   * This is what was missing. Every action called onRefresh, which bumps a
+   * refreshKey that only Overview consumes — and Overview is unmounted while the
+   * detail page is showing. So nothing reloaded: the state, the milestones and
+   * the timelock all stayed as they were until the whole page was reloaded by
+   * hand. The Refresh button had the same problem, which is why pressing it
+   * appeared to do nothing at all.
+   *
+   * syncChain() below cannot serve this purpose either: it reads through
+   * getBrowserContract(), i.e. window.ethereum, which a Particle user does not
+   * have. This goes over HTTP like the rest of the page.
+   *
+   * Only the fields the gateway is authoritative for are merged. pendingExtension
+   * is loaded separately and comes back null here, so copying the whole row
+   * would erase a proposal the counterparty still has to approve.
+   */
+  const reload = useCallback(async () => {
+    if (!isChain) return;
+    setReloading(true);
+    try {
+      const fresh = await loadEscrowDetail(escrow.id);
+      onUpdate(escrow.id, (current) => ({
+        ...current,
+        state: fresh.state,
+        milestones: fresh.milestones,
+        timelock: fresh.timelock,
+        releaseEligible: fresh.releaseEligible,
+        disputeOpen: fresh.disputeOpen,
+        verified: fresh.verified,
+        value: fresh.value,
+        deadline: fresh.deadline,
+        activity: fresh.activity
+      }));
+      if (fresh.state === "TimelockActive") {
+        await getTimelock(escrow.id).then(setTimelock).catch(() => {});
+      }
+    } catch {
+      // A failed re-read must not replace the result notice the user is reading;
+      // the page simply keeps showing what it had.
+    } finally {
+      setReloading(false);
+    }
+    // Keeps the Overview list in step for when they navigate back.
+    onRefresh?.();
+  }, [escrow.id, isChain, onUpdate, onRefresh]);
+
   function log(event) {
     onUpdate(escrow.id, (current) => ({
       ...current,
@@ -251,8 +307,12 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
     setMessage({ tone: "fail", text });
   }
 
-  function ok(text) {
-    setMessage({ tone: "ok", text });
+  // `hash` renders as a link to the explorer beneath the sentence. The notices
+  // used to paste `tx 0x1234abcd…` into the text, which is the least useful
+  // form a hash can take: too short to search for, not clickable, and gone the
+  // moment the notice is replaced.
+  function ok(text, hash) {
+    setMessage({ tone: "ok", text, hash });
   }
 
   function surfaceTxError(error) {
@@ -299,16 +359,16 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
       return;
     }
     const { transactionHash } = await initiateTimelockAsUser(smartAccountClient, escrow.id);
-    onRefresh?.();
-    ok(`Timelock started (tx ${transactionHash.slice(0, 10)}…). Release opens once it elapses.`);
+    await reload();
+    ok("Timelock started. Release opens once it elapses.", transactionHash);
     log("started the timelock on-chain");
   }
 
   async function release() {
     if (isChain) {
       const { transactionHash } = await releasePaymentAsUser(smartAccountClient, escrow.id);
-      onRefresh?.();
-      ok(`Funds released to exporter (tx ${transactionHash.slice(0, 10)}…).`);
+      await reload();
+      ok("Funds released to exporter.", transactionHash);
       log("released the settlement on-chain");
       return;
     }
@@ -325,8 +385,8 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
   async function refund() {
     if (isChain) {
       const { transactionHash } = await claimRefundAsUser(smartAccountClient, escrow.id);
-      onRefresh?.();
-      ok(`Refund claimed (tx ${transactionHash.slice(0, 10)}…).`);
+      await reload();
+      ok("Refund claimed.", transactionHash);
       log("claimed a refund on-chain");
       return;
     }
@@ -370,8 +430,8 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
       // never sent: even with a wallet it could only revert. prepareDispute
       // returns both calldatas and they go out as one UserOperation.
       const { transactionHash, bond } = await raiseDisputeAsUser(smartAccountClient, escrow.id, "none");
-      onRefresh?.();
-      ok(`Dispute opened, ${Number(bond).toLocaleString("id-ID")} bond locked (tx ${transactionHash.slice(0, 10)}…). Funds are frozen until the arbiter resolves it.`);
+      await reload();
+      ok(`Dispute opened, ${Number(bond).toLocaleString("id-ID")} bond locked. Funds are frozen until the arbiter resolves it.`, transactionHash);
       log("opened a general dispute on-chain");
       return;
     }
@@ -439,7 +499,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
 
     if (isChain) {
       await proposeExtensionAsUser(smartAccountClient, escrow.id, Math.floor(newDeadlineMs / 1000));
-      onRefresh?.();
+      await reload();
       ok("Extension proposed — waiting for the counterparty's approval.");
       log("proposed a deadline extension on-chain");
       return;
@@ -470,7 +530,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
         return;
       }
       await approveExtensionAsUser(smartAccountClient, escrow.id);
-      onRefresh?.();
+      await reload();
       ok("Amendment signed by both parties — deadline extended.");
       log("approved the deadline extension on-chain");
       return;
@@ -514,52 +574,80 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
   }[message?.tone || "ok"];
 
   const railBtn =
-    "flex w-full cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-panel border px-3 py-2.5 text-[13px] font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40";
+    "flex w-full cursor-pointer items-center justify-center gap-2 rounded-full px-3 py-2.5 text-[13px] font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40";
+  const btnPrimary =
+    "flex cursor-pointer items-center justify-center rounded-full bg-navy px-6 py-2.5 text-[13px] font-medium text-beige transition-colors duration-150 hover:bg-teal-solid disabled:cursor-not-allowed disabled:opacity-40";
+  const btnOutline =
+    "flex cursor-pointer items-center justify-center rounded-full border border-sky bg-surface px-5 py-2.5 text-[13px] font-medium text-navy transition-colors duration-150 hover:border-teal/40 disabled:cursor-not-allowed disabled:opacity-40";
 
   return (
     <div className="w-full">
-      <Button icon={ArrowLeft} tone="ghost" size="sm" onClick={onBack} className="-ml-3.5 mb-4">
+      {/* Two overlays, deliberately worded differently. Verification writes to
+          the chain and can run for the better part of a minute; a re-read is
+          quick and only says so in case it is not. */}
+      <ProgressModal
+        open={verifying}
+        title="Verifying milestones on chain"
+        detail="The gateway is checking each source and committing the proofs that pass. Nothing is signed by this browser."
+        steps={[
+          "Reading VGM, inspection, AIS and CEISA",
+          "Committing each passing milestone as its own transaction",
+          "A failing source is refused, not written"
+        ]}
+      />
+      <ProgressModal
+        open={reloading && !verifying}
+        title="Reading the latest state"
+        detail="Re-reading this escrow from the gateway."
+      />
+
+      <button
+        type="button"
+        onClick={onBack}
+        className="mb-4 flex cursor-pointer items-center gap-1.5 text-sm text-teal transition-colors duration-150 hover:text-navy"
+      >
+        <ArrowLeft size={14} aria-hidden="true" />
         Back to escrows
-      </Button>
+      </button>
 
       {message ? (
         <div
           role="status"
-          className={`mb-4 rounded-panel border px-4 py-3 text-sm ${messageTone}`}
+          className={`mb-4 rounded-panel px-4 py-3 font-serif text-sm ${messageTone}`}
         >
           {message.text}
+          {message.hash ? (
+            <span className="mt-1.5 flex items-center gap-1.5">
+              <span className="text-2xs uppercase opacity-70">Transaction</span>
+              <TxLink hash={message.hash} />
+            </span>
+          ) : null}
         </div>
       ) : null}
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_336px]">
         {/* ---------- The instrument ---------- */}
         <div className="min-w-0">
           <article className="overflow-hidden rounded-doc bg-surface shadow-card">
-            {/* The commodity and the status pill are the shell's page title now,
-                so this band no longer repeats them. It states what the document
-                IS and the one fact a reader needs before the terms below. */}
-            <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-sky bg-surface-soft px-6 py-4 lg:px-9">
+            <header className="flex flex-wrap items-end justify-between gap-4 border-b-2 border-navy px-6 py-7 lg:px-9">
               <div className="min-w-0">
-                <p className="text-2xs font-semibold uppercase tracking-micro text-teal">
+                <p className="mb-2.5 text-2xs uppercase text-teal">
                   Deed of conditional settlement
                 </p>
-                <p className="mt-1 truncate text-[15px] font-semibold text-navy">
+                <h1 className="text-balance text-[28px] font-bold leading-[1.08] tracking-display text-navy lg:text-[36px]">
+                  {escrow.commodity || "Export shipment"}
+                </h1>
+                <p className="mt-2 font-serif text-base text-teal">
                   Instrument &#8470;&thinsp;{formatEscrowId(escrow.id)}
                   {escrow.containerRef ? ` · ${escrow.containerRef}` : ""}
                 </p>
               </div>
-              <div className="text-right">
-                <p className="text-2xs text-ink-dim">Contract value</p>
-                <p className="text-[19px] font-bold tabular-nums leading-tight text-navy">
-                  {grossValue.toLocaleString()}{" "}
-                  <span className="text-[12px] font-medium text-ink-faint">{CURRENCY_LABEL}</span>
-                </p>
-              </div>
+              <StatusPill state={escrow.state} />
             </header>
 
             {/* Article I */}
             <section className="border-b border-sky px-6 py-6 lg:px-9">
-              <p className="mb-3 text-[13px] font-semibold text-ink-dim">
+              <p className="mb-3 text-2xs uppercase text-ink-faint">
                 Article I &nbsp;·&nbsp; Parties and terms
               </p>
               <div className="grid gap-x-14 sm:grid-cols-2">
@@ -591,7 +679,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
             {/* Article II */}
             <section className="grid gap-8 border-b border-sky px-6 py-6 lg:grid-cols-[minmax(0,1fr)_216px] lg:px-9">
               <div className="min-w-0">
-                <p className="mb-3 text-[13px] font-semibold text-ink-dim">
+                <p className="mb-3 text-2xs uppercase text-ink-faint">
                   Article II &nbsp;·&nbsp; Conditions precedent
                 </p>
                 {CHECKS.map((check) => {
@@ -619,12 +707,12 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
                       <span className="min-w-0 flex-1">
                         <span className="block text-[14.5px] text-navy">{check.label}</span>
                         {value === false ? (
-                          <span className="block text-xs text-state-disputed">
+                          <span className="block font-serif text-xs text-state-disputed">
                             {check.failDetail}
                           </span>
                         ) : null}
                       </span>
-                      <span className="shrink-0 whitespace-nowrap text-2xs text-ink-faint">
+                      <span className="shrink-0 text-2xs uppercase text-ink-faint">
                         {check.source.split(" · ")[0]}
                       </span>
                     </div>
@@ -632,15 +720,15 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
                 })}
               </div>
 
-              <div className="self-start rounded-panel bg-surface-soft px-5 py-6 text-center">
+              <div className="self-start rounded-panel bg-beige px-5 py-6 text-center">
                 <div
                   className="seal mx-auto grid h-32 w-32 place-items-center rounded-full"
                   style={{ "--pct": `${attestedCount / CHECKS.length}turn` }}
                   role="img"
                   aria-label={`${attestedCount} of ${CHECKS.length} conditions attested`}
                 >
-                  <span className="grid h-[104px] w-[104px] place-content-center rounded-full bg-surface text-center">
-                    <span className="block text-[33px] font-bold leading-none text-state-attested">
+                  <span className="grid h-[104px] w-[104px] place-content-center rounded-full bg-beige text-center">
+                    <span className="block text-[33px] font-medium leading-none tracking-display text-state-attested">
                       {attestedCount}/{CHECKS.length}
                     </span>
                     <span className="mt-1 block text-[8.5px] uppercase tracking-micro text-state-attested">
@@ -648,7 +736,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
                     </span>
                   </span>
                 </div>
-                <p className="mt-4 text-sm leading-snug text-ink-dim">
+                <p className="mt-4 font-serif text-sm leading-snug text-ink-dim">
                   {attestedCount === CHECKS.length
                     ? "All conditions met. Release is eligible."
                     : `Release withheld pending ${CHECKS.length - attestedCount} condition${
@@ -670,35 +758,35 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
                 Fault simulation is unaffected and lives in the Evidence panel,
                 where it belongs — it changes the mock SOURCE through
                 POST /oracle/simulate/:id and never touches a proof. */}
-            <section className="bg-surface-soft px-6 py-5 lg:px-9">
-              <p className="text-[13px] font-semibold text-teal">Conformance harness</p>
-              <p className="mt-1 max-w-lg text-xs leading-relaxed text-ink-dim">
+            <section className="bg-beige px-6 py-5 lg:px-9">
+              <p className="text-2xs uppercase text-teal">Conformance harness</p>
+              <p className="mt-1 max-w-lg font-serif text-xs leading-relaxed text-ink-dim">
                 Deterministic feeds shaped like the real VGM, AIS and CEISA responses. We mock the
                 credentials, not the architecture.
               </p>
 
               <div className="mt-3.5 grid gap-4 border-t border-sky pt-3.5 sm:grid-cols-2">
                 <div>
-                  <p className="text-[13px] font-semibold text-ink-dim">Change what the sources say</p>
-                  <p className="mt-1 text-xs leading-relaxed text-ink-dim">
+                  <p className="text-2xs uppercase text-ink-faint">Change what the sources say</p>
+                  <p className="mt-1 font-serif text-xs leading-relaxed text-ink-dim">
                     Use Fault simulation in the Evidence panel. It rewrites the mock source only —
                     no proof is written, and none is altered.
                   </p>
                 </div>
                 <div>
-                  <p className="text-[13px] font-semibold text-ink-dim">Verify the milestones</p>
-                  <p className="mt-1 text-xs leading-relaxed text-ink-dim">
+                  <p className="text-2xs uppercase text-ink-faint">Verify the milestones</p>
+                  <p className="mt-1 font-serif text-xs leading-relaxed text-ink-dim">
                     Use Verify milestones in the Evidence panel. It asks the gateway to run its own
                     check and commit what passes — the verifier institutions sign, never this page.
                   </p>
-                  <p className="mt-1.5 text-xs leading-relaxed text-ink-dim">
+                  <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">
                     The backend team can do the same from a terminal:{" "}
                     <code className="font-mono text-2xs text-navy">scripts/drive-demo.js</code>
                   </p>
                 </div>
               </div>
 
-              <p className="mt-3.5 truncate border-t border-sky pt-3 text-2xs text-ink-dim">
+              <p className="mt-3.5 truncate border-t border-sky pt-3 text-2xs text-ink-faint">
                 e-BL CID &nbsp;{escrow.cid || "not pinned"}
               </p>
             </section>
@@ -707,37 +795,65 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
           {/* Oracle consortium */}
           <div className="mt-5 overflow-hidden rounded-doc bg-surface shadow-card">
             <div className="flex items-center justify-between gap-2 border-b border-sky px-6 py-3.5 lg:px-9">
-              <p className="text-[13px] font-semibold text-ink-dim">
+              <p className="text-2xs uppercase text-ink-faint">
                 Verifier institutions &nbsp;·&nbsp; one role each
               </p>
-              <span className="whitespace-nowrap text-2xs text-ink-faint">Bond-secured</span>
+              <span className="text-2xs text-ink-faint">bond-secured</span>
             </div>
-            <ul className="grid gap-px bg-sky sm:grid-cols-3">
+            <ul className="grid gap-px bg-sky/60 sm:grid-cols-3">
               {consortium.map((member) => (
                 <li
                   key={member.address || member.name}
                   className={`px-5 py-4 ${member.slashed ? "bg-state-disputed/5" : "bg-surface"}`}
                 >
                   <p className="text-sm font-medium text-navy">{member.name}</p>
-                  <p className="truncate text-2xs text-ink-faint">
-                    {member.address ? shortAddress(member.address) : member.descr}
-                  </p>
+                  {/* Linked, because "is the verifier actually working?" is a
+                      fair question and this is where it gets answered: the
+                      explorer shows the wallet's real transactions, its balance,
+                      and whether it has been signing proofs at all. */}
+                  {member.address ? (
+                    <AddressLink address={member.address} label={shortAddress(member.address)} />
+                  ) : (
+                    <p className="truncate text-2xs text-ink-faint">{member.descr}</p>
+                  )}
                   <div className="mt-2 flex items-center justify-between gap-2">
                     <span className="text-2xs tabular-nums text-teal">
                       bond {Number(member.bond).toFixed(2)}
                     </span>
-                    <Tag
-                      tone={
-                        member.slashed ? "disputed" : member.attested ? "attested" : "neutral"
-                      }
-                      dot
+                    <span
+                      className={`text-2xs uppercase ${
+                        member.slashed
+                          ? "text-state-disputed"
+                          : member.attested
+                            ? "text-state-attested"
+                            : "text-ink-faint"
+                      }`}
                     >
-                      {member.slashed ? "Slashed" : member.attested ? "Attested" : "Not yet signed"}
-                    </Tag>
+                      {member.slashed ? "slashed" : member.attested ? "attested" : "pending"}
+                    </span>
                   </div>
                 </li>
               ))}
             </ul>
+          </div>
+
+          {/* Lifecycle and Activity moved out of the right rail and into this
+              column. Measured on a live escrow, the rail ran 1974px against the
+              centre's 1125 — half a screen of white space beside a wall of
+              panels. Both of these are read-only reference; the rail is for
+              things you act on, so they were also in the wrong place by meaning,
+              not only by height. */}
+          <div className="mt-5 grid gap-5 md:grid-cols-2">
+            <Panel title="Lifecycle">
+              <Timeline state={escrow.state} />
+              <p className="mt-4 border-t border-sky pt-3 font-serif text-xs leading-relaxed text-ink-dim">
+                Each milestone opens a challenge window, and the timelock runs after the third. Both are set at deploy time.
+              </p>
+            </Panel>
+
+            <Panel title="Activity">
+              <ActivityLog entries={escrow.activity} />
+            </Panel>
           </div>
 
         </div>
@@ -751,23 +867,17 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
             <EvidencePanel
               escrowId={escrow.id}
               smartAccountClient={smartAccountClient}
-              onStateChanged={onRefresh}
+              onStateChanged={reload}
+              onBusyChange={setVerifying}
             />
           ) : null}
 
-          <Panel title="Lifecycle">
-            <Timeline state={escrow.state} />
-            <p className="mt-4 border-t border-sky pt-3 text-xs leading-relaxed text-ink-dim">
-              Each milestone opens a challenge window, and the timelock runs after the third. Both are set at deploy time.
-            </p>
-          </Panel>
-
-          <Panel title={`Actions · ${ROLE_LABEL[role]}`}>
+          <Panel title={`Actions · ${role}`}>
             {/* The contract's own isReleaseEligible, surfaced. Saying "not yet"
                 with the time is the difference between a disabled button and a
                 raw "timelock not elapsed" revert. */}
             {timelock && !timelock.canRelease ? (
-              <p className="mb-3 rounded-panel border border-state-pending/40 bg-state-pending/[0.08] px-3 py-2.5 text-xs leading-relaxed text-state-pending">
+              <p className="mb-3 rounded-panel border border-state-pending/40 bg-state-pending/[0.08] px-3 py-2.5 font-serif text-xs leading-relaxed text-state-pending">
                 Timelock running. Release opens{" "}
                 {new Date(timelock.timelockReleaseAt).toLocaleString("id-ID")}
                 {Number(timelock.secondsRemaining) > 0
@@ -785,7 +895,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
                   type="button"
                   disabled={busy || !permissions.release}
                   onClick={() => run(startTimelock)}
-                  className={`${railBtn} border-teal/40 bg-teal/10 text-teal hover:bg-teal/20`}
+                  className={`${railBtn} bg-teal/10 text-teal hover:bg-teal/20`}
                 >
                   Start timelock
                 </button>
@@ -807,7 +917,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
                       : undefined
                 }
                 onClick={() => run(release)}
-                className={`${railBtn} border-state-attested/40 bg-state-attested/10 text-state-attested hover:bg-state-attested/20`}
+                className={`${railBtn} bg-state-attested/10 text-state-attested hover:bg-state-attested/20`}
               >
                 Release settlement
               </button>
@@ -831,7 +941,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
                       : undefined
                 }
                 onClick={() => run(refund)}
-                className={`${railBtn} border-sky bg-surface-soft text-navy hover:bg-sky/60`}
+                className={`${railBtn} bg-beige text-navy hover:bg-sky/50`}
               >
                 <Undo2 size={13} aria-hidden="true" />
                 Claim refund
@@ -840,23 +950,23 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
                 type="button"
                 disabled={busy || terminal || escrow.state === "Disputed" || !permissions.dispute}
                 onClick={() => run(openDispute)}
-                className={`${railBtn} border-state-pending/40 bg-state-pending/10 text-state-pending hover:bg-state-pending/20`}
+                className={`${railBtn} bg-state-pending/10 text-state-pending hover:bg-state-pending/20`}
               >
                 <Scale size={13} aria-hidden="true" />
                 Open dispute
               </button>
             </div>
-            <p className="mt-3 text-xs leading-relaxed text-ink-dim">
+            <p className="mt-3 font-serif text-xs leading-relaxed text-ink-dim">
               Release pays the exporter. Refund returns funds to the importer, after the deadline.
               A dispute freezes the funds until the arbiter resolves it.
             </p>
             {role === ROLE.OBSERVER ? (
-              <p className="mt-2 text-xs leading-relaxed text-ink-dim">
+              <p className="mt-2 font-serif text-xs leading-relaxed text-ink-dim">
                 Your wallet is not a party to this escrow, so none of these actions are yours. You
                 can read it in full.
               </p>
             ) : (
-              <p className="mt-2 text-xs leading-relaxed text-ink-dim">
+              <p className="mt-2 font-serif text-xs leading-relaxed text-ink-dim">
                 You are the <span className="text-navy">{ROLE_LABEL[role]}</span> on this escrow,
                 read from its own party addresses. Your Smart Account signs.
               </p>
@@ -889,7 +999,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
                   `require(msg.sender == escrow.arbiter)`, so a party pressing
                   these could only ever get a revert. */}
               {!permissions.vote ? (
-                <p className="mb-3 text-xs leading-relaxed text-ink-dim">
+                <p className="mb-3 font-serif text-xs leading-relaxed text-ink-dim">
                   Only the appointed arbiter resolves a dispute, and the arbiter signs on the ops
                   console with its own key. Your funds stay frozen until then.
                 </p>
@@ -899,7 +1009,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
                   type="button"
                   disabled={busy || !permissions.vote}
                   onClick={() => run(() => vote(true))}
-                  className={`${railBtn} border-state-attested/40 bg-state-attested/10 text-state-attested hover:bg-state-attested/20`}
+                  className={`${railBtn} bg-state-attested/10 text-state-attested hover:bg-state-attested/20`}
                 >
                   Resolve: release to exporter
                 </button>
@@ -907,7 +1017,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
                   type="button"
                   disabled={busy || !permissions.vote}
                   onClick={() => run(() => vote(false))}
-                  className={`${railBtn} border-state-disputed/40 bg-state-disputed/10 text-state-disputed hover:bg-state-disputed/20`}
+                  className={`${railBtn} bg-state-disputed/10 text-state-disputed hover:bg-state-disputed/20`}
                 >
                   Resolve: refund to importer
                 </button>
@@ -917,12 +1027,12 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
 
           {!terminal ? (
             <Panel title="Amendment">
-              <p className="text-xs leading-relaxed text-ink-dim">
+              <p className="font-serif text-xs leading-relaxed text-ink-dim">
                 Vessel delayed? The importer or exporter proposes a later deadline and the
                 counterparty approves.
               </p>
               {escrow.pendingExtension ? (
-                <p className="mt-2.5 rounded-panel bg-teal/10 px-3 py-2 text-xs text-teal">
+                <p className="mt-2.5 rounded-panel bg-teal/10 px-3 py-2 font-serif text-xs text-teal">
                   <span className="capitalize">{escrow.pendingExtension.proposer}</span> proposed{" "}
                   {new Date(escrow.pendingExtension.newDeadline).toLocaleString()}
                 </p>
@@ -940,7 +1050,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
                   disabled={busy || !permissions.amend}
                   title={permissions.amend ? undefined : "Only importer or exporter can amend"}
                   onClick={() => run(proposeExtension)}
-                  className={`${railBtn} border-sky bg-surface-soft text-navy hover:bg-sky/60`}
+                  className={`${railBtn} bg-beige text-navy hover:bg-sky/50`}
                 >
                   Propose
                 </button>
@@ -949,7 +1059,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
                   disabled={busy || !permissions.amend}
                   title={permissions.amend ? undefined : "Only importer or exporter can amend"}
                   onClick={() => run(approveExtension)}
-                  className={`${railBtn} border-teal/40 bg-teal/10 text-teal hover:bg-teal/20`}
+                  className={`${railBtn} bg-teal/10 text-teal hover:bg-teal/20`}
                 >
                   Approve
                 </button>
@@ -957,20 +1067,28 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
             </Panel>
           ) : null}
 
-          <Panel title="Activity">
-            <ActivityLog entries={escrow.activity} />
-          </Panel>
         </aside>
       </div>
     </div>
   );
 }
 
-/* Dot-leader term row. Now a thin wrapper over the shared control so the
-   document rows on this page, on Create escrow and on Integration status are
-   literally the same component. */
+/* Dot-leader term row: serif label, leader, mono value. See design system §5.3. */
 function TermRow({ label, value, warn, truncate }) {
-  return <SharedTermRow label={label} value={value} tone={warn ? "pending" : undefined} truncate={truncate} />;
+  return (
+    <div className="flex items-baseline gap-2.5 py-2.5">
+      <span className="whitespace-nowrap font-serif text-[15px] text-teal">{label}</span>
+      <span className="leader h-1 min-w-[16px] flex-1 -translate-y-[3px]" aria-hidden="true" />
+      <span
+        className={`text-xs font-medium tabular-nums ${
+          truncate ? "min-w-0 truncate" : "whitespace-nowrap"
+        } ${warn ? "text-state-pending" : "text-navy"}`}
+        title={truncate ? value : undefined}
+      >
+        {value}
+      </span>
+    </div>
+  );
 }
 
 function Panel({ title, tone, children }) {
@@ -980,7 +1098,7 @@ function Panel({ title, tone, children }) {
         tone === "pending" ? "bg-state-pending/[0.06]" : "bg-surface"
       }`}
     >
-      <h2 className="border-b border-sky px-5 py-3.5 text-[14px] font-semibold text-navy">
+      <h2 className="border-b border-sky px-5 py-3 text-2xs uppercase text-ink-faint">
         {title}
       </h2>
       <div className="px-5 py-4">{children}</div>

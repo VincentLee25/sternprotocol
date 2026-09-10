@@ -135,7 +135,14 @@ export function verifyResultRows(response) {
       oracle: m.oracle,
       status: status || "no result",
       detail,
-      tone: status ? VERIFY_TONE[key] || "fail" : "muted"
+      tone: status ? VERIFY_TONE[key] || "fail" : "muted",
+      // The gateway returns these on a submitted milestone and they were being
+      // dropped here, which left the panel asserting "submitted" with nothing
+      // behind it. They are the moment the claim becomes checkable: the hash of
+      // the transaction that carried the proof, and the wallet that signed it.
+      transactionHash: typeof raw === "object" ? raw?.transactionHash || null : null,
+      verifier: typeof raw === "object" ? raw?.verifier || null : null,
+      blockNumber: typeof raw === "object" ? raw?.blockNumber ?? null : null
     };
   });
 }

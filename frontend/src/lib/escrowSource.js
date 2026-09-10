@@ -47,17 +47,45 @@ function normaliseMilestones(milestones) {
   return out;
 }
 
-// The gateway names the actor field `actorAddress` and the mock names it
-// `actor`. ActivityRail reads `actor`, so normalise here rather than teaching
-// the component about both.
+// The gateway sends the bare Solidity event name as the activity text —
+// "EscrowCreated", "MilestoneVerified". Correct, and unreadable in a feed meant
+// to be skimmed. The mock path already writes sentences; these give the live
+// path the same voice.
+const EVENT_SENTENCE = {
+  EscrowCreated: "Escrow created and funds locked",
+  MilestoneVerified: "Milestone proof committed on chain",
+  TimelockStarted: "Timelock started",
+  PaymentReleased: "Funds released to the exporter",
+  Refunded: "Funds refunded to the importer",
+  DisputeRaised: "Dispute opened, bond locked",
+  DisputeResolved: "Arbiter resolved the dispute",
+  VerifierSlashed: "Verifier bond slashed"
+};
+
+/**
+ * One activity shape for both sources.
+ *
+ * This used to rename `text` to `event` and drop `type` entirely. ActivityRail
+ * reads exactly those two — `entry.type` picks the icon, `entry.text` is the
+ * sentence — so on the dashboard every row rendered blank with the fallback
+ * icon, and the feed looked broken rather than empty. `event` is kept as an
+ * alias because ActivityLog on the detail page had been written against the
+ * mangled shape.
+ */
 function normaliseActivity(entries = []) {
-  return entries.map((a) => ({
-    time: a.time,
-    actor: a.actor || a.actorAddress || "contract",
-    event: a.text || a.event,
-    transactionHash: a.transactionHash || null,
-    blockNumber: a.blockNumber ?? null
-  }));
+  return entries.map((a) => {
+    const text = EVENT_SENTENCE[a.text] || a.text || a.event || "Activity";
+    return {
+      time: a.time,
+      type: a.type || null,
+      actor: a.actor || a.actorAddress || "contract",
+      actorAddress: a.actorAddress || null,
+      text,
+      event: text,
+      transactionHash: a.transactionHash || null,
+      blockNumber: a.blockNumber ?? null
+    };
+  });
 }
 
 function toRow(detail, activity, source) {
