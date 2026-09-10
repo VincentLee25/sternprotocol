@@ -15,6 +15,6 @@ export function defaultConsortium() {
     bond: 1,
     slashes: 0,
     attested: false,
-    slashed: false
+    revoked: false
   }));
 }
