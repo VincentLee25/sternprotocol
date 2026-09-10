@@ -768,6 +768,38 @@ async function verifyAndSubmitAll(contractId, verification, { proofCidPrefix = "
         stop = true;
         continue;
       }
+      // "verifier bond required" is the contract's phrasing and it sends people
+      // to check the wrong number. A verifier's WALLET balance is not its bond:
+      // the bond is IDRT already transferred into the contract, and it drops by
+      // half every time an arbiter slashes that verifier. So the usual cause is
+      // a dispute resolved against them during testing, with the wallet still
+      // holding plenty of IDRT.
+      if (/verifier bond required/i.test(raw)) {
+        let detail = "";
+        try {
+          const wallet = pickVerifier(getVerifierWallets(provider), name);
+          const [bond, minBond, strikes] = await Promise.all([
+            contract.verifierBonds(wallet.address),
+            contract.MIN_VERIFIER_BOND(),
+            contract.verifierSlashCount(wallet.address)
+          ]);
+          const fmt = (v) => ethers.formatUnits(v, 2);
+          detail =
+            ` Verifier ${wallet.address} has ${fmt(bond)} bonded, and ${fmt(minBond)} is required` +
+            ` (slashed ${strikes} time${strikes === 1n ? "" : "s"}).` +
+            ` Its wallet balance is a separate thing — top the bond back up with \`npm run post-bond\`.`;
+          if (strikes >= 3n) {
+            detail +=
+              " Three slashes revokes the role permanently, so post-bond cannot help here:" +
+              " an admin has to grant the role to a fresh wallet.";
+          }
+        } catch {
+          detail = " Top the verifier bonds back up with `npm run post-bond`.";
+        }
+        results[name] = { status: "verifier_bond_required", reason: `The ${name} verifier has no bond posted.${detail}` };
+        stop = true;
+        continue;
+      }
       results[name] = { status: "error", reason: raw };
       stop = true;
     }

@@ -117,7 +117,11 @@ const VERIFY_TONE = {
   // Not a protocol failure and not something waiting will fix — someone has to
   // top the wallet up. Amber rather than red: nothing is broken, it is out of
   // fuel.
-  verifier_out_of_gas: "wait"
+  verifier_out_of_gas: "wait",
+  // Same category: an operational shortfall, not the protocol refusing. The
+  // verifier's stake fell below the minimum — usually because an arbiter slashed
+  // it — and topping it back up fixes it.
+  verifier_bond_required: "wait"
 };
 
 export function verifyResultRows(response) {
