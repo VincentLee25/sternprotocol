@@ -141,9 +141,11 @@ export async function loadEscrowRows({ address, signal } = {}) {
       // should not blank the whole list, so degrade to an empty log.
       const [detail, log] = await Promise.all([
         api.getEscrow(row.escrowId, { signal }),
-        api.getActivity(row.escrowId, { signal }).catch(() => ({ activity: [] }))
+        api.getActivity(row.escrowId, { signal }).catch((error) => ({ activity: [], error }))
       ]);
-      return toRow(detail, log.activity, "gateway");
+      const full = toRow(detail, log.activity, "gateway");
+      full.activityError = log.error?.message || null;
+      return full;
     })
   );
 }
@@ -156,8 +158,13 @@ export async function loadEscrowDetail(id, { signal } = {}) {
   }
   const [detail, log, timelock] = await Promise.all([
     api.getEscrow(id, { signal }),
-    api.getActivity(id, { signal }).catch(() => ({ activity: [] })),
+    // The reason is carried rather than dropped. Swallowing it rendered a failed
+    // log query as "No activity recorded yet" — a sentence that sends people
+    // looking for missing events instead of a broken read.
+    api.getActivity(id, { signal }).catch((error) => ({ activity: [], error })),
     api.getTimelock(id, { signal }).catch(() => null)
   ]);
-  return toRow({ ...detail, timelock }, log.activity, "gateway");
+  const row = toRow({ ...detail, timelock }, log.activity, "gateway");
+  row.activityError = log.error?.message || null;
+  return row;
 }

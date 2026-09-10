@@ -87,6 +87,9 @@ export default function ActivityRail({ onOpen, escrows }) {
     };
   }, [escrows]);
 
+  // Any escrow failing its log read explains an empty feed better than silence.
+  const readError = (escrows || []).find((e) => e.activityError)?.activityError || null;
+
   const groups = rows.reduce((acc, row) => {
     const key = dayLabel(row.time);
     (acc[key] = acc[key] || []).push(row);
@@ -101,7 +104,12 @@ export default function ActivityRail({ onOpen, escrows }) {
       </div>
 
       <div className="max-h-[560px] overflow-y-auto px-5 pb-5">
-        {rows.length === 0 ? (
+        {readError && rows.length === 0 ? (
+          <p role="alert" className="py-6 font-serif text-sm leading-relaxed text-state-disputed">
+            The activity log could not be read from the chain.
+            <span className="mt-1 block text-xs text-ink-dim">{readError}</span>
+          </p>
+        ) : rows.length === 0 ? (
           <p className="py-6 font-serif text-sm text-ink-dim">Nothing has happened yet.</p>
         ) : (
           Object.entries(groups).map(([day, entries]) => (

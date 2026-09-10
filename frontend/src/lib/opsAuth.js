@@ -96,7 +96,12 @@ export async function openOpsSession(rawKey) {
       // A blocked RPC must not be reported as "you are not an admin" — those
       // are very different, and confusing them would send the operator hunting
       // for a permissions problem that does not exist.
-      adminCheckFailed = err?.message || "Could not reach the contract to check roles.";
+      //
+      // shortMessage first: viem's full `message` carries the raw call args, the
+      // ABI, a docs link and a version string, which rendered as a wall of text
+      // across the top of the console and buried the one sentence that mattered.
+      adminCheckFailed =
+        err?.shortMessage || err?.details || "Could not reach the contract to check roles.";
     }
   }
 
@@ -130,6 +135,81 @@ export const getOpsWalletClient = () => session?.walletClient || null;
 
 export function closeOpsSession() {
   session = null;
+}
+
+const RESOLVE_ABI = [
+  {
+    type: "function",
+    name: "resolveDispute",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "escrowId", type: "uint256" },
+      { name: "releaseToExporter", type: "bool" },
+      { name: "reasoningCid", type: "string" },
+      { name: "slashVerifier", type: "bool" },
+      { name: "bondFrivolous", type: "bool" }
+    ],
+    outputs: []
+  }
+];
+
+/**
+ * The arbiter's decision, signed here with the arbiter's own key.
+ *
+ * This console existed to hold that key and then did nothing with it — it read
+ * the state and deferred the actual resolution to a backend service behind
+ * INTERNAL_API_KEY. So an arbiter could sign in, see the escrows awaiting a
+ * decision, and have no way to decide.
+ *
+ * Signing here is also the more correct arrangement, not merely the more
+ * convenient one. The contract requires `msg.sender == escrow.arbiter`; routing
+ * it through the gateway means the gateway holds a key that can settle disputes,
+ * which is exactly the kind of authority this design keeps out of servers.
+ *
+ * The contract's own rule — a frivolous bond cannot also slash a verifier — is
+ * checked before sending, so a contradictory decision is refused here rather
+ * than costing gas on a revert.
+ */
+export async function resolveDisputeAsArbiter(escrowId, decision) {
+  if (!session?.walletClient) {
+    throw new Error("The ops session is closed. Enter the arbiter key again.");
+  }
+  if (!ESCROW_ADDRESS) {
+    throw new Error("VITE_CONTRACT_ADDRESS is not set, so there is no contract to call.");
+  }
+
+  const reasoningCid = String(decision.reasoningCid || "").trim();
+  if (!reasoningCid) {
+    throw new Error("A reasoning CID is required — the contract refuses a decision without one.");
+  }
+  if (decision.bondFrivolous && decision.slashVerifier) {
+    throw new Error(
+      "A dispute cannot be both frivolous and the verifier's fault. Choose one: either the " +
+        "challenger was wrong, or the verifier was."
+    );
+  }
+
+  const hash = await session.walletClient.writeContract({
+    address: ESCROW_ADDRESS,
+    abi: RESOLVE_ABI,
+    functionName: "resolveDispute",
+    args: [
+      BigInt(escrowId),
+      Boolean(decision.releaseToExporter),
+      reasoningCid,
+      Boolean(decision.slashVerifier),
+      Boolean(decision.bondFrivolous)
+    ]
+  });
+
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") {
+    throw new Error(
+      "The transaction was included but reverted. Check that this address is the appointed " +
+        "arbiter on this escrow and that the dispute is still open."
+    );
+  }
+  return { transactionHash: hash };
 }
 
 /** Escrows where this ops address is the appointed arbiter. */

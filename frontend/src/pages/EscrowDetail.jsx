@@ -281,7 +281,8 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
         verified: fresh.verified,
         value: fresh.value,
         deadline: fresh.deadline,
-        activity: fresh.activity
+        activity: fresh.activity,
+        activityError: fresh.activityError
       }));
       if (fresh.state === "TimelockActive") {
         await getTimelock(escrow.id).then(setTimelock).catch(() => {});
@@ -852,7 +853,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
             </Panel>
 
             <Panel title="Activity">
-              <ActivityLog entries={escrow.activity} />
+              <ActivityLog entries={escrow.activity} error={escrow.activityError} />
             </Panel>
           </div>
 

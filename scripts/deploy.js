@@ -54,6 +54,13 @@ async function main() {
 
   console.log("IDRTDemo deployed to:", await idrt.getAddress());
   console.log("SternEscrow deployed to:", await sternEscrow.getAddress());
+  // Set this in the gateway env. Without it the activity scan has to estimate a
+  // start block from each escrow's creation time, and estimating is only there
+  // because scanning from block 0 is what broke the activity feed.
+  console.log(
+    "CONTRACT_DEPLOY_BLOCK:",
+    (await sternEscrow.deploymentTransaction()?.wait())?.blockNumber ?? "(unknown)"
+  );
   console.log("Admin:", deployer.address);
   console.log("Challenge window seconds:", await sternEscrow.challengeWindowSeconds());
   console.log("Timelock duration seconds:", await sternEscrow.timelockDurationSeconds());

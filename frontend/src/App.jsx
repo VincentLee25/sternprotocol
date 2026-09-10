@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import AppShell from "./components/AppShell.jsx";
+import Sidebar from "./components/Sidebar.jsx";
 import SessionBoot from "./components/SessionBoot.jsx";
-import StatusPill from "./components/StatusPill.jsx";
-import { Button } from "./components/ui.jsx";
 import Landing from "./pages/Landing.jsx";
 import Instrument from "./pages/Instrument.jsx";
 import Settlement from "./pages/Settlement.jsx";
@@ -12,13 +10,11 @@ import Overview from "./pages/Overview.jsx";
 import NewEscrow from "./pages/NewEscrow.jsx";
 import EscrowDetail from "./pages/EscrowDetail.jsx";
 import OpsConsole from "./pages/OpsConsole.jsx";
-import IntegrationStatus from "./pages/IntegrationStatus.jsx";
 import { claimDemoBalance as mockClaim, getDemoBalance as mockBalance } from "./lib/mockBackend.js";
 import * as api from "./lib/sternApi.js";
 import { sourceIsLive } from "./lib/escrowSource.js";
 import { AUTH, useSternAuth } from "./lib/useSternAuth.js";
 import { getIdrtBalance, onChainConfigured } from "./lib/sternContract.js";
-import { formatEscrowId } from "./lib/escrowState.js";
 
 const MARKETING = { landing: Landing, instrument: Instrument, settlement: Settlement, oracles: Oracles };
 
@@ -46,7 +42,7 @@ const canClaim = sourceIsLive || !onChainConfigured;
 const VIEW_KEY = "stern-view";
 const KNOWN_VIEWS = new Set([
   "landing", "instrument", "settlement", "oracles",
-  "login", "overview", "create", "escrow", "ops", "settings"
+  "login", "overview", "create", "escrow", "ops"
 ]);
 
 function readStoredView() {
@@ -169,6 +165,36 @@ export default function App() {
     setEscrows((current) => [...current.filter((e) => e.source === "chain"), ...rows]);
   }, []);
 
+  // Merge chain rows into the registry, keeping any local session data
+  // (activity log, harness state) for escrows we already know about.
+  const syncChainEscrows = useCallback((rows) => {
+    setEscrows((current) => {
+      const known = new Map(current.map((escrow) => [escrow.id, escrow]));
+      const merged = rows.map((row) => {
+        const existing = known.get(row.id);
+        return existing
+          ? { ...existing, ...row, activity: existing.activity, votes: existing.votes }
+          : {
+              ...row,
+              createdAt: null,
+              verification: null,
+              votes: { importer: null, exporter: null, arbiter: null },
+              pendingExtension: null,
+              activity: []
+            };
+      });
+      const mockOnly = current.filter(
+        (escrow) => escrow.source === "mock" && !rows.some((row) => row.id === escrow.id)
+      );
+      return [...mockOnly, ...merged];
+    });
+  }, []);
+
+  const resetDemo = useCallback(() => {
+    setEscrows((current) => current.filter((escrow) => escrow.source === "chain"));
+    setView({ name: "overview" });
+  }, []);
+
   const handleSignOut = useCallback(async () => {
     await disconnect();
     setBalance("0.00");
@@ -180,62 +206,18 @@ export default function App() {
   // but the router still points at the login screen.
   const activeView = status === AUTH.READY && view.name === "login" ? { name: "overview" } : view;
 
-  // The last escrow opened, remembered across other views so the sidebar can go
-  // on offering it and "escrow" stays a navigable destination.
-  const [lastEscrowId, setLastEscrowId] = useState(() =>
-    activeView.name === "escrow" ? activeView.id : null
-  );
-  useEffect(() => {
-    if (activeView.name === "escrow" && activeView.id != null) setLastEscrowId(activeView.id);
-  }, [activeView]);
-
   const activeEscrow = useMemo(
     () => (activeView.name === "escrow" ? escrows.find((escrow) => escrow.id === activeView.id) : null),
     [activeView, escrows]
   );
 
-  // One navigation entry point for the whole shell. Named views go straight
-  // through; "escrow" reopens whichever instrument was last in view.
-  const navigate = useCallback(
-    (name) => {
-      if (name === "escrow") {
-        if (lastEscrowId != null) setView({ name: "escrow", id: lastEscrowId });
-        return;
-      }
-      setView({ name });
-    },
-    [lastEscrowId]
-  );
-
-  const openEscrow = useCallback((id) => setView({ name: "escrow", id }), []);
-
-  const shellProps = {
-    view: activeView.name,
-    onNavigate: navigate,
-    user,
-    balance,
-    onClaim: handleClaim,
-    claiming,
-    claimError,
-    canClaim,
-    onSignOut: handleSignOut,
-    isOnChainReady: sourceIsLive,
-    activeEscrowId: lastEscrowId
-  };
-
   // Ops is checked before the Particle gate: the arbiter and admin sign in with
   // their own keys, so requiring a Particle session first would be nonsense.
   if (activeView.name === "ops") {
-    return (
-      <OpsConsole
-        shellProps={shellProps}
-        onExit={() => setView({ name: status === AUTH.READY ? "overview" : "landing" })}
-      />
-    );
+    return <OpsConsole onExit={() => setView({ name: status === AUTH.READY ? "overview" : "landing" })} />;
   }
 
-  // Marketing surface — no login required, and deliberately a different
-  // composition from the workspace shell.
+  // Marketing surface — no login required, shares the dark chrome.
   const MarketingPage = MARKETING[activeView.name];
   if (MarketingPage) {
     return (
@@ -264,94 +246,57 @@ export default function App() {
     return <Login onConnect={connect} error={error} busy={false} />;
   }
 
-  const header = headerFor(activeView, activeEscrow, { openCreate: () => setView({ name: "create" }) });
-
   return (
-    <AppShell {...shellProps} {...header}>
-      {activeView.name === "create" ? (
-        <NewEscrow
-          balance={balance}
-          smartAccountClient={smartAccountClient}
-          importerAddress={address}
-          onCreated={(escrowId) => { refresh(); setView({ name: "escrow", id: escrowId }); }}
-          onBack={() => setView({ name: "overview" })}
-        />
-      ) : activeView.name === "settings" ? (
-        <IntegrationStatus walletAddress={address} />
-      ) : activeView.name === "escrow" && activeEscrow ? (
-        <EscrowDetail
-          escrow={activeEscrow}
-          walletAddress={address}
-          isOnChainReady={sourceIsLive}
-          smartAccountClient={smartAccountClient}
-          onRefresh={refresh}
-          onUpdate={updateEscrow}
-          onBack={() => setView({ name: "overview" })}
-        />
-      ) : (
-        <Overview
-          walletAddress={address}
-          refreshKey={refreshKey}
-          onOpen={openEscrow}
-          onCreate={() => setView({ name: "create" })}
-          onRegistryLoad={loadRegistryEscrows}
-        />
-      )}
-    </AppShell>
+    <div className="flex h-dvh overflow-hidden bg-beige text-navy">
+      <Sidebar
+        view={activeView.name}
+        onNavigate={(name) => setView({ name })}
+        user={user}
+        balance={balance}
+        claiming={claiming}
+        claimError={claimError}
+        onClaim={handleClaim}
+        canClaim={canClaim}
+        onOpenOps={() => setView({ name: "ops" })}
+        onSignOut={handleSignOut}
+        isOnChainReady={sourceIsLive}
+      />
+
+      {/* `relative` is load-bearing, not decoration. Without a positioned
+          ancestor, absolutely-positioned descendants resolve against the initial
+          containing block and escape this element's overflow entirely — the
+          screen-reader labels on the explorer links did exactly that, stretching
+          the document 324px past the viewport and leaving a band of dead space
+          below the app that scrolled but showed nothing. */}
+      <main className="relative flex-1 overflow-y-auto px-6 py-6 lg:px-10 lg:py-8">
+        {activeView.name === "create" ? (
+          <NewEscrow
+            balance={balance}
+            smartAccountClient={smartAccountClient}
+            importerAddress={address}
+            onCreated={(escrowId) => { refresh(); setView({ name: "escrow", id: escrowId }); }}
+            onBack={() => setView({ name: "overview" })}
+          />
+        ) : activeView.name === "escrow" && activeEscrow ? (
+          <EscrowDetail
+            escrow={activeEscrow}
+            walletAddress={address}
+            isOnChainReady={sourceIsLive}
+            smartAccountClient={smartAccountClient}
+            onRefresh={refresh}
+            onUpdate={updateEscrow}
+            onBack={() => setView({ name: "overview" })}
+          />
+        ) : (
+          <Overview
+            walletAddress={address}
+            refreshKey={refreshKey}
+            onOpen={(id) => setView({ name: "escrow", id })}
+            onCreate={() => setView({ name: "create" })}
+            onRegistryLoad={loadRegistryEscrows}
+          />
+        )}
+      </main>
+    </div>
   );
-}
-
-/**
- * Page chrome, in one place.
- *
- * Breadcrumb, page title and the primary action used to be redrawn inside every
- * page, which is how the workspace ended up with three different header
- * treatments. Pages now render content only; this decides what sits above it.
- */
-function headerFor(view, escrow, { openCreate }) {
-  const workspace = { label: "Workspace", view: "overview" };
-
-  if (view.name === "create") {
-    return {
-      breadcrumb: [workspace, { label: "Workspace overview", view: "overview" }, { label: "Create escrow" }],
-      title: "Create escrow",
-      subtitle:
-        "Name the counterparties, pin the shipment document, and lock the deposit. You become the importer on this instrument."
-    };
-  }
-
-  if (view.name === "settings") {
-    return {
-      breadcrumb: [{ label: "Environment" }, { label: "Integration status" }],
-      title: "Integration status",
-      subtitle:
-        "Network, contracts, providers and session wiring for this deployment. Read-only, and no secret is ever shown here."
-    };
-  }
-
-  if (view.name === "escrow") {
-    return {
-      breadcrumb: [
-        workspace,
-        { label: "Workspace overview", view: "overview" },
-        { label: escrow ? `Escrow № ${formatEscrowId(escrow.id)}` : "Escrow" }
-      ],
-      title: escrow?.commodity || "Export shipment",
-      subtitle: escrow
-        ? `Instrument № ${formatEscrowId(escrow.id)}${escrow.containerRef ? ` · ${escrow.containerRef}` : ""}`
-        : undefined,
-      actions: escrow ? <StatusPill state={escrow.state} /> : null
-    };
-  }
-
-  return {
-    breadcrumb: [workspace, { label: "Workspace overview" }],
-    title: "Workspace overview",
-    subtitle: "Active settlements, evidence still owed, and the deadlines that move next.",
-    actions: (
-      <Button tone="primary" onClick={openCreate}>
-        Create escrow
-      </Button>
-    )
-  };
 }

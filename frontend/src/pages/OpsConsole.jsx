@@ -1,39 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, ArrowLeft, KeyRound, Loader2, LogOut, ShieldCheck } from "lucide-react";
-import AppShell from "../components/AppShell.jsx";
-import { Button, Card, CardTitle, Notice, Tag, TermRow } from "../components/ui.jsx";
-import { closeOpsSession, getOpsSession, openOpsSession, arbitratedBy } from "../lib/opsAuth.js";
+import { closeOpsSession, getOpsSession, openOpsSession, arbitratedBy, resolveDisputeAsArbiter } from "../lib/opsAuth.js";
+import TxLink from "../components/TxLink.jsx";
 import { loadEscrowRows, sourceIsLive } from "../lib/escrowSource.js";
 import { getOracleStatus, getVerifiers } from "../lib/sternApi.js";
 import { shortAddress } from "../lib/actors.js";
 import { CURRENCY_LABEL } from "../lib/currency.js";
-import { formatEscrowId } from "../lib/escrowState.js";
 
-// A restricted surface for the arbiter and the contract admin. It is a separate
-// route with its own session, because those two hold institutional keys and sign
-// in with them — mixing the two would put a private-key field in front of
-// ordinary users who must never see one.
-//
-// It is not, however, a separate product. Once the session is open the console
-// renders inside the same AppShell as every other authenticated page, with an
-// "Elevated session" marker in the header. The sign-in gate stays full-screen
-// and pinned to the dark chrome so that the one screen where a key is typed is
-// unmistakably not the workspace.
-export default function OpsConsole({ shellProps, onExit }) {
+// A separate surface for the arbiter and the contract admin. Deliberately not
+// part of the workspace: those two hold institutional keys and sign in with
+// them, so mixing the two would put a private-key field in front of ordinary
+// users who must never see one.
+export default function OpsConsole({ onExit }) {
   const [session, setSession] = useState(() => getOpsSession());
 
   if (!session) return <OpsLogin onOpen={setSession} onExit={onExit} />;
-  return (
-    <OpsDashboard
-      session={session}
-      shellProps={shellProps}
-      onClose={() => {
-        closeOpsSession();
-        setSession(null);
-      }}
-      onExit={onExit}
-    />
-  );
+  return <OpsDashboard session={session} onClose={() => { closeOpsSession(); setSession(null); }} onExit={onExit} />;
 }
 
 function OpsLogin({ onOpen, onExit }) {
@@ -57,24 +39,29 @@ function OpsLogin({ onOpen, onExit }) {
   }
 
   return (
-    <div className="chrome-dark flex min-h-dvh items-center justify-center bg-onyx p-6 lg:p-8">
+    <div className="chrome-dark flex min-h-dvh items-center justify-center bg-onyx p-8">
       <div className="w-full max-w-md">
-        <Button icon={ArrowLeft} tone="ghost" size="sm" onClick={onExit} className="-ml-3.5 mb-6">
+        <button
+          type="button"
+          onClick={onExit}
+          className="mb-6 flex cursor-pointer items-center gap-1.5 text-sm text-alabaster/70 transition-colors duration-150 hover:text-alabaster"
+        >
+          <ArrowLeft size={14} aria-hidden="true" />
           Back to STERN
-        </Button>
+        </button>
 
-        <p className="text-2xs font-semibold uppercase tracking-micro text-teal">Operations</p>
-        <h1 className="mt-3 text-[30px] font-bold leading-tight text-alabaster">
-          Arbiter and admin console
+        <p className="text-2xs uppercase tracking-macro text-teal">Operations</p>
+        <h1 className="mt-3 text-[30px] font-medium leading-tight tracking-display text-alabaster">
+          Arbiter &amp; admin console
         </h1>
-        <p className="mt-3 text-sm leading-relaxed text-ink-dim">
+        <p className="mt-3 font-serif text-sm leading-relaxed text-alabaster/80">
           Institutional keys sign in here, not through Particle. Signature checks stay on plain
           ecrecover, and an arbiter needs a key it is accountable for rather than one recoverable
           by email.
         </p>
 
         <form onSubmit={submit} className="mt-7">
-          <label htmlFor="opskey" className="mb-1.5 block text-[13px] font-medium text-alabaster">
+          <label htmlFor="opskey" className="text-2xs uppercase text-alabaster/70">
             Private key
           </label>
           <input
@@ -85,41 +72,39 @@ function OpsLogin({ onOpen, onExit }) {
             placeholder="0x…"
             spellCheck="false"
             autoComplete="off"
-            className="w-full rounded-panel border border-sky bg-surface px-3.5 py-2.5 font-mono text-sm text-alabaster placeholder:text-ink-faint focus:border-teal focus:outline-none"
+            className="mt-2 w-full rounded-panel border border-alabaster/25 bg-alabaster/[0.06] px-3.5 py-2.5 text-sm text-alabaster placeholder:text-alabaster/40 focus:border-teal focus:outline-none"
           />
 
           {error ? (
-            <Notice tone="disputed" role="alert" className="mt-3">
+            <p role="alert" className="mt-3 rounded-panel border border-state-disputed/45 bg-state-disputed/10 px-3.5 py-2.5 font-serif text-xs leading-relaxed text-state-disputed">
               {error}
-            </Notice>
+            </p>
           ) : null}
 
-          <Button
+          <button
             type="submit"
-            tone="primary"
-            size="lg"
-            full
-            busy={busy}
             disabled={busy || !key.trim()}
-            icon={KeyRound}
-            className="mt-5"
+            className="mt-5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-alabaster py-3 text-sm font-medium text-onyx transition-opacity duration-150 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
+            {busy ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <KeyRound size={14} aria-hidden="true" />}
             {busy ? "Checking roles on chain…" : "Open console"}
-          </Button>
+          </button>
         </form>
 
         {/* Stated plainly rather than buried. An operator should know exactly
             what happens to the key they just typed. */}
         <div className="mt-7 rounded-doc border border-state-pending/40 bg-state-pending/[0.08] p-4">
-          <p className="flex items-center gap-1.5 text-[13px] font-semibold text-state-pending">
-            <AlertTriangle size={14} aria-hidden="true" />
+          <p className="flex items-center gap-1.5 text-2xs uppercase text-state-pending">
+            <AlertTriangle size={12} aria-hidden="true" />
             What happens to this key
           </p>
-          <ul className="mt-2.5 space-y-1.5 text-[13px] leading-relaxed text-ink-dim">
+          <ul className="mt-2.5 space-y-1.5 font-serif text-xs leading-relaxed text-alabaster/80">
             <li>Held in memory for this tab only. A reload wipes it.</li>
             <li>Never stored, never put in a URL, never sent to the backend.</li>
             <li>Signing happens locally in your browser.</li>
-            <li>Testnet only. Treat any key used here as exposed, and never reuse it on mainnet.</li>
+            <li>
+              Testnet only. Treat any key used here as exposed, and never reuse it on mainnet.
+            </li>
           </ul>
         </div>
       </div>
@@ -127,7 +112,7 @@ function OpsLogin({ onOpen, onExit }) {
   );
 }
 
-function OpsDashboard({ session, shellProps, onClose, onExit }) {
+function OpsDashboard({ session, onClose, onExit }) {
   const [escrows, setEscrows] = useState([]);
   const [status, setStatus] = useState(null);
   const [verifiers, setVerifiers] = useState([]);
@@ -162,142 +147,304 @@ function OpsDashboard({ session, shellProps, onClose, onExit }) {
   const disputed = mine.filter((e) => e.state === "Disputed" || e.disputeOpen);
 
   return (
-    <AppShell
-      {...shellProps}
-      elevated
-      breadcrumb={[{ label: "Environment" }, { label: "Operations console" }]}
-      title={session.isAdmin ? "Arbiter and admin" : "Arbiter"}
-      subtitle={session.address}
-      actions={
-        <>
-          <Button onClick={onExit}>Back to workspace</Button>
-          <Button tone="primary" icon={LogOut} onClick={onClose}>
+    <div className="min-h-dvh bg-beige p-6 lg:p-10">
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-2xs uppercase text-ink-faint">Operations console</p>
+          <h1 className="mt-1.5 text-[28px] font-bold leading-none tracking-display text-navy">
+            {session.isAdmin ? "Arbiter & admin" : "Arbiter"}
+          </h1>
+          <p className="mt-2 font-mono text-xs text-ink-dim">{session.address}</p>
+        </div>
+        <div className="flex gap-2.5">
+          <button
+            type="button"
+            onClick={onExit}
+            className="cursor-pointer rounded-full border border-sky bg-surface px-5 py-2.5 text-[13px] font-medium text-navy transition-colors duration-150 hover:border-teal/40"
+          >
+            Back to STERN
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex cursor-pointer items-center gap-2 rounded-full bg-navy px-5 py-2.5 text-[13px] font-medium text-beige transition-colors duration-150 hover:bg-teal-solid"
+          >
+            <LogOut size={13} aria-hidden="true" />
             End session
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-5">
-        {session.adminCheckFailed ? (
-          <Notice tone="pending">
-            Signed in, but the admin role could not be checked: {session.adminCheckFailed} This is a
-            connectivity problem, not a permissions one.
-          </Notice>
-        ) : null}
+          </button>
+        </div>
+      </header>
 
-        {error ? (
-          <Notice tone="disputed" role="alert">
-            {error}
-          </Notice>
-        ) : null}
+      {session.adminCheckFailed ? (
+        <p className="mb-5 rounded-panel border border-state-pending/40 bg-state-pending/10 px-4 py-3 font-serif text-xs leading-relaxed text-state-pending">
+          Signed in, but the admin role could not be checked: {session.adminCheckFailed} This is a
+          connectivity problem, not a permissions one.
+        </p>
+      ) : null}
 
-        {!sourceIsLive ? (
-          <Notice>
-            No gateway configured, so this console has nothing live to read. Set{" "}
-            <code className="font-mono text-[12px]">VITE_ORACLE_API</code>.
-          </Notice>
-        ) : null}
+      {error ? (
+        <p role="alert" className="mb-5 rounded-panel border border-state-disputed/40 bg-state-disputed/10 px-4 py-3 font-serif text-xs text-state-disputed">
+          {error}
+        </p>
+      ) : null}
 
-        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-          <Card>
-            <CardTitle
-              hint="The arbiter is named when an escrow is created, so it can only appear here after the fact."
-              action={<Tag tone="neutral">{mine.length} assigned</Tag>}
-            >
-              Escrows you arbitrate
-            </CardTitle>
+      {!sourceIsLive ? (
+        <p className="mb-5 rounded-panel bg-sky/25 px-4 py-3 font-serif text-xs leading-relaxed text-ink-dim">
+          No gateway configured, so this console has nothing live to read. Set VITE_ORACLE_API.
+        </p>
+      ) : null}
 
-            {loading ? (
-              <p className="flex items-center gap-2 text-[14px] text-ink-dim">
-                <Loader2 size={14} className="animate-spin text-teal" aria-hidden="true" />
-                Reading the registry…
-              </p>
-            ) : mine.length === 0 ? (
-              <p className="text-[14px] leading-relaxed text-ink-dim">
-                This address is not the appointed arbiter on any escrow yet.
-              </p>
-            ) : (
-              <ul className="divide-y divide-sky/70">
-                {mine.map((e) => (
-                  <li key={e.id} className="flex items-baseline justify-between gap-4 py-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-[14px] font-medium text-navy">{e.commodity}</p>
-                      <p className="truncate font-mono text-2xs text-ink-faint">
-                        &#8470; {formatEscrowId(e.id)} · {e.containerRef}
-                      </p>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p className="text-[13px] font-medium tabular-nums text-navy">
-                        {Number(e.value).toLocaleString("id-ID")} {CURRENCY_LABEL}
-                      </p>
-                      <p className="text-2xs text-ink-faint">{e.state}</p>
-                    </div>
-                  </li>
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <section className="rounded-doc bg-surface p-6 shadow-card">
+          <h2 className="text-2xs uppercase text-ink-faint">
+            Escrows you arbitrate ({mine.length})
+          </h2>
+
+          {loading ? (
+            <p className="mt-3 flex items-center gap-2 font-serif text-sm text-ink-dim">
+              <Loader2 size={14} className="animate-spin text-teal" aria-hidden="true" />
+              Reading the registry…
+            </p>
+          ) : mine.length === 0 ? (
+            <p className="mt-3 font-serif text-sm leading-relaxed text-ink-dim">
+              This address is not the appointed arbiter on any escrow yet. The arbiter is named when
+              an escrow is created, so it can only appear here after the fact.
+            </p>
+          ) : (
+            <ul className="mt-3 divide-y divide-sky">
+              {mine.map((e) => (
+                <li key={e.id} className="flex items-baseline justify-between gap-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-navy">{e.commodity}</p>
+                    <p className="font-mono text-2xs text-ink-faint">
+                      &#8470; {String(e.id).padStart(4, "0")} · {e.containerRef}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="font-mono text-xs tabular-nums text-navy">
+                      {Number(e.value).toLocaleString("id-ID")} {CURRENCY_LABEL}
+                    </p>
+                    <p className="font-mono text-2xs uppercase text-ink-faint">{e.state}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* Was a notice saying resolution happens elsewhere. An arbiter who has
+              just typed their private key into this page has, by definition, the
+              authority to decide — sending them to a backend service was the
+              console refusing to do the one thing it exists for. */}
+          {disputed.length > 0 ? (
+            <div className="mt-5 border-t border-sky pt-5">
+              <h3 className="text-2xs uppercase text-state-disputed">
+                Awaiting your decision ({disputed.length})
+              </h3>
+              <ul className="mt-3 space-y-4">
+                {disputed.map((e) => (
+                  <ResolveCard key={e.id} escrow={e} onResolved={() => load()} />
                 ))}
               </ul>
-            )}
+            </div>
+          ) : null}
+        </section>
 
-            {disputed.length > 0 ? (
-              <Notice tone="disputed" className="mt-4">
-                {disputed.length} escrow{disputed.length > 1 ? "s" : ""} awaiting your resolution.
-                Resolution is submitted by the backend arbiter service — this console shows the
-                state, it does not sign the resolution for you.
-              </Notice>
-            ) : null}
-          </Card>
+        <aside className="flex flex-col gap-5">
+          <section className="rounded-doc bg-surface p-6 shadow-card">
+            <h2 className="text-2xs uppercase text-ink-faint">Your roles</h2>
+            <ul className="mt-3 space-y-2 text-sm">
+              <Row label="Contract admin" ok={session.isAdmin} />
+              <Row label="Arbiter on escrows" ok={mine.length > 0} note={String(mine.length)} />
+            </ul>
+          </section>
 
-          <aside className="flex flex-col gap-5">
-            <Card>
-              <CardTitle>Your roles</CardTitle>
-              <ul className="divide-y divide-sky/70">
-                <RoleRow label="Contract admin" ok={session.isAdmin} />
-                <RoleRow
-                  label="Arbiter on escrows"
-                  ok={mine.length > 0}
-                  note={String(mine.length)}
-                />
-              </ul>
-            </Card>
-
-            {status ? (
-              <Card>
-                <CardTitle>Oracle health</CardTitle>
-                <div className="divide-y divide-sky/70">
-                  {status.chainId != null ? (
-                    <TermRow label="Chain" value={String(status.chainId)} />
-                  ) : null}
-                  {status.contractAddress ? (
-                    <TermRow label="Contract" value={shortAddress(status.contractAddress)} />
-                  ) : null}
-                </div>
-                {verifiers.length ? (
-                  <ul className="mt-3 space-y-2 border-t border-sky pt-3">
-                    {verifiers.map((v) => (
-                      <li key={v.address || v.role}>
-                        <p className="text-2xs text-ink-faint">
-                          {String(v.role || v.name || "").replace(/_/g, " ")}
-                        </p>
-                        <p className="font-mono text-[12px] text-navy">{shortAddress(v.address)}</p>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </Card>
-            ) : null}
-          </aside>
-        </div>
+          {status ? (
+            <section className="rounded-doc bg-surface p-6 shadow-card">
+              <h2 className="text-2xs uppercase text-ink-faint">Oracle health</h2>
+              <dl className="mt-3 space-y-1.5 text-2xs">
+                {status.chainId != null ? <Term label="Chain" value={String(status.chainId)} /> : null}
+                {status.contractAddress ? <Term label="Contract" value={shortAddress(status.contractAddress)} /> : null}
+              </dl>
+              {verifiers.length ? (
+                <ul className="mt-3 space-y-2 border-t border-sky pt-3">
+                  {verifiers.map((v) => (
+                    <li key={v.address || v.role} className="text-2xs">
+                      <p className="font-mono uppercase text-ink-faint">{v.role || v.name}</p>
+                      <p className="font-mono text-navy">{shortAddress(v.address)}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </section>
+          ) : null}
+        </aside>
       </div>
-    </AppShell>
+    </div>
   );
 }
 
-function RoleRow({ label, ok, note }) {
+/**
+ * One disputed escrow, and the arbiter's decision on it.
+ *
+ * Two questions, deliberately separated, because the contract separates them and
+ * conflating them is how an arbiter gets it wrong:
+ *
+ *   1. Where does the escrow value go — exporter, or back to the importer?
+ *   2. What happens to the 3% bond the challenger staked?
+ *
+ * A challenger who was right gets the bond back whichever way the value went.
+ * The bond is only forfeited when the challenge itself was baseless, which is a
+ * separate finding from who was owed the goods.
+ */
+function ResolveCard({ escrow, onResolved }) {
+  const [releaseToExporter, setReleaseToExporter] = useState(false);
+  const [reasoningCid, setReasoningCid] = useState("");
+  const [slashVerifier, setSlashVerifier] = useState(false);
+  const [bondFrivolous, setBondFrivolous] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(null);
+
+  async function submit() {
+    setBusy(true);
+    setError("");
+    try {
+      const res = await resolveDisputeAsArbiter(escrow.id, {
+        releaseToExporter,
+        reasoningCid,
+        slashVerifier,
+        bondFrivolous
+      });
+      setDone(res);
+      await onResolved?.();
+    } catch (err) {
+      setError(err?.shortMessage || err?.message || "The resolution could not be submitted.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (done) {
+    return (
+      <li className="rounded-panel border border-state-attested/40 bg-state-attested/10 px-4 py-3">
+        <p className="font-serif text-sm text-state-attested">
+          Resolved. Funds went to the {releaseToExporter ? "exporter" : "importer"}.
+        </p>
+        <span className="mt-1 block"><TxLink hash={done.transactionHash} /></span>
+      </li>
+    );
+  }
+
   return (
-    <li className="flex items-center justify-between gap-3 py-2.5">
-      <span className="text-[14px] text-navy">{label}</span>
-      <Tag tone={ok ? "attested" : "neutral"} icon={ok ? ShieldCheck : undefined}>
-        {note ?? (ok ? "Granted" : "Not granted")}
-      </Tag>
+    <li className="rounded-panel border border-state-disputed/35 bg-state-disputed/[0.05] px-4 py-4">
+      <p className="text-sm font-medium text-navy">{escrow.commodity}</p>
+      <p className="font-mono text-2xs text-ink-faint">
+        &#8470; {String(escrow.id).padStart(4, "0")} ·{" "}
+        {Number(escrow.value).toLocaleString("id-ID")} {CURRENCY_LABEL}
+      </p>
+
+      <fieldset className="mt-3.5">
+        <legend className="text-2xs uppercase text-ink-faint">Where the escrow value goes</legend>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          {[
+            { v: false, label: "Refund importer" },
+            { v: true, label: "Release to exporter" }
+          ].map((opt) => (
+            <button
+              key={String(opt.v)}
+              type="button"
+              onClick={() => setReleaseToExporter(opt.v)}
+              className={`cursor-pointer rounded-full border px-3 py-2 text-xs font-medium transition-colors duration-150 ${
+                releaseToExporter === opt.v
+                  ? "border-navy bg-navy text-beige"
+                  : "border-sky bg-surface text-navy hover:border-teal/40"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+
+      <label className="mt-3 block text-2xs uppercase text-ink-faint">
+        Reasoning CID
+        <input
+          value={reasoningCid}
+          onChange={(event) => setReasoningCid(event.target.value)}
+          placeholder="bafy… — the contract refuses a decision without one"
+          className="mt-1 block w-full rounded-panel border border-sky bg-surface px-3 py-2 font-mono text-xs normal-case text-navy"
+        />
+      </label>
+
+      <div className="mt-3 space-y-2">
+        <label className="flex items-start gap-2 font-serif text-xs leading-relaxed text-ink-dim">
+          <input
+            type="checkbox"
+            checked={slashVerifier}
+            disabled={bondFrivolous}
+            onChange={(event) => setSlashVerifier(event.target.checked)}
+            className="mt-0.5 disabled:opacity-40"
+          />
+          <span>
+            The verifier was wrong — slash 50% of their bond
+            <span className="block text-ink-faint">70% to the importer, 30% to the treasury</span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 font-serif text-xs leading-relaxed text-ink-dim">
+          <input
+            type="checkbox"
+            checked={bondFrivolous}
+            disabled={slashVerifier}
+            onChange={(event) => setBondFrivolous(event.target.checked)}
+            className="mt-0.5 disabled:opacity-40"
+          />
+          <span>
+            The challenge was baseless — the 3% bond is forfeited to the exporter
+            <span className="block text-ink-faint">Otherwise it returns to whoever raised it</span>
+          </span>
+        </label>
+      </div>
+
+      {error ? (
+        <p role="alert" className="mt-3 font-serif text-xs leading-relaxed text-state-disputed">
+          {error}
+        </p>
+      ) : null}
+
+      <button
+        type="button"
+        onClick={submit}
+        disabled={busy || !reasoningCid.trim()}
+        className="mt-3.5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-navy py-2.5 text-xs font-medium text-beige transition-colors duration-150 hover:bg-teal-solid disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {busy ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : null}
+        {busy ? "Signing with your key…" : "Sign decision"}
+      </button>
     </li>
+  );
+}
+
+function Row({ label, ok, note }) {
+  return (
+    <li className="flex items-center justify-between gap-3">
+      <span className="text-navy">{label}</span>
+      <span
+        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-mono text-2xs uppercase ${
+          ok ? "bg-state-attested/10 text-state-attested" : "bg-sky/30 text-ink-dim"
+        }`}
+      >
+        {ok ? <ShieldCheck size={10} aria-hidden="true" /> : null}
+        {note ?? (ok ? "yes" : "no")}
+      </span>
+    </li>
+  );
+}
+
+function Term({ label, value }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="font-mono uppercase text-ink-faint">{label}</dt>
+      <dd className="font-mono text-navy">{value}</dd>
+    </div>
   );
 }
