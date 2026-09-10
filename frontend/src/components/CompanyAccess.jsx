@@ -3,6 +3,20 @@ import { beginMfaSetup, companyLogin, confirmMfaSetup, registerCompany, verifyMf
 
 const initialRegistration = { companyName: "", email: "", username: "", walletAddress: "", password: "" };
 
+// MFA works — TOTP, Google Authenticator compatible, tested — but it is not
+// wired to anything a user would feel: the company session identifies the
+// company to the gateway, it does not gate the workspace, and the walletAddress
+// recorded at registration is never checked against the Smart Account that
+// actually signs in. Until that link exists, offering a second factor implies a
+// protection that is not there.
+//
+// Hidden rather than deleted. The backend routes, the TOTP implementation and
+// the login branch that returns `mfaRequired` all stay exactly as they are;
+// flip this to true and the controls come back. The login flow below still
+// handles an `mfaRequired` response, so an account that already enabled MFA can
+// still finish signing in.
+const MFA_ENABLED = false;
+
 export default function CompanyAccess() {
   const [mode, setMode] = useState("login");
   const [registration, setRegistration] = useState(initialRegistration);
@@ -31,9 +45,9 @@ export default function CompanyAccess() {
         This signs you in as the company. To open the workspace you still need a wallet —
         use <span className="text-navy">Sign in to continue</span> above.
       </p>
-      {!session.user.mfaEnabled ? <button type="button" disabled={busy} onClick={() => run(async () => setSetup(await beginMfaSetup(session.accessToken)))} className="mt-2 text-xs font-medium text-teal underline underline-offset-2 disabled:opacity-50">Enable MFA</button> : <p className="mt-2 text-teal">MFA enabled</p>}
+      {MFA_ENABLED ? (!session.user.mfaEnabled ? <button type="button" disabled={busy} onClick={() => run(async () => setSetup(await beginMfaSetup(session.accessToken)))} className="mt-2 text-xs font-medium text-teal underline underline-offset-2 disabled:opacity-50">Enable MFA</button> : <p className="mt-2 text-teal">MFA enabled</p>) : null}
       {error ? <p role="alert" className="mt-2 text-xs text-state-disputed">{error}</p> : null}
-      {setup ? <div className="mt-3 space-y-2"><p className="break-all font-mono text-2xs text-navy">{setup.secret}</p><input aria-label="MFA verification code" inputMode="numeric" maxLength="6" value={code} onChange={(event) => setCode(event.target.value)} placeholder="Authenticator code" className="w-full border border-sky bg-surface px-3 py-2 text-xs text-navy" /><button type="button" disabled={busy || code.length !== 6} onClick={() => run(async () => { const result = await confirmMfaSetup({ setupToken: setup.setupToken, code }); setSession((current) => ({ ...current, user: result.user })); setSetup(null); setCode(""); })} className="border border-teal px-3 py-2 text-xs font-medium text-teal disabled:opacity-50">Confirm MFA</button></div> : null}
+      {MFA_ENABLED && setup ? <div className="mt-3 space-y-2"><p className="break-all font-mono text-2xs text-navy">{setup.secret}</p><input aria-label="MFA verification code" inputMode="numeric" maxLength="6" value={code} onChange={(event) => setCode(event.target.value)} placeholder="Authenticator code" className="w-full border border-sky bg-surface px-3 py-2 text-xs text-navy" /><button type="button" disabled={busy || code.length !== 6} onClick={() => run(async () => { const result = await confirmMfaSetup({ setupToken: setup.setupToken, code }); setSession((current) => ({ ...current, user: result.user })); setSetup(null); setCode(""); })} className="border border-teal px-3 py-2 text-xs font-medium text-teal disabled:opacity-50">Confirm MFA</button></div> : null}
     </div>;
   }
 
