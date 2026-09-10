@@ -4,7 +4,7 @@ import {
 } from "lucide-react";
 import StatusPill from "../components/StatusPill.jsx";
 import ActivityRail from "../components/ActivityRail.jsx";
-import { loadEscrowRows, sourceIsLive, sourceLabel } from "../lib/escrowSource.js";
+import { loadActivityForRows, loadEscrowRows, sourceIsLive, sourceLabel } from "../lib/escrowSource.js";
 import { CURRENCY_LABEL } from "../lib/currency.js";
 import { formatEscrowId } from "../lib/escrowState.js";
 import { MILESTONES, STATE_ORDER, STATE_LABELS } from "../lib/milestones.js";
@@ -68,6 +68,17 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
       onRegistryLoad?.(full);
       if (sourceIsLive && full.length === 0) {
         setChainStatus("Connected to the gateway. No escrows have been created yet.");
+      }
+      // The table is on screen by now. Activity is an event scan per escrow, so
+      // it arrives afterwards and updates in place rather than holding the page.
+      setLoading(false);
+      if (full.length) {
+        loadActivityForRows(full, { signal })
+          .then((withActivity) => {
+            setRows(withActivity);
+            onRegistryLoad?.(withActivity);
+          })
+          .catch(() => {});
       }
     } catch (error) {
       if (error.name === "AbortError") return;
