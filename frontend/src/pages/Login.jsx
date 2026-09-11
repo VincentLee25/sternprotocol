@@ -45,7 +45,7 @@ export default function Login({ onConnect, error, busy }) {
               Evidence-led escrow for export&ndash;import settlement
             </span>
             <h1 className="text-[36px] font-bold leading-[1.06] text-alabaster">
-              Paid the moment it leaves the port.
+              Verify, Release, Move
             </h1>
             <ul className="mt-8 space-y-4">
               {FEATURES.map(({ icon: Icon, text }) => (

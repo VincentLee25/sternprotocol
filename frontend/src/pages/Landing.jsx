@@ -41,7 +41,7 @@ export default function Landing({ onNavigate, onEnter }) {
               <h1 style={{ animationDelay: "70ms" }} className="rise-in text-[46px] font-extrabold leading-[1.02] text-alabaster sm:text-[60px] lg:text-[68px]">
                 Verify,
                 <br />
-                Release, Move <span className="text-teal">the port.</span>
+                Release,Move <span className="text-teal">the port.</span>
               </h1>
               <p style={{ animationDelay: "140ms" }} className="rise-in mt-7 max-w-[50ch] text-[19px] leading-[1.62] text-alabaster/90">
                 An Aceh coffee cooperative waits weeks for a letter of credit to clear. STERN locks
