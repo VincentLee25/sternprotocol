@@ -127,7 +127,7 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
                 htmlFor="exporter"
                 required
                 error={showError("exporter")}
-                hint="Receives IDRT-demo once all three milestones are verified."
+                hint="Receives IDRT-demo once all three milestones are verified. for demo we provide exporter wallet addres (0xfAF7af811FC2D0D2a915D9e2d1ce44463Cb96381)"
               >
                 <input
                   id="exporter"
@@ -146,7 +146,7 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
                 htmlFor="arbiter"
                 required
                 error={showError("arbiter")}
-                hint="Resolves disputes — independent of importer and exporter."
+                hint="Resolves disputes — independent of importer and exporter. arbitter wallet demo(0x0997657e121213909bE3E9d7701df0753Fb102ed)"
               >
                 <input
                   id="arbiter"
