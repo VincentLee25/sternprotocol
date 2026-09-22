@@ -12,8 +12,35 @@ function normalizeFault(fault) {
   const key = String(fault || "none").trim().toLowerCase().replace(/[\s-]+/g, "_");
   return SIMULATION_FAULTS[key] || "none";
 }
-function evidenceItem({ oracle, source, field, expected, actual, passed, sourceData, fault }) {
-  return { oracle, source, field, expected, actual, passed, discrepancy: !passed, simulated: fault !== "none", checkedAt: new Date().toISOString(), sourceData };
+function evidenceItem({ oracle, source, field, expected, actual, passed, sourceData, fault, subject, basis }) {
+  return {
+    oracle, source, field, expected, actual, passed,
+    // What this reading is ABOUT, in the document's own terms. "expected
+    // departed, actual in_port" is a fact about a variable; it says nothing
+    // about which vessel, which container or which voyage, so a reader cannot
+    // tell whether the reading even concerns this shipment. That sentence is
+    // the difference between a debug line and evidence.
+    subject: subject || null,
+    // Where the expected value came from: the bill of lading, or a fallback
+    // for a deployment with no document to read. Worth stating rather than
+    // leaving a reader to assume the stronger of the two.
+    basis: basis || null,
+    discrepancy: !passed,
+    simulated: fault !== "none",
+    checkedAt: new Date().toISOString(),
+    sourceData
+  };
+}
+
+/** "19.200 kg" — grouped, so a five-digit weight is readable at a glance. */
+function kg(value) {
+  return value == null ? null : `${Number(value).toLocaleString("id-ID")} kg`;
+}
+
+/** Joins the parts of a subject line, dropping whatever the document lacked. */
+function subjectLine(parts) {
+  const text = parts.filter(Boolean).join(" · ");
+  return text || null;
 }
 const simulationOverrides = new Map();
 
@@ -257,11 +284,60 @@ async function getMockStatus(contractId, options = {}) {
     eblCheckable: sources.ipfs.mode === "mock" || sources.ipfs.available !== false,
     inspectionPassed: sources.inspection.inspection_status === "passed"
   };
+  // Each reading now states the shipment it is about, taken from the bill of
+  // lading, so a discrepancy reads as a fact about this trade rather than a
+  // variable that changed value.
+  const fromDoc = (flag) => (flag === "bill_of_lading" ? "bill of lading" : "fallback data");
+
   const evidence = [
-    evidenceItem({ oracle: "quality_auditor", source: "VGM", field: "vgm_match", expected: true, actual: verification.vgmMatch, passed: verification.vgmMatch, sourceData: sources.vgm, fault }),
-    evidenceItem({ oracle: "quality_auditor", source: "inspection", field: "inspection_status", expected: "passed", actual: sources.inspection.inspection_status, passed: verification.inspectionPassed, sourceData: sources.inspection, fault }),
-    evidenceItem({ oracle: "logistics", source: "AIS", field: "departure_status", expected: "departed", actual: sources.ais.departure_status, passed: verification.aisDeparted, sourceData: sources.ais, fault }),
-    evidenceItem({ oracle: "customs", source: "CEISA", field: "customs_status", expected: "approved", actual: sources.ceisa.customs_status, passed: verification.ceisaApproved, sourceData: sources.ceisa, fault }),
+    evidenceItem({
+      oracle: "quality_auditor", source: "VGM", field: "vgm_match",
+      // The weights, not a bare boolean. "expected true, actual false" hides
+      // the only numbers anyone would want to see.
+      expected: kg(sources.vgm.expected_vgm_kg),
+      actual: kg(sources.vgm.vgm_kg),
+      passed: verification.vgmMatch, sourceData: sources.vgm, fault,
+      subject: subjectLine([
+        sources.vgm.containerRef && `Container ${sources.vgm.containerRef}`,
+        sources.vgm.port && `gate-in at ${sources.vgm.port}`
+      ]),
+      basis: fromDoc(sources.vgm.source)
+    }),
+    evidenceItem({
+      oracle: "quality_auditor", source: "inspection", field: "inspection_status",
+      expected: "passed", actual: sources.inspection.inspection_status,
+      passed: verification.inspectionPassed, sourceData: sources.inspection, fault,
+      subject: subjectLine([
+        sources.inspection.containerRef && `Container ${sources.inspection.containerRef}`,
+        sources.inspection.commodity,
+        sources.inspection.location && `inspected at ${sources.inspection.location}`
+      ]),
+      basis: fromDoc(sources.inspection.source)
+    }),
+    evidenceItem({
+      oracle: "logistics", source: "AIS", field: "departure_status",
+      expected: "departed", actual: sources.ais.departure_status,
+      passed: verification.aisDeparted, sourceData: sources.ais, fault,
+      subject: subjectLine([
+        sources.ais.vessel || sources.ais.vesselIMO,
+        sources.ais.voyage && `voyage ${sources.ais.voyage}`,
+        sources.ais.port_of_loading && sources.ais.port_of_discharge
+          ? `${sources.ais.port_of_loading} → ${sources.ais.port_of_discharge}`
+          : null
+      ]),
+      basis: fromDoc(sources.ais.source)
+    }),
+    evidenceItem({
+      oracle: "customs", source: "CEISA", field: "customs_status",
+      expected: "approved", actual: sources.ceisa.customs_status,
+      passed: verification.ceisaApproved, sourceData: sources.ceisa, fault,
+      subject: subjectLine([
+        sources.ceisa.bill_of_lading_no && `B/L ${sources.ceisa.bill_of_lading_no}`,
+        sources.ceisa.containerRef && `container ${sources.ceisa.containerRef}`,
+        `PEB ${sources.ceisa.PEB_number}`
+      ]),
+      basis: fromDoc(sources.ceisa.source)
+    }),
     // "cid_valid: false" told an operator nothing about what went wrong, and
     // with a real retrieval there are several distinguishable ways for it to
     // go wrong — unreachable, wrong content, not a PDF, wrong container. Name
@@ -276,7 +352,12 @@ async function getMockStatus(contractId, options = {}) {
         : (sources.ipfs.failedChecks?.length ? sources.ipfs.failedChecks.join(", ") : false),
       passed: verification.eblCidValid,
       sourceData: sources.ipfs,
-      fault
+      fault,
+      subject: subjectLine([
+        sources.ipfs.cid && `CID ${sources.ipfs.cid}`,
+        sources.ipfs.containerRefExpected && `expected container ${sources.ipfs.containerRefExpected}`
+      ]),
+      basis: sources.ipfs.mode === "ipfs" ? "retrieved from IPFS" : "placeholder check"
     })
   ];
   const discrepancies = evidence.filter((item) => !item.passed);

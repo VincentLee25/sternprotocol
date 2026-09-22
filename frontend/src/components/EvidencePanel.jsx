@@ -481,11 +481,22 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
                     <p className="font-mono text-2xs uppercase text-state-disputed">{s.source}</p>
                     <p className="font-serif text-2xs text-ink-dim">{s.oracle?.replace(/_/g, " ")}</p>
                   </div>
+                  {/* The shipment this reading is about, from the bill of
+                      lading. It goes first because it is what makes the two
+                      lines below mean anything. */}
+                  {s.subject ? (
+                    <p className="mt-1 break-words font-serif text-2xs leading-relaxed text-navy">{s.subject}</p>
+                  ) : null}
                   <dl className="mt-1.5 space-y-0.5 text-2xs">
                     <Row label="Field" value={s.field} mono />
                     <Row label="Expected" value={s.expected} mono />
                     <Row label="Actual" value={s.actual} mono />
                   </dl>
+                  {s.basis ? (
+                    <p className="mt-1.5 font-serif text-2xs leading-relaxed text-ink-faint">
+                      Expected value taken from the {s.basis}.
+                    </p>
+                  ) : null}
                 </li>
               ))}
             </ul>

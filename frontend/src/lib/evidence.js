@@ -238,6 +238,13 @@ export function sourceEvidence(evidence) {
     field: item.field,
     expected: formatValue(item.expected),
     actual: formatValue(item.actual),
+    // What the reading is about, in the bill of lading's own terms, and where
+    // the expected value came from. Without these the panel showed "expected
+    // departed, actual in_port" — true, and silent about which vessel, which
+    // voyage and which ports, so a reader could not tell the reading even
+    // concerned this shipment.
+    subject: item.subject || null,
+    basis: item.basis || null,
     passed: item.passed !== false,
     simulated: Boolean(item.simulated)
   }));
