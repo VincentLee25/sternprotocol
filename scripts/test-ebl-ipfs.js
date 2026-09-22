@@ -22,6 +22,21 @@ const PORT = Number(process.env.EBL_TEST_PORT || 5621);
 const STUB = path.resolve(__dirname, "test-support/ipfs-node-stub.js");
 const FIXTURE = path.resolve(__dirname, "../docs/demo/e-bl-TGHU-2026-001.pdf");
 
+// Point every read and write at the local stand-in.
+//
+// PINATA_JWT is cleared deliberately, and this matters: pinningProvider()
+// prefers Pinata over a Kubo node, and config.js loads the root .env. On a
+// machine that has a real PINATA_JWT — which is to say, on any machine where
+// the feature is actually configured — this test would otherwise pin to the
+// real Pinata and then try to read the document back from the local stub,
+// which has never seen it. The failure looked like a broken retrieval; the
+// cause was the test talking to two different services.
+//
+// Setting the variable to "" rather than deleting it is what keeps dotenv
+// from filling it back in: dotenv only sets keys that are absent from
+// process.env, and an empty string is present.
+process.env.PINATA_JWT = "";
+process.env.IPFS_API_AUTH = "";
 process.env.IPFS_API_URL = `http://127.0.0.1:${PORT}`;
 process.env.IPFS_GATEWAYS = `http://127.0.0.1:${PORT}`;
 
@@ -73,6 +88,18 @@ async function main() {
     await waitForStub(PORT);
     const ipfs = require("../backend/oracle-gateway/ipfsService.js");
 
+    // Refuse to run against anything but the stub. Without this guard the
+    // suite silently pinned to whichever service the environment happened to
+    // name, and the resulting failures pointed at the document rather than at
+    // the test's own setup.
+    const status = ipfs.ipfsStatus();
+    if (status.provider !== "kubo") {
+      throw new Error(
+        `this suite must run against the local stub, but the configured provider is "${status.provider}". ` +
+          "Something is re-populating PINATA_JWT after this script clears it."
+      );
+    }
+
     console.log("\nThe real document");
     const pinned = await ipfs.pinDocument(pdf, "e-bl-TGHU-2026-001.pdf");
     check("pins to a CIDv0", /^Qm[1-9A-HJ-NP-Za-km-z]{44}$/.test(pinned.cid), pinned.cid);
@@ -80,25 +107,25 @@ async function main() {
 
     const good = await ipfs.verifyDocument(pinned.cid, { containerRef: "TGHU-2026-001" });
     check("verifies", good.valid, good.reason);
-    check("the bytes hash back to the CID", good.checks.cidMatchesContent);
-    check("is a PDF", good.checks.isPdf);
-    check("text is readable", good.checks.hasText);
-    check("B/L number read", good.fields.billOfLadingNumber === "IDSUBU2026001", good.fields.billOfLadingNumber);
-    check("vessel is the vessel, not the shipper", good.fields.vessel === "MV SAMUDRA BIRU", good.fields.vessel);
-    check("gross weight keeps its thousands separator", /19\s?200,00/.test(good.fields.grossWeight || ""), good.fields.grossWeight);
-    check("voyage read", good.fields.voyage === "0264E", good.fields.voyage);
+    check("the bytes hash back to the CID", good.checks?.cidMatchesContent);
+    check("is a PDF", good.checks?.isPdf);
+    check("text is readable", good.checks?.hasText);
+    check("B/L number read", good.fields?.billOfLadingNumber === "IDSUBU2026001", good.fields?.billOfLadingNumber);
+    check("vessel is the vessel, not the shipper", good.fields?.vessel === "MV SAMUDRA BIRU", good.fields?.vessel);
+    check("gross weight keeps its thousands separator", /19\s?200,00/.test(good.fields?.grossWeight || ""), good.fields?.grossWeight);
+    check("voyage read", good.fields?.voyage === "0264E", good.fields?.voyage);
     check("both ports read",
-      /Belawan/.test(good.fields.portOfLoading || "") && /Rotterdam/.test(good.fields.portOfDischarge || ""));
-    check("both parties read", Boolean(good.fields.shipper && good.fields.consignee));
+      /Belawan/.test(good.fields?.portOfLoading || "") && /Rotterdam/.test(good.fields?.portOfDischarge || ""));
+    check("both parties read", Boolean(good.fields?.shipper && good.fields?.consignee));
     check("only real container numbers are listed",
-      good.fields.containerNumbers.length === 1 && good.fields.containerNumbers[0] === "TGHU-2026-001",
-      JSON.stringify(good.fields.containerNumbers));
+      good.fields?.containerNumbers?.length === 1 && good.fields.containerNumbers[0] === "TGHU-2026-001",
+      JSON.stringify(good.fields?.containerNumbers));
 
     console.log("\nA bill of lading for a different container");
     const wrong = await ipfs.verifyDocument(pinned.cid, { containerRef: "MSKU-9999-999" });
     check("refused", !wrong.valid);
-    check("names the failing check", wrong.failedChecks.includes("hasContainerReference"));
-    check("says which container is missing", /MSKU-9999-999/.test(wrong.notes.join(" ")));
+    check("names the failing check", (wrong.failedChecks || []).includes("hasContainerReference"));
+    check("says which container is missing", /MSKU-9999-999/.test((wrong.notes || []).join(" ")));
 
     console.log("\nA CID nothing resolves at");
     const missing = await ipfs.verifyDocument("QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG", {});
@@ -118,9 +145,9 @@ async function main() {
     console.log("\nContent that is not a bill of lading");
     const text = await ipfs.pinDocument(Buffer.from("a plain text note, not a bill of lading"), "note.txt");
     const textVerdict = await ipfs.verifyDocument(text.cid, {});
-    check("resolves", textVerdict.checks.cidResolves);
+    check("resolves", textVerdict.checks?.cidResolves);
     check("but is refused", !textVerdict.valid);
-    check("names the PDF check", textVerdict.failedChecks.includes("isPdf"));
+    check("names the PDF check", (textVerdict.failedChecks || []).includes("isPdf"));
 
     console.log("\nNo CID at all");
     const none = await ipfs.verifyDocument(null, {});
@@ -133,7 +160,7 @@ async function main() {
     });
     check("refused", !faulted.valid);
     check("labelled as simulated, not as a real failure", faulted.simulatedFault === true);
-    check("the simulation appears in the failed checks", faulted.failedChecks.includes("simulatedFault"));
+    check("the simulation appears in the failed checks", (faulted.failedChecks || []).includes("simulatedFault"));
 
     console.log("\nThe verdict is cached, because a CID's content cannot change");
     const cached = await ipfs.verifyDocumentCached(pinned.cid, { containerRef: "TGHU-2026-001" });
@@ -160,10 +187,10 @@ async function main() {
 
     const pinned = await ipfs.pinDocument(pdf, "e-bl.pdf");
     const verdict = await ipfs.verifyDocument(pinned.cid, { containerRef: "TGHU-2026-001" });
-    check("the CID still resolves", verdict.checks.cidResolves);
-    check("the content mismatch is caught", verdict.checks.cidMatchesContent === false);
+    check("the CID still resolves", verdict.checks?.cidResolves);
+    check("the content mismatch is caught", verdict.checks?.cidMatchesContent === false);
     check("refused", verdict.valid === false);
-    check("says what it hashed to instead", /hash to Qm/.test(verdict.notes.join(" ")), verdict.notes.join(" "));
+    check("says what it hashed to instead", /hash to Qm/.test((verdict.notes || []).join(" ")), (verdict.notes || []).join(" "));
   } finally {
     tamperStub.kill();
   }
