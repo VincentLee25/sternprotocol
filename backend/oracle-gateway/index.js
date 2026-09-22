@@ -21,6 +21,7 @@ const {
 const { config } = require("./config");
 const { getDemoBalance, claimDemoBalance } = require("./faucetService");
 const { createIdentityService } = require("./identityService");
+const directory = require("./directoryService");
 const {
   pinDocument,
   fetchByCid,
@@ -173,6 +174,30 @@ app.get("/oracle/status", async (_req, res, next) => {
 
 app.get("/verifiers", async (_req, res, next) => {
   try { res.json(await getVerifiers()); } catch (error) { next(error); }
+});
+
+
+// --- Counterparty directory --------------------------------------------------
+//
+// So creating an escrow does not mean pasting 42 hex characters for the
+// exporter and 42 more for the arbiter. See directoryService.js for what a
+// handle does and does not prove: it is an address book, not verified
+// identity, and every response carries the address for a human to confirm.
+
+app.post("/directory/claim", (req, res, next) => {
+  try { res.json(directory.claim(req.body || {})); } catch (error) { next(error); }
+});
+
+app.get("/directory/lookup", (req, res, next) => {
+  try { res.json(directory.search(req.query.q)); } catch (error) { next(error); }
+});
+
+app.get("/directory/resolve/:handle", (req, res, next) => {
+  try { res.json(directory.resolve(req.params.handle)); } catch (error) { next(error); }
+});
+
+app.get("/directory/address/:smartAccountAddress", (req, res, next) => {
+  try { res.json({ entry: directory.forAddress(req.params.smartAccountAddress) }); } catch (error) { next(error); }
 });
 
 // --- e-BL on IPFS ------------------------------------------------------------

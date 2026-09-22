@@ -28,6 +28,10 @@ const config = {
   logScanChunk: Number(process.env.LOG_SCAN_CHUNK || 9000),
   nativeGasWarningWei: BigInt(process.env.NATIVE_GAS_WARNING_WEI || "1000000000000000"),
   identityStoreFile: process.env.IDENTITY_STORE_FILE || path.resolve(__dirname, "../data/identities.json"),
+  // The counterparty address book. Like the identity store, it must sit on a
+  // persistent volume on a host with ephemeral disk, or every redeploy wipes
+  // the handles people registered.
+  directoryStoreFile: process.env.DIRECTORY_STORE_FILE || path.resolve(__dirname, "../data/directory.json"),
   authTokenSecret: process.env.AUTH_TOKEN_SECRET,
 
   // --- IPFS ------------------------------------------------------------------

@@ -148,6 +148,29 @@ export const verifyMilestones = (id) => request(`/oracle/verify/${id}`, { method
 export const simulateFault = (id, fault) =>
   request(`/oracle/simulate/${id}`, { method: "POST", body: { fault } });
 
+// --- Counterparty directory ------------------------------------------------
+//
+// So creating an escrow does not mean pasting 42 hex characters twice. A
+// handle is self-chosen and proves nothing about who owns the wallet, so every
+// response carries the address and the UI keeps it visible — see
+// backend/oracle-gateway/directoryService.js.
+
+/** Matches for a partial handle or company name. Needs at least 2 characters. */
+export const lookupDirectory = (q, { signal } = {}) =>
+  request(`/directory/lookup?q=${encodeURIComponent(q)}`, { signal });
+
+/** Exact resolution of a handle typed as @name. */
+export const resolveHandle = (handle, { signal } = {}) =>
+  request(`/directory/resolve/${encodeURIComponent(String(handle).replace(/^@/, ""))}`, { signal });
+
+/** Claims or renames the handle pointing at this Smart Account. */
+export const claimHandle = ({ smartAccountAddress, handle, displayName }) =>
+  request("/directory/claim", { method: "POST", body: { smartAccountAddress, handle, displayName } });
+
+/** The handle this Smart Account already holds, or null. */
+export const directoryForAddress = (address, { signal } = {}) =>
+  request(`/directory/address/${encodeURIComponent(address)}`, { signal });
+
 // --- e-BL on IPFS ----------------------------------------------------------
 //
 // The pinning credential is a secret and stays on the gateway, so the browser

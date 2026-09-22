@@ -5,6 +5,7 @@ import { getHealth } from "../lib/api.js";
 import { onChainConfigured } from "../lib/sternContract.js";
 import { CHAIN_LABEL } from "../lib/explorer.js";
 import ThemeToggle from "./ThemeToggle.jsx";
+import HandleCard from "./HandleCard.jsx";
 import sternLogo from "../assets/stern-logo.png";
 
 const NAV = [
@@ -186,6 +187,11 @@ export default function Sidebar({
             </p>
           ) : null}
         </div>
+
+        {/* How this wallet gets into the counterparty book, next to the address
+            it stands for. Renders nothing without a gateway — the directory
+            lives there. */}
+        <HandleCard address={user?.smartAccountAddress} />
 
         {/* Identity, not a chooser. One session is one wallet; which party you
             are is a fact about each escrow (see lib/roles.js), so there is

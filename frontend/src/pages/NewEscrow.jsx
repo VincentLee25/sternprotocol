@@ -6,6 +6,7 @@ import { CURRENCY_CAPTION, CURRENCY_LABEL } from "../lib/currency.js";
 import { eblCheckRows, eblFieldRows, formatBytes, pinEbl, shortCid } from "../lib/ebl.js";
 import { eblDocumentUrl } from "../lib/sternApi.js";
 import { shortAddress } from "../lib/actors.js";
+import CounterpartyLookup, { PickedFrom } from "../components/CounterpartyLookup.jsx";
 import { hashShipmentDocument } from "../lib/shipmentHash.js";
 import { createEscrow } from "../lib/mockRegistry.js";
 import { createEscrowOnChain, onChainConfigured } from "../lib/sternContract.js";
@@ -32,6 +33,10 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
   // bill of lading that does not name this container, say. Structural failures
   // are not acknowledgeable; see `blocked` below.
   const [acknowledged, setAcknowledged] = useState(false);
+  // Which directory entry filled each address field, if any. Kept so the form
+  // can show where the address came from — the handle is a convenience, the
+  // address is what binds.
+  const [pickedFrom, setPickedFrom] = useState({ exporter: null, arbiter: null });
 
   const { errors, valid } = useMemo(
     () => validateEscrowForm(form, document_?.cid),
@@ -66,6 +71,16 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
   function update(event) {
     const { name, value } = event.target;
     setForm((current) => ({ ...current, [name]: value }));
+    // Typed over by hand: the handle no longer describes what is in the field.
+    if (name === "exporter" || name === "arbiter") {
+      setPickedFrom((current) => (current[name] ? { ...current, [name]: null } : current));
+    }
+  }
+
+  function pickCounterparty(field, address, entry) {
+    setForm((current) => ({ ...current, [field]: address }));
+    setTouched((current) => ({ ...current, [field]: true }));
+    setPickedFrom((current) => ({ ...current, [field]: entry }));
   }
 
   function markTouched(event) {
@@ -197,6 +212,10 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
                 error={showError("exporter")}
                 hint="Receives IDRT-demo once all three milestones are verified. Demo exporter: 0xfAF7af811FC2D0D2a915D9e2d1ce44463Cb96381"
               >
+                <CounterpartyLookup
+                  label="exporter"
+                  onPick={(address, entry) => pickCounterparty("exporter", address, entry)}
+                />
                 <input
                   id="exporter"
                   name="exporter"
@@ -208,6 +227,10 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
                   autoComplete="off"
                   className={`${inputClass(Boolean(showError("exporter")))} font-mono text-xs`}
                 />
+                <PickedFrom
+                  entry={pickedFrom.exporter}
+                  onClear={() => setPickedFrom((current) => ({ ...current, exporter: null }))}
+                />
               </Field>
               <Field
                 label="Arbiter wallet"
@@ -216,6 +239,10 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
                 error={showError("arbiter")}
                 hint="Resolves disputes — independent of importer and exporter. Demo arbiter: 0x0997657e121213909bE3E9d7701df0753Fb102ed"
               >
+                <CounterpartyLookup
+                  label="arbiter"
+                  onPick={(address, entry) => pickCounterparty("arbiter", address, entry)}
+                />
                 <input
                   id="arbiter"
                   name="arbiter"
@@ -226,6 +253,10 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
                   spellCheck="false"
                   autoComplete="off"
                   className={`${inputClass(Boolean(showError("arbiter")))} font-mono text-xs`}
+                />
+                <PickedFrom
+                  entry={pickedFrom.arbiter}
+                  onClear={() => setPickedFrom((current) => ({ ...current, arbiter: null }))}
                 />
               </Field>
             </div>
