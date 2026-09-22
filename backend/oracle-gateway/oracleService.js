@@ -86,7 +86,7 @@ async function escrowDocument(contractId) {
  * passed — a bill of lading for somebody else's shipment must not get to
  * decide what this shipment's vessel and ports are.
  */
-function documentContext(ebl, escrow) {
+function documentContext(ebl, escrow, customs = null) {
   const trusted = ebl?.valid === true ? ebl.fields || {} : {};
   return {
     containerRef: escrow.containerRef || (trusted.containerNumbers || [])[0] || null,
@@ -97,8 +97,71 @@ function documentContext(ebl, escrow) {
     portOfDischarge: trusted.portOfDischarge || null,
     billOfLadingNumber: trusted.billOfLadingNumber || null,
     grossWeightKg: trusted.grossWeightKg ?? null,
-    verifiedGrossMassKg: trusted.verifiedGrossMassKg ?? null
+    verifiedGrossMassKg: trusted.verifiedGrossMassKg ?? null,
+    // The quantity the escrow was created against, when it was created with a
+    // manifest. Null for every escrow written before manifests existed, and
+    // the screen says "not stated" rather than inventing one.
+    quantity: trusted.quantity || null,
+    invoice: trusted.invoice || null,
+    packing: trusted.packing || null,
+    // The customs documents, for the CEISA feed to read the real PEB and PIB
+    // out of. Passed whole rather than flattened, because the feed has to know
+    // whether they verified before it quotes anything off them.
+    customs
   };
+}
+
+/**
+ * The customs check for milestone 3.
+ *
+ * PEB, PIB and proof that import duty was paid are issued at two borders at two
+ * different times, so they cannot be part of the document the escrow was
+ * created against — `documentCid` is written once in _createEscrow and has no
+ * setter. They are attached to the escrow afterwards and recorded by
+ * manifestService; this reads that record and verifies it the same way the e-BL
+ * is verified.
+ *
+ * `attached: false` is a first-class answer, not a failure. Every escrow
+ * created before this existed has no customs documents, and refusing their
+ * third milestone retroactively would be a false refusal about a shipment that
+ * cleared perfectly well.
+ */
+async function checkCustoms(contractId, { containerRef } = {}) {
+  let record = null;
+  try {
+    record = require("./manifestService").customsFor(contractId);
+  } catch {
+    // No store, or an unreadable one. Same answer as nothing attached.
+    record = null;
+  }
+
+  if (!record) {
+    return {
+      attached: false,
+      available: true,
+      valid: null,
+      cid: null,
+      reason: "No customs documents are attached to this escrow.",
+      missing: ["exportDeclaration", "importDeclaration", "dutyPayment"]
+    };
+  }
+
+  try {
+    const { verifyCustomsManifestCached } = require("./ipfsService");
+    const verdict = await verifyCustomsManifestCached(record.cid, { containerRef: containerRef || null });
+    return { attached: true, ...verdict };
+  } catch (error) {
+    // A check that could not run says nothing about the clearance, so it is
+    // reported as unavailable — never as passing, and never as failing.
+    return {
+      attached: true,
+      available: false,
+      valid: false,
+      cid: record.cid,
+      reason: `The customs documents could not be checked: ${error.message}`,
+      notes: [error.message]
+    };
+  }
 }
 
 /**
@@ -231,16 +294,24 @@ async function getMockStatus(contractId, options = {}) {
     return result;
   };
 
-  // The e-BL is read first, not alongside the others, because the others are
-  // built from what it found. It is also the one source here that leaves the
-  // process — real IPFS retrieval when a pinning service is configured, the
-  // old prefix mock otherwise.
-  const ipfs = await checkEbl(contractId, {
-    fault,
-    overrideCid: flat.eblCid,
-    overrides: (rawOverrides.ipfs && typeof rawOverrides.ipfs === "object") ? rawOverrides.ipfs : {}
-  });
-  const document = documentContext(ipfs, await escrowDocument(contractId));
+  // The two document checks are read before the four feeds, because the feeds
+  // are built from what they found. They are also the only sources here that
+  // leave the process — real IPFS retrieval when a pinning service is
+  // configured, the old prefix mock otherwise.
+  //
+  // In parallel with each other: nothing in the customs documents depends on
+  // the e-BL's verdict, and running them one after the other would put a second
+  // gateway race on the critical path of every evidence read and every verify.
+  const escrow = await escrowDocument(contractId);
+  const [ipfs, customs] = await Promise.all([
+    checkEbl(contractId, {
+      fault,
+      overrideCid: flat.eblCid,
+      overrides: (rawOverrides.ipfs && typeof rawOverrides.ipfs === "object") ? rawOverrides.ipfs : {}
+    }),
+    checkCustoms(contractId, { containerRef: escrow.containerRef })
+  ]);
+  const document = documentContext(ipfs, escrow, customs);
 
   const sources = {
     vgm: getVgmData(
@@ -282,7 +353,14 @@ async function getMockStatus(contractId, options = {}) {
     // deployment running in it should behave exactly as it did before any of
     // this existed.
     eblCheckable: sources.ipfs.mode === "mock" || sources.ipfs.available !== false,
-    inspectionPassed: sources.inspection.inspection_status === "passed"
+    inspectionPassed: sources.inspection.inspection_status === "passed",
+    // The customs documents, on the same two-flag pattern as the e-BL and for
+    // the same reason. `customsDocsValid` is null when nothing is attached —
+    // not false — because "no PEB was uploaded" is not a finding about a
+    // clearance, and `customsDocsCheckable` is what stops it blocking.
+    customsDocsValid: customs.attached ? customs.valid === true : null,
+    customsDocsCheckable: customs.attached === true && customs.available !== false,
+    customsDocsAttached: customs.attached === true
   };
   // Each reading now states the shipment it is about, taken from the bill of
   // lading, so a discrepancy reads as a fact about this trade rather than a
@@ -358,10 +436,48 @@ async function getMockStatus(contractId, options = {}) {
         sources.ipfs.containerRefExpected && `expected container ${sources.ipfs.containerRefExpected}`
       ]),
       basis: sources.ipfs.mode === "ipfs" ? "retrieved from IPFS" : "placeholder check"
-    })
+    }),
+    // Only when documents were actually attached. A row for documents nobody
+    // uploaded would be a permanent failing line on every escrow created before
+    // this existed, and it would land in `discrepancies` — which is the list
+    // the gateway refuses to submit on. "Not attached" is reported as its own
+    // state in `customs` below instead.
+    ...(customs.attached
+      ? [
+          evidenceItem({
+            oracle: "customs",
+            source: "customs_documents",
+            field: "customs_documents_verified",
+            expected: true,
+            actual: verification.customsDocsValid === true
+              ? true
+              : (customs.failedChecks?.length ? customs.failedChecks.join(", ") : false),
+            passed: verification.customsDocsValid === true,
+            sourceData: customs,
+            fault,
+            subject: subjectLine([
+              customs.fields?.pebNumber && `PEB ${customs.fields.pebNumber}`,
+              customs.fields?.pibNumber && `PIB ${customs.fields.pibNumber}`,
+              customs.fields?.ntpn && `NTPN ${customs.fields.ntpn}`
+            ]),
+            basis: "retrieved from IPFS"
+          })
+        ]
+      : [])
   ];
   const discrepancies = evidence.filter((item) => !item.passed);
-  const allVerified = Object.values(verification).every(Boolean);
+  // Named explicitly rather than `Object.values(verification).every(Boolean)`.
+  // That form treated every key as a gate, so the moment a key was added whose
+  // false or null means "not applicable" — customs documents that were never
+  // attached, a check that could not run — every escrow in the system would
+  // have reported as unverified. The gates are these five and nothing else.
+  const allVerified = [
+    verification.vgmMatch,
+    verification.inspectionPassed,
+    verification.aisDeparted,
+    verification.ceisaApproved,
+    verification.eblCidValid
+  ].every(Boolean);
   return {
     contractId: String(contractId),
     simulation: {
@@ -372,10 +488,17 @@ async function getMockStatus(contractId, options = {}) {
       reset: fault === "none"
     },
     sources, verification, evidence, discrepancies, allVerified,
+    // The customs documents as their own block, because milestone 3 is a claim
+    // about legality at two borders and "not attached" is the state most
+    // escrows are in. The screen needs to say which of the three is missing,
+    // which a boolean in `verification` cannot.
+    customs,
     oracleAction: allVerified ? "submit_milestone" : "do_not_submit",
     note: allVerified
       ? "All configured automated checks passed."
       : "Source discrepancy detected. The gateway will not submit this failed automated result on-chain."
   };
 }
-module.exports = { getMockStatus, normalizeFault, setSimulation, clearSimulation, getSimulation, checkEbl };
+module.exports = {
+  getMockStatus, normalizeFault, setSimulation, clearSimulation, getSimulation, checkEbl, checkCustoms
+};

@@ -298,8 +298,52 @@ export function verificationChecks(evidence) {
     // Was "Document CID valid", back when the check was that a string started
     // with "bafybeistern". It now retrieves the document from IPFS and reads
     // it, so the label says what it means.
-    { key: "eblCidValid", label: "e-BL verified", passed: v.eblCidValid, source: "IPFS" }
-  ].filter((c) => c.passed !== undefined);
+    { key: "eblCidValid", label: "e-BL verified", passed: v.eblCidValid, source: "IPFS" },
+    // Only once documents have been attached. `customsDocsValid` is null until
+    // then — not false — because nobody having uploaded a PEB is not a finding
+    // about a clearance, and a permanently red chip on every escrow created
+    // before this existed would say the opposite.
+    {
+      key: "customsDocsValid",
+      label: "Customs documents verified",
+      passed: v.customsDocsValid,
+      source: "Bea Cukai"
+    }
+  ].filter((c) => c.passed !== undefined && c.passed !== null);
+}
+
+/**
+ * The customs documents for milestone 3, in the form the panel needs.
+ *
+ * `attached: false` is the normal state and is returned rather than null, so
+ * the panel can say what claiming Cleared is supposed to carry instead of
+ * showing nothing.
+ */
+export function customsSummary(evidence) {
+  const customs = evidence?.customs;
+  if (!customs) return null;
+
+  if (!customs.attached) {
+    return {
+      attached: false,
+      reason: customs.reason || "No customs documents are attached to this escrow.",
+      missing: customs.missing || []
+    };
+  }
+
+  return {
+    attached: true,
+    cid: customs.cid || null,
+    valid: customs.valid === true,
+    available: customs.available !== false,
+    reason: customs.reason || "",
+    failedChecks: customs.failedChecks || [],
+    checks: customs.checks || {},
+    fields: customs.fields || null,
+    documents: customs.documents || {},
+    containerRef: customs.containerRef || null,
+    createdAt: customs.createdAt || null
+  };
 }
 
 /**

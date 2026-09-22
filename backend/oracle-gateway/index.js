@@ -26,19 +26,23 @@ const {
   pinDocument,
   fetchByCid,
   verifyDocumentCached,
+  verifyCustomsManifestCached,
   ipfsStatus,
   MAX_DOCUMENT_BYTES
 } = require("./ipfsService");
+const manifests = require("./manifestService");
 
 const app = express();
 app.use(cors({
   origin: config.corsOrigins.includes("*") ? true : config.corsOrigins
 }));
-// 12mb, not 1mb: POST /ipfs/pin carries the e-BL PDF as base64, and base64
-// costs a third on top of the 8mb document ceiling ipfsService enforces.
-// Every other route is small, and the ceiling is checked there rather than
-// relying on this limit to do it.
-app.use(express.json({ limit: "12mb" }));
+// 20mb, not 1mb: POST /ipfs/manifest carries the bill of lading, the commercial
+// invoice and the packing list in one body as base64, and base64 costs a third
+// on top of the bytes. The real ceilings are enforced where the documents are
+// read — 8mb per document in ipfsService, 12mb per manifest in manifestService
+// — rather than by leaning on this limit, because a body-parser rejection says
+// "request entity too large" and names neither the document nor the limit.
+app.use(express.json({ limit: "20mb" }));
 
 let identities = null;
 function identityService() {
@@ -261,6 +265,97 @@ app.post("/ipfs/pin", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// Pins the creation documents — bill of lading, commercial invoice, packing
+// list — and the manifest that states the quantity and names them. The
+// manifest's CID is what goes on chain as `documentCid`.
+//
+// The manifest is written HERE, from what this gateway pinned, and never taken
+// from the request body. A client that could post its own manifest could
+// declare 20 tonnes while attaching a packing list for 2, and the pin would
+// record that faithfully. See manifestService.js.
+app.post("/ipfs/manifest", async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    res.json({
+      ok: true,
+      ...(await manifests.pinEscrowManifest({
+        containerRef: body.containerRef,
+        commodity: body.commodity,
+        quantity: body.quantity,
+        documents: body.documents
+      }))
+    });
+  } catch (error) { next(error); }
+});
+
+// The units a quantity may be given in, and which documents a manifest takes.
+// Served so the form does not hardcode a list that then drifts from the one the
+// gateway accepts.
+app.get("/ipfs/manifest/schema", (_req, res) => {
+  res.json({
+    units: Object.entries(manifests.UNITS).map(([value, unit]) => ({
+      value,
+      label: unit.label,
+      convertsToKg: unit.kgPerUnit != null
+    })),
+    escrowDocuments: manifests.ESCROW_SLOTS,
+    customsDocuments: manifests.CUSTOMS_SLOTS
+  });
+});
+
+// --- customs documents for milestone 3 ---------------------------------------
+//
+// PEB is issued at export and PIB at import, so neither exists when the escrow
+// is created and neither can go in `documentCid`, which is written once. They
+// belong to the milestone that claims them: the manifest CID recorded here
+// becomes milestone 3's `proofCid` when Cleared is verified.
+
+app.post("/customs/:escrowId", async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const record = await manifests.pinCustomsManifest(req.params.escrowId, {
+      containerRef: body.containerRef,
+      documents: body.documents
+    });
+
+    // Read it straight back, so the screen can show what was actually read off
+    // the PEB and PIB before anyone claims the milestone on it.
+    let verification = null;
+    try {
+      verification = await verifyCustomsManifestCached(record.cid, { containerRef: body.containerRef || null });
+    } catch (error) {
+      verification = { available: false, valid: false, reason: error.message };
+    }
+
+    res.json({ ok: true, ...record, verification });
+  } catch (error) { next(error); }
+});
+
+app.get("/customs/:escrowId", async (req, res, next) => {
+  try {
+    const record = manifests.customsFor(req.params.escrowId);
+    if (!record) {
+      return res.json({
+        attached: false,
+        escrowId: String(req.params.escrowId),
+        required: manifests.CUSTOMS_SLOTS,
+        note: "No customs documents have been attached to this escrow. Milestone 3 claims clearance at both borders; PEB, PIB and proof that import duty was paid are what evidence it."
+      });
+    }
+
+    let verification = null;
+    try {
+      verification = await verifyCustomsManifestCached(record.cid, {
+        containerRef: req.query.containerRef || record.manifest?.containerRef || null
+      });
+    } catch (error) {
+      verification = { available: false, valid: false, reason: error.message };
+    }
+
+    res.json({ attached: true, ...record, verification, history: manifests.customsHistory(req.params.escrowId).slice(1) });
+  } catch (error) { next(error); }
+});
+
 // The verdict on a CID: does it resolve, do the bytes hash back to it, and is
 // it a bill of lading for this container.
 app.get("/ipfs/verify/:cid", async (req, res, next) => {
@@ -278,8 +373,14 @@ app.get("/ipfs/document/:cid", async (req, res, next) => {
   try {
     const { bytes } = await fetchByCid(req.params.cid);
     const isPdf = bytes.subarray(0, 5).toString("latin1") === "%PDF-";
-    res.setHeader("content-type", isPdf ? "application/pdf" : "application/octet-stream");
-    res.setHeader("content-disposition", `inline; filename="${req.params.cid}${isPdf ? ".pdf" : ""}"`);
+    // A manifest is JSON, and serving it as octet-stream makes the browser
+    // download an extensionless file instead of showing the document that
+    // states the quantity.
+    const isJson = !isPdf && bytes.subarray(0, 64).toString("utf8").trimStart().startsWith("{");
+    const type = isPdf ? "application/pdf" : isJson ? "application/json; charset=utf-8" : "application/octet-stream";
+    const extension = isPdf ? ".pdf" : isJson ? ".json" : "";
+    res.setHeader("content-type", type);
+    res.setHeader("content-disposition", `inline; filename="${req.params.cid}${extension}"`);
     // Immutable by construction: the bytes at a CID cannot change.
     res.setHeader("cache-control", "public, max-age=31536000, immutable");
     res.send(bytes);

@@ -3,7 +3,17 @@ import { AlertTriangle, ArrowLeft, Check, ExternalLink, FileCheck2, Loader2, Loc
 import Field, { inputClass } from "../components/Field.jsx";
 import { Button, Card, CardTitle, Notice, Tag } from "../components/ui.jsx";
 import { CURRENCY_CAPTION, CURRENCY_LABEL } from "../lib/currency.js";
-import { eblCheckRows, eblFieldRows, formatBytes, pinEbl, shortCid } from "../lib/ebl.js";
+import {
+  DOCUMENT_SLOTS,
+  QUANTITY_UNITS,
+  eblCheckRows,
+  eblFieldRows,
+  formatBytes,
+  goodsFieldRows,
+  manifestRows,
+  pinDocumentSet,
+  shortCid
+} from "../lib/ebl.js";
 import { eblDocumentUrl } from "../lib/sternApi.js";
 import { shortAddress } from "../lib/actors.js";
 import CounterpartyLookup, { PickedFrom } from "../components/CounterpartyLookup.jsx";
@@ -17,16 +27,31 @@ const INITIAL_FORM = {
   arbiter: "",
   value: "",
   commodity: "",
+  // How much of it. The form used to ask only what the commodity was, so an
+  // escrow settled 45,000,000 IDRT against "Arabica Gayo Grade 1" and no
+  // stated amount — which is not a term anyone could enforce.
+  quantity: "",
+  quantityUnit: "kg",
   containerRef: "",
   deadline: ""
 };
+
+// Changing any of these makes an already-pinned manifest describe a different
+// trade than the form does, so the manifest is dropped and has to be pinned
+// again. Silently keeping it would put a CID on chain that states a quantity
+// nobody on this screen agreed to.
+const MANIFEST_INPUTS = ["commodity", "containerRef", "quantity", "quantityUnit"];
 
 export default function NewEscrow({ balance, onCreated, onBack, smartAccountClient, importerAddress }) {
   const [form, setForm] = useState(INITIAL_FORM);
   const [touched, setTouched] = useState({});
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [document_, setDocument] = useState(null);
-  const [hashing, setHashing] = useState(false);
+  // The files chosen but not yet pinned. Separate from `document_`, which is
+  // what came back from the gateway: pinning is an upload that spends quota, so
+  // it happens once, on a press, rather than on every file picker change.
+  const [files, setFiles] = useState({});
+  const [pinning, setPinning] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   // Set by the operator when the document verified but not cleanly — a valid
@@ -75,6 +100,16 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
     if (name === "exporter" || name === "arbiter") {
       setPickedFrom((current) => (current[name] ? { ...current, [name]: null } : current));
     }
+    // The manifest records the quantity, the commodity and the container, so
+    // editing any of them makes the pinned one stale.
+    if (MANIFEST_INPUTS.includes(name)) {
+      setDocument((current) => {
+        if (!current) return current;
+        setSubmitError("");
+        setAcknowledged(false);
+        return null;
+      });
+    }
   }
 
   function pickCounterparty(field, address, entry) {
@@ -87,10 +122,24 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
     setTouched((current) => ({ ...current, [event.target.name]: true }));
   }
 
-  async function onFileChange(event) {
+  /** Choosing a file. Nothing leaves the browser until Pin is pressed. */
+  function onFileChange(slotKey, event) {
     const file = event.target.files?.[0];
-    if (!file) return;
-    setHashing(true);
+    setFiles((current) => {
+      const next = { ...current };
+      if (file) next[slotKey] = file;
+      else delete next[slotKey];
+      return next;
+    });
+    setDocument(null);
+    setAcknowledged(false);
+    setSubmitError("");
+  }
+
+  async function onPin() {
+    const chosen = Object.keys(files).length;
+    if (!chosen) return;
+    setPinning(true);
     setSubmitError("");
     setDocument(null);
     setAcknowledged(false);
@@ -100,10 +149,19 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
           "Fill in Container reference and Commodity first — the container is what the e-BL is checked against."
         );
       }
+      if (!form.quantity.trim()) {
+        throw new Error(
+          "Fill in the quantity first — it goes into the manifest, and the manifest's address is what the contract stores."
+        );
+      }
 
-      // The real path: pin the document, and let the gateway read it back by
-      // CID and tell us what it found.
-      const pinned = await pinEbl(file, { containerRef: form.containerRef.trim().toUpperCase() });
+      // The real path: pin the set, and let the gateway read it back by CID and
+      // tell us what it found.
+      const pinned = await pinDocumentSet(files, {
+        containerRef: form.containerRef.trim().toUpperCase(),
+        commodity: form.commodity.trim(),
+        quantity: { value: form.quantity, unit: form.quantityUnit }
+      });
       setDocument({ mode: "ipfs", ...pinned });
     } catch (error) {
       // A deployment with no pinning service is a supported state, not a
@@ -112,6 +170,10 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
       // not an address anything resolves at.
       if (error.code === "IPFS_NOT_CONFIGURED" || error.code === "API_NOT_CONFIGURED") {
         try {
+          // The bill of lading only. The fallback is a local hash of one file,
+          // and there is no honest way to make one address stand for three
+          // documents without a manifest — which needs the gateway to pin.
+          const file = files.billOfLading;
           const local = await hashShipmentDocument(form.containerRef, form.commodity, file);
           setDocument({
             mode: "local",
@@ -124,10 +186,10 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
           setSubmitError(`Could not hash the document: ${fallbackError.message}`);
         }
       } else {
-        setSubmitError(`Could not pin the e-BL: ${error.message}`);
+        setSubmitError(`Could not pin the documents: ${error.message}`);
       }
     } finally {
-      setHashing(false);
+      setPinning(false);
     }
   }
 
@@ -160,11 +222,16 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
         importer: importerAddress,
         exporter: form.exporter,
         arbiter: form.arbiter,
-        // The IPFS address of the pinned e-BL. Whoever reads this escrow can
-        // fetch the document from that address and check it themselves —
-        // which is the only reason a contract should carry one.
+        // The IPFS address of the pinned manifest: the quantity, plus the CIDs
+        // of the bill of lading, the invoice and the packing list. Whoever
+        // reads this escrow can fetch all of it from that address and check it
+        // themselves — which is the only reason a contract should carry one.
         documentCid: document_.cid,
         value: Number(form.value).toFixed(2),
+        // The quantity is written into the manifest rather than on chain: the
+        // contract has no field for it, and a figure the contract cannot hold
+        // is better anchored in the document the contract addresses than
+        // smuggled into a string it can.
         commodity: form.commodity.trim(),
         containerRef: form.containerRef.trim().toUpperCase(),
         globalDeadline: new Date(form.deadline).toISOString()
@@ -327,53 +394,91 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
                   className={`${inputClass(Boolean(showError("containerRef")))} uppercase`}
                 />
               </Field>
+              {/* How much of it. Without this the escrow settled a contract
+                  value against a commodity name and no amount. */}
+              <Field
+                label="Quantity"
+                htmlFor="quantity"
+                required
+                error={showError("quantity")}
+                hint="Checked against the invoice and packing list once they are pinned."
+              >
+                <div className="flex gap-2">
+                  <input
+                    id="quantity"
+                    name="quantity"
+                    inputMode="decimal"
+                    value={form.quantity}
+                    onChange={update}
+                    onBlur={markTouched}
+                    placeholder="320"
+                    className={`${inputClass(Boolean(showError("quantity")))} tabular-nums`}
+                  />
+                  <label className="shrink-0">
+                    <span className="sr-only">Unit</span>
+                    <select
+                      name="quantityUnit"
+                      value={form.quantityUnit}
+                      onChange={update}
+                      className={`${inputClass(false)} w-[104px] cursor-pointer`}
+                    >
+                      {QUANTITY_UNITS.map((unit) => (
+                        <option key={unit.value} value={unit.value}>
+                          {unit.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </Field>
             </div>
           </Card>
 
           <Card>
             <CardTitle
-              hint={`Pinned to IPFS, then read back from its own address and checked: that the bytes hash to the address, and that the document is a bill of lading for container ${containerLabel || "…"}. The contract stores that address.`}
+              hint={`Pinned to IPFS, then read back from their own addresses and checked: that the bytes hash to each address, that the bill of lading is one and names container ${containerLabel || "…"}, and that the quantity above agrees with the invoice and packing list. What the contract stores is the address of a manifest naming all three.`}
             >
-              Electronic bill of lading
+              Shipment documents
             </CardTitle>
-            <label
-              className={`flex cursor-pointer items-center gap-3 rounded-panel border border-dashed px-3.5 py-3.5 transition-colors duration-150 ${
-                showError("document") ? "border-state-disputed/60" : "border-sky hover:border-teal/50"
-              }`}
-            >
-              <input
-                type="file"
-                accept="application/pdf,.pdf"
-                onChange={onFileChange}
-                className="sr-only"
-              />
-              {hashing ? (
-                <Loader2 size={17} className="shrink-0 animate-spin text-teal" aria-hidden="true" />
-              ) : blocked ? (
-                <AlertTriangle size={17} className="shrink-0 text-state-disputed" aria-hidden="true" />
-              ) : document_ ? (
-                <FileCheck2 size={17} className="shrink-0 text-state-attested" aria-hidden="true" />
-              ) : (
-                <Paperclip size={17} className="shrink-0 text-ink-dim" aria-hidden="true" />
-              )}
-              <span className="min-w-0">
-                {hashing ? (
-                  <span className="text-[13px] text-teal">Pinning to IPFS and reading it back…</span>
-                ) : document_ ? (
-                  <>
-                    <span className="block truncate text-[13px] font-medium text-navy">
-                      {document_.fileName}{" "}
-                      <span className="font-normal text-ink-dim">({formatBytes(document_.size)})</span>
-                    </span>
-                    <span className="block truncate font-mono text-2xs text-teal">
-                      {document_.mode === "ipfs" ? document_.cid : `${document_.cid.slice(0, 24)}…`}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-[13px] text-ink-dim">Choose the e-BL — PDF</span>
-                )}
-              </span>
-            </label>
+
+            <div className="space-y-2">
+              {DOCUMENT_SLOTS.map((slot) => (
+                <FilePicker
+                  key={slot.key}
+                  slot={slot}
+                  file={files[slot.key]}
+                  invalid={slot.required && Boolean(showError("document")) && !files[slot.key]}
+                  onChange={(event) => onFileChange(slot.key, event)}
+                />
+              ))}
+            </div>
+
+            {/* An explicit press, not an upload on every file change. Pinning
+                spends the gateway's quota and writes the manifest from the
+                quantity above, so it happens once, after the form agrees with
+                itself. */}
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <Button
+                tone={document_ ? "secondary" : "primary"}
+                size="sm"
+                icon={document_ ? FileCheck2 : Paperclip}
+                busy={pinning}
+                disabled={pinning || !files.billOfLading}
+                onClick={onPin}
+              >
+                {pinning
+                  ? "Pinning and reading back…"
+                  : document_
+                    ? "Pin again"
+                    : `Pin ${Object.keys(files).length || ""} document${Object.keys(files).length === 1 ? "" : "s"} to IPFS`}
+              </Button>
+              {!files.billOfLading ? (
+                <span className="text-2xs text-ink-faint">Choose the bill of lading first.</span>
+              ) : !document_ && !pinning ? (
+                <span className="text-2xs text-ink-faint">Nothing has left this browser yet.</span>
+              ) : null}
+            </div>
+
             {showError("document") ? (
               <p role="alert" className="mt-2 text-[12.5px] text-state-disputed">
                 {errors.document}
@@ -421,13 +526,21 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
             <Row label="Timelock" value="24h after final milestone" />
             <Row label="Dispute path" value="Arbiter decides, 2% buyer bond" />
             <Row
-              label="e-BL"
+              label="Quantity"
+              value={
+                form.quantity.trim()
+                  ? `${Number(form.quantity).toLocaleString("id-ID")} ${form.quantityUnit}`
+                  : "not stated"
+              }
+            />
+            <Row
+              label="Documents"
               value={
                 document_
                   ? document_.mode === "ipfs"
-                    ? `IPFS · ${shortCid(document_.cid)}`
+                    ? `${Object.keys(document_.documents || {}).length} pinned · ${shortCid(document_.cid)}`
                     : "Local hash, not pinned"
-                  : "Not attached"
+                  : `${Object.keys(files).length || "None"} chosen, not pinned`
               }
             />
           </div>
@@ -444,7 +557,7 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
             size="lg"
             full
             busy={submitting}
-            disabled={submitting || hashing || blocked || (needsAcknowledgement && !acknowledged)}
+            disabled={submitting || pinning || blocked || (needsAcknowledgement && !acknowledged)}
             icon={Lock}
             className="mt-5"
           >
@@ -462,6 +575,47 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
         </Card>
       </form>
     </div>
+  );
+}
+
+/**
+ * One document slot. Chosen here, uploaded later — see onPin.
+ *
+ * The optional ones are not hidden behind a disclosure: the whole point of this
+ * change is that the invoice and the packing list are what state the quantity,
+ * and a form that tucks them away teaches the opposite.
+ */
+function FilePicker({ slot, file, invalid, onChange }) {
+  return (
+    <label
+      className={`flex cursor-pointer items-start gap-3 rounded-panel border border-dashed px-3.5 py-3 transition-colors duration-150 ${
+        invalid ? "border-state-disputed/60" : file ? "border-teal/50 bg-surface-soft" : "border-sky hover:border-teal/50"
+      }`}
+    >
+      <input type="file" accept="application/pdf,.pdf" onChange={onChange} className="sr-only" />
+      {file ? (
+        <FileCheck2 size={16} className="mt-0.5 shrink-0 text-teal" aria-hidden="true" />
+      ) : (
+        <Paperclip size={16} className="mt-0.5 shrink-0 text-ink-dim" aria-hidden="true" />
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-baseline gap-x-2 text-[13px] font-medium text-navy">
+          {slot.label}
+          {slot.required ? (
+            <span className="text-state-disputed" aria-label="required">*</span>
+          ) : (
+            <span className="text-2xs font-normal text-ink-faint">optional</span>
+          )}
+        </span>
+        {file ? (
+          <span className="mt-0.5 block truncate text-2xs text-teal">
+            {file.name} <span className="text-ink-faint">({formatBytes(file.size)})</span>
+          </span>
+        ) : (
+          <span className="mt-0.5 block font-serif text-2xs leading-relaxed text-ink-dim">{slot.hint}</span>
+        )}
+      </span>
+    </label>
   );
 }
 
@@ -485,13 +639,17 @@ function Row({ label, value }) {
 function EblReport({ document_, verification, blocked, needsAcknowledgement, acknowledged, onAcknowledge }) {
   const checks = eblCheckRows(verification);
   const fields = eblFieldRows(verification);
+  const goods = goodsFieldRows(verification);
+  const contents = manifestRows(verification);
   const documentUrl = eblDocumentUrl(document_.cid);
 
   return (
     <div className="mt-3 space-y-3">
       <div className="rounded-panel border border-sky bg-surface-soft px-3.5 py-3">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <span className="text-[13px] text-ink-dim">IPFS address</span>
+          <span className="text-[13px] text-ink-dim">
+            {verification?.kind === "manifest" ? "Manifest address — this goes on chain" : "IPFS address"}
+          </span>
           <span className="text-2xs text-ink-faint">
             {document_.provider === "pinata" ? "Pinata" : "IPFS node"}
           </span>
@@ -523,7 +681,12 @@ function EblReport({ document_, verification, blocked, needsAcknowledgement, ack
         <ul className="flex flex-wrap gap-1.5">
           {checks.map((check) => (
             <li key={check.key}>
-              <Tag tone={check.passed ? "attested" : "disputed"} icon={check.passed ? Check : X}>
+              {/* An advisory check that failed is amber, not red: it is a
+                  disagreement worth seeing, not a refusal. */}
+              <Tag
+                tone={check.passed ? "attested" : check.advisory ? "pending" : "disputed"}
+                icon={check.passed ? Check : check.advisory ? AlertTriangle : X}
+              >
                 {check.label}
               </Tag>
             </li>
@@ -531,11 +694,70 @@ function EblReport({ document_, verification, blocked, needsAcknowledgement, ack
         </ul>
       ) : null}
 
+      {/* What the one address on chain actually commits to. Each document has
+          its own CID inside the manifest and can be opened on its own. */}
+      {contents.length ? (
+        <div className="rounded-panel border border-sky px-3.5 py-3">
+          <p className="mb-2 text-[13px] text-ink-dim">Behind that one address</p>
+          <ul className="divide-y divide-sky/70">
+            {contents.map((row) => (
+              <li key={row.key} className="flex items-baseline justify-between gap-3 py-1.5">
+                <span className="shrink-0 text-2xs text-ink-faint">{row.label}</span>
+                <span className="min-w-0 text-right">
+                  <span className="block truncate text-2xs text-navy">{row.value}</span>
+                  {row.cid ? (
+                    <span className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2">
+                      <a
+                        href={eblDocumentUrl(row.cid)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-mono text-2xs text-teal transition-colors duration-150 hover:text-navy"
+                      >
+                        {shortCid(row.cid)}
+                      </a>
+                      {row.digestMatches === false ? (
+                        <span className="text-2xs text-state-disputed">digest differs</span>
+                      ) : null}
+                      {row.resolves === false ? (
+                        <span className="text-2xs text-state-disputed">does not resolve</span>
+                      ) : null}
+                    </span>
+                  ) : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {verification?.manifest?.quantityCheck?.comparable ? (
+        <Notice
+          tone={verification.manifest.quantityCheck.agrees ? "info" : "pending"}
+          icon={verification.manifest.quantityCheck.agrees ? Check : AlertTriangle}
+        >
+          {verification.manifest.quantityCheck.reason}
+        </Notice>
+      ) : null}
+
       {fields.length ? (
         <div className="rounded-panel border border-sky px-3.5 py-3">
-          <p className="mb-2 text-[13px] text-ink-dim">Read from the document</p>
+          <p className="mb-2 text-[13px] text-ink-dim">Read from the bill of lading</p>
           <dl className="divide-y divide-sky/70">
             {fields.map((field) => (
+              <div key={field.key} className="flex items-baseline justify-between gap-3 py-1.5">
+                <dt className="shrink-0 text-2xs text-ink-faint">{field.label}</dt>
+                <dd className="min-w-0 text-right text-2xs text-navy">{field.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ) : null}
+
+      {goods.length ? (
+        <div className="rounded-panel border border-sky px-3.5 py-3">
+          <p className="mb-2 text-[13px] text-ink-dim">Read from the invoice and packing list</p>
+          <dl className="divide-y divide-sky/70">
+            {goods.map((field) => (
               <div key={field.key} className="flex items-baseline justify-between gap-3 py-1.5">
                 <dt className="shrink-0 text-2xs text-ink-faint">{field.label}</dt>
                 <dd className="min-w-0 text-right text-2xs text-navy">{field.value}</dd>

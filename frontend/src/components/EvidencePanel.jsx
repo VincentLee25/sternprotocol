@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Check, Clock, Loader2, PenLine, RefreshCcw, ShieldAlert, X } from "lucide-react";
+import { AlertTriangle, Check, Clock, FileCheck2, Loader2, Paperclip, PenLine, RefreshCcw, ShieldAlert, X } from "lucide-react";
 import { getEvidence, simulateFault, verifyMilestones, apiConfigured, eblDocumentUrl } from "../lib/sternApi.js";
-import { chainClock, disputeOpportunity, disputeRehearsal, eblSummary, faultOptions, activeFault, milestoneRows, sourceEvidence, verificationChecks, verifyResultRows } from "../lib/evidence.js";
-import { eblCheckRows, eblFieldRows, shortCid } from "../lib/ebl.js";
+import { chainClock, customsSummary, disputeOpportunity, disputeRehearsal, eblSummary, faultOptions, activeFault, milestoneRows, sourceEvidence, verificationChecks, verifyResultRows } from "../lib/evidence.js";
+import {
+  CUSTOMS_SLOTS,
+  customsCheckRows,
+  customsFieldRows,
+  eblCheckRows,
+  eblFieldRows,
+  formatBytes,
+  pinCustomsDocuments,
+  shortCid
+} from "../lib/ebl.js";
 import { previewDispute, raiseDisputeAsUser } from "../lib/disputeFlow.js";
 import TxLink, { AddressLink, BlockLink } from "./TxLink.jsx";
 
@@ -90,6 +99,7 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
   const faults = faultOptions(evidence);
   const currentFault = activeFault(evidence);
   const ebl = eblSummary(evidence);
+  const customs = customsSummary(evidence);
   // A fault switched on before anything is committed guarantees a refusal: the
   // gateway will not write a proof its own sources reject. That is correct, but
   // it looks like a failure, and the order is easy to get backwards — so say it
@@ -114,6 +124,30 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
 
   function onFaultChange(event) {
     return applyFault(event.target.value);
+  }
+
+  // Attaching the customs documents. They are pinned, then the evidence is
+  // re-read, because the CEISA feed reports from the PEB and PIB once they
+  // exist and milestone 3's proof CID becomes the manifest's address.
+  async function onAttachCustoms(files) {
+    setBusy("customs");
+    setError("");
+    try {
+      await pinCustomsDocuments(escrowId, files, {
+        containerRef: evidence?.sources?.ipfs?.containerRefExpected || null
+      });
+      await load();
+      onStateChanged?.();
+      return true;
+    } catch (err) {
+      setError(err.message);
+      // Returned rather than thrown, so the card can keep the picker open with
+      // the chosen files still in it — re-picking three PDFs because one upload
+      // failed is the kind of thing that loses a demo.
+      return false;
+    } finally {
+      setBusy("");
+    }
   }
 
   // Stages a contestable discrepancy in one press: it already knows which
@@ -454,6 +488,19 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
               can fetch it from the address on chain and get the same bytes. */}
           {ebl ? <EblCard ebl={ebl} /> : null}
 
+          {/* Customs, for milestone 3. Separate from the e-BL because it is a
+              different moment: a PEB is issued at export and a PIB at import,
+              so neither exists when the escrow is created and neither can live
+              at `documentCid`, which is written once. Their manifest's address
+              becomes milestone 3's proof CID instead. */}
+          {customs ? (
+            <CustomsCard
+              customs={customs}
+              busy={busy === "customs"}
+              onAttach={apiConfigured ? onAttachCustoms : null}
+            />
+          ) : null}
+
           {/* Named checks behind those verdicts. */}
           {checks.length ? (
             <div className="mt-4">
@@ -710,6 +757,237 @@ function EblCard({ ebl }) {
           {ebl.size ? `, ${ebl.size.toLocaleString("id-ID")} bytes` : ""}.
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * The customs documents behind milestone 3.
+ *
+ * Cleared claims the goods are legally through both borders, and until now the
+ * only thing standing behind that claim was a synthetic CEISA reading and a
+ * proof CID that resolved nowhere. These three documents are what actually
+ * evidence it: the PEB from the origin, the PIB at the destination, and the
+ * receipt showing the duty was paid rather than merely assessed.
+ *
+ * "Not attached" is the state most escrows are in and is shown as such, not as
+ * a failure — no escrow created before this existed has any of them, and
+ * calling that a failed clearance would be a lie about a shipment that cleared.
+ */
+function CustomsCard({ customs, busy, onAttach }) {
+  const [files, setFiles] = useState({});
+  const [open, setOpen] = useState(false);
+
+  function choose(key, event) {
+    const file = event.target.files?.[0];
+    setFiles((current) => {
+      const next = { ...current };
+      if (file) next[key] = file;
+      else delete next[key];
+      return next;
+    });
+  }
+
+  const picker = onAttach ? (
+    <div className="mt-3 border-t border-sky/60 pt-3">
+      {open ? (
+        <>
+          <div className="space-y-1.5">
+            {CUSTOMS_SLOTS.map((slot) => (
+              <label
+                key={slot.key}
+                className={`flex cursor-pointer items-start gap-2.5 rounded-panel border border-dashed px-3 py-2 transition-colors duration-150 ${
+                  files[slot.key] ? "border-teal/50 bg-surface-soft" : "border-sky hover:border-teal/50"
+                }`}
+              >
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  onChange={(event) => choose(slot.key, event)}
+                  className="sr-only"
+                />
+                {files[slot.key] ? (
+                  <FileCheck2 size={13} className="mt-0.5 shrink-0 text-teal" aria-hidden="true" />
+                ) : (
+                  <Paperclip size={13} className="mt-0.5 shrink-0 text-ink-dim" aria-hidden="true" />
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-baseline gap-x-2 text-2xs font-medium uppercase text-navy">
+                    {slot.label}
+                    <span className="font-normal normal-case text-ink-faint">{slot.title}</span>
+                    {slot.required ? <span className="text-state-disputed">*</span> : null}
+                  </span>
+                  <span className="mt-0.5 block font-serif text-2xs leading-relaxed text-ink-dim">
+                    {files[slot.key]
+                      ? `${files[slot.key].name} (${formatBytes(files[slot.key].size)})`
+                      : slot.hint}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={busy || !files.exportDeclaration}
+              onClick={async () => {
+                if (await onAttach(files)) {
+                  setOpen(false);
+                  setFiles({});
+                }
+              }}
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-teal/50 bg-teal/10 px-3 py-1.5 font-mono text-2xs uppercase text-teal transition-colors duration-150 hover:bg-teal/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {busy ? <Loader2 size={11} className="animate-spin" aria-hidden="true" /> : null}
+              {busy ? "Pinning…" : "Pin to IPFS"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="cursor-pointer font-mono text-2xs uppercase text-ink-faint transition-colors duration-150 hover:text-navy"
+            >
+              Cancel
+            </button>
+            {!files.exportDeclaration ? (
+              <span className="font-serif text-2xs text-ink-faint">The PEB is required.</span>
+            ) : null}
+          </div>
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="cursor-pointer font-mono text-2xs uppercase text-teal transition-colors duration-150 hover:text-navy"
+        >
+          {customs.attached ? "Replace the customs documents" : "Attach PEB, PIB and proof of payment"}
+        </button>
+      )}
+    </div>
+  ) : null;
+
+  if (!customs.attached) {
+    return (
+      <div className="mt-4 rounded-panel border border-state-pending/40 bg-state-pending/[0.07] px-3.5 py-2.5">
+        <div className="flex items-start justify-between gap-3">
+          <p className="font-mono text-2xs uppercase text-state-pending">Customs documents</p>
+          <span className="shrink-0 rounded-full bg-state-pending/10 px-2.5 py-1 font-mono text-2xs uppercase text-state-pending">
+            Not attached
+          </span>
+        </div>
+        <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">
+          Milestone 3 claims the goods are legally through both borders. What evidences that is the
+          PEB from the origin, the PIB at the destination, and proof the import duty was paid —
+          none of which exists when the escrow is created, so they are attached here. The CID of
+          the manifest naming them becomes milestone 3&rsquo;s proof on chain.
+        </p>
+        <p className="mt-1.5 font-serif text-2xs leading-relaxed text-ink-faint">
+          Nothing is blocked while they are missing: every escrow created before this existed has
+          none. Attached and failing verification is what stops Cleared.
+        </p>
+        {picker}
+      </div>
+    );
+  }
+
+  const checkRows = customsCheckRows(customs);
+  const fieldRows = customsFieldRows(customs);
+  const url = customs.cid ? eblDocumentUrl(customs.cid) : null;
+
+  return (
+    <div
+      className={`mt-4 rounded-panel border px-3.5 py-3 ${
+        customs.valid
+          ? "border-state-attested/40 bg-state-attested/[0.05]"
+          : "border-state-disputed/45 bg-state-disputed/[0.06]"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <p className="font-mono text-2xs uppercase text-ink-faint">Customs documents on IPFS</p>
+        <span
+          className={`shrink-0 rounded-full px-2.5 py-1 font-mono text-2xs uppercase ${
+            customs.valid
+              ? "bg-state-attested/10 text-state-attested"
+              : "bg-state-disputed/10 text-state-disputed"
+          }`}
+        >
+          {customs.valid ? "Verified" : customs.available === false ? "Unavailable" : "Unverified"}
+        </span>
+      </div>
+
+      {customs.cid ? (
+        <p className="mt-2 break-all font-mono text-2xs text-navy" title={customs.cid}>
+          {url ? (
+            <a href={url} target="_blank" rel="noreferrer" className="text-teal hover:text-navy">
+              {customs.cid}
+            </a>
+          ) : (
+            shortCid(customs.cid)
+          )}
+        </p>
+      ) : null}
+
+      <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">{customs.reason}</p>
+
+      {checkRows.length ? (
+        <ul className="mt-2.5 flex flex-wrap gap-1.5">
+          {checkRows.map((row) => (
+            <li
+              key={row.key}
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-2xs uppercase ${
+                row.passed
+                  ? "bg-state-attested/10 text-state-attested"
+                  : "bg-state-disputed/10 text-state-disputed"
+              }`}
+            >
+              {row.passed ? <Check size={10} aria-hidden="true" /> : <X size={10} aria-hidden="true" />}
+              {row.label}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {/* Each declaration keeps its own address, so a reader can open the PEB
+          on its own rather than trusting a summary of it. */}
+      <ul className="mt-2.5 space-y-1 border-t border-sky/60 pt-2.5">
+        {CUSTOMS_SLOTS.map((slot) => {
+          const document_ = customs.documents?.[slot.key];
+          if (!document_) return null;
+          return (
+            <li key={slot.key} className="flex items-baseline justify-between gap-3 text-2xs">
+              <span className="shrink-0 font-mono uppercase text-ink-faint">{slot.label}</span>
+              <span className="min-w-0 text-right">
+                <a
+                  href={eblDocumentUrl(document_.cid)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-teal transition-colors duration-150 hover:text-navy"
+                >
+                  {shortCid(document_.cid)}
+                </a>
+                {document_.sha256Matches === false ? (
+                  <span className="ml-2 text-state-disputed">digest differs</span>
+                ) : null}
+                {document_.resolves === false ? (
+                  <span className="ml-2 text-state-disputed">does not resolve</span>
+                ) : null}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+
+      {fieldRows.length ? (
+        <dl className="mt-2.5 space-y-1 border-t border-sky/60 pt-2.5 text-2xs">
+          {fieldRows.map((row) => (
+            <div key={row.key} className="flex items-baseline justify-between gap-3">
+              <dt className="shrink-0 font-mono uppercase text-ink-faint">{row.label}</dt>
+              <dd className="min-w-0 text-right font-serif text-navy">{row.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+
+      {picker}
     </div>
   );
 }

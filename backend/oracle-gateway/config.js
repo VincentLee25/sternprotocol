@@ -32,6 +32,11 @@ const config = {
   // persistent volume on a host with ephemeral disk, or every redeploy wipes
   // the handles people registered.
   directoryStoreFile: process.env.DIRECTORY_STORE_FILE || path.resolve(__dirname, "../data/directory.json"),
+  // Customs documents (PEB / PIB / proof of duty paid) recorded per escrow.
+  // Only CIDs and file names live here — the documents themselves are on IPFS
+  // — but losing the file loses the link between an escrow and its clearance,
+  // so this wants the same persistent volume as the two stores above.
+  customsStoreFile: process.env.CUSTOMS_STORE_FILE || path.resolve(__dirname, "../data/customs.json"),
   authTokenSecret: process.env.AUTH_TOKEN_SECRET,
 
   // --- IPFS ------------------------------------------------------------------
