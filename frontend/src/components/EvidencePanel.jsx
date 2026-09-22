@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Check, Clock, Loader2, PenLine, RefreshCcw, ShieldAlert, X } from "lucide-react";
-import { getEvidence, simulateFault, verifyMilestones, apiConfigured } from "../lib/sternApi.js";
-import { disputeOpportunity, faultOptions, activeFault, milestoneRows, sourceEvidence, verificationChecks, verifyResultRows } from "../lib/evidence.js";
+import { getEvidence, simulateFault, verifyMilestones, apiConfigured, eblDocumentUrl } from "../lib/sternApi.js";
+import { disputeOpportunity, eblSummary, faultOptions, activeFault, milestoneRows, sourceEvidence, verificationChecks, verifyResultRows } from "../lib/evidence.js";
+import { eblCheckRows, eblFieldRows, shortCid } from "../lib/ebl.js";
 import { previewDispute, raiseDisputeAsUser } from "../lib/disputeFlow.js";
 import TxLink, { AddressLink, BlockLink } from "./TxLink.jsx";
 
@@ -71,6 +72,7 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
   const failing = sourceEvidence(evidence).filter((s) => !s.passed);
   const faults = faultOptions(evidence);
   const currentFault = activeFault(evidence);
+  const ebl = eblSummary(evidence);
   // A fault switched on before anything is committed guarantees a refusal: the
   // gateway will not write a proof its own sources reject. That is correct, but
   // it looks like a failure, and the order is easy to get backwards — so say it
@@ -344,6 +346,12 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
             ))}
           </ol>
 
+          {/* The e-BL, separately from the four data feeds.
+              The other sources are readings — a weight, a departure status.
+              This one is a document, and the interesting part is that anyone
+              can fetch it from the address on chain and get the same bytes. */}
+          {ebl ? <EblCard ebl={ebl} /> : null}
+
           {/* Named checks behind those verdicts. */}
           {checks.length ? (
             <div className="mt-4">
@@ -490,6 +498,106 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
         </>
       ) : null}
     </Panel>
+  );
+}
+
+/**
+ * The bill of lading this escrow was created against, retrieved from the CID
+ * the contract stores.
+ *
+ * The claim being made here is narrow and checkable: these bytes came back
+ * from that address, they hash to that address, and this is what they say. A
+ * sceptic can repeat the whole thing with any IPFS gateway and the CID printed
+ * on chain.
+ */
+function EblCard({ ebl }) {
+  if (!ebl.configured) {
+    return (
+      <div className="mt-4 rounded-panel border border-state-pending/40 bg-state-pending/[0.07] px-3.5 py-2.5">
+        <p className="font-mono text-2xs uppercase text-state-pending">e-BL document</p>
+        <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">
+          {ebl.note ||
+            "This gateway has no IPFS pinning service configured, so the e-BL check is a placeholder rather than a document verification."}
+        </p>
+      </div>
+    );
+  }
+
+  const url = ebl.cid ? eblDocumentUrl(ebl.cid) : null;
+  const checkRows = eblCheckRows(ebl);
+  const fieldRows = eblFieldRows(ebl);
+  const tone = ebl.valid ? "attested" : "disputed";
+
+  return (
+    <div
+      className={`mt-4 rounded-panel border px-3.5 py-3 ${
+        ebl.valid ? "border-state-attested/40 bg-state-attested/[0.05]" : "border-state-disputed/45 bg-state-disputed/[0.06]"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <p className="font-mono text-2xs uppercase text-ink-faint">e-BL document on IPFS</p>
+        <span
+          className={`shrink-0 rounded-full px-2.5 py-1 font-mono text-2xs uppercase ${
+            tone === "attested"
+              ? "bg-state-attested/10 text-state-attested"
+              : "bg-state-disputed/10 text-state-disputed"
+          }`}
+        >
+          {ebl.simulatedFault ? "Simulated fail" : ebl.valid ? "Verified" : "Unverified"}
+        </span>
+      </div>
+
+      {ebl.cid ? (
+        <p className="mt-2 break-all font-mono text-2xs text-navy" title={ebl.cid}>
+          {url ? (
+            <a href={url} target="_blank" rel="noreferrer" className="text-teal hover:text-navy">
+              {ebl.cid}
+            </a>
+          ) : (
+            shortCid(ebl.cid)
+          )}
+        </p>
+      ) : null}
+
+      <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">{ebl.reason}</p>
+
+      {checkRows.length ? (
+        <ul className="mt-2.5 flex flex-wrap gap-1.5">
+          {checkRows.map((row) => (
+            <li
+              key={row.key}
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-2xs uppercase ${
+                row.passed
+                  ? "bg-state-attested/10 text-state-attested"
+                  : "bg-state-disputed/10 text-state-disputed"
+              }`}
+            >
+              {row.passed ? <Check size={10} aria-hidden="true" /> : <X size={10} aria-hidden="true" />}
+              {row.label}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {fieldRows.length ? (
+        <dl className="mt-2.5 space-y-1 border-t border-sky/60 pt-2.5 text-2xs">
+          {fieldRows.map((row) => (
+            <div key={row.key} className="flex items-baseline justify-between gap-3">
+              <dt className="shrink-0 font-mono uppercase text-ink-faint">{row.label}</dt>
+              <dd className="min-w-0 text-right font-serif text-navy">{row.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+
+      {ebl.retrievedFrom ? (
+        <p className="mt-2 font-serif text-2xs leading-relaxed text-ink-faint">
+          Retrieved from {ebl.retrievedFrom}
+          {ebl.pages ? `, ${ebl.pages} page${ebl.pages === 1 ? "" : "s"}` : ""}
+          {ebl.size ? `, ${ebl.size.toLocaleString("id-ID")} bytes` : ""}.
+        </p>
+      ) : null}
+    </div>
   );
 }
 

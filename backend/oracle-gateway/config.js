@@ -28,7 +28,29 @@ const config = {
   logScanChunk: Number(process.env.LOG_SCAN_CHUNK || 9000),
   nativeGasWarningWei: BigInt(process.env.NATIVE_GAS_WARNING_WEI || "1000000000000000"),
   identityStoreFile: process.env.IDENTITY_STORE_FILE || path.resolve(__dirname, "../data/identities.json"),
-  authTokenSecret: process.env.AUTH_TOKEN_SECRET
+  authTokenSecret: process.env.AUTH_TOKEN_SECRET,
+
+  // --- IPFS ------------------------------------------------------------------
+  // The e-BL document is pinned for real, and the CID that goes on chain is
+  // the address the document actually resolves at. One of these two is needed
+  // for that; with neither, the gateway reports the e-BL check as unavailable
+  // rather than passing it (see ipfsService.js).
+  //
+  // PINATA_JWT is the hosted route: an API key from pinata.cloud. It is a
+  // secret — it can pin, unpin and bill — so it belongs here and never in
+  // frontend/.env, where a VITE_ prefix would publish it in the bundle.
+  pinataJwt: process.env.PINATA_JWT || "",
+  // IPFS_API_URL is the self-hosted route: the RPC of a Kubo node, e.g.
+  // http://127.0.0.1:5001. IPFS_API_AUTH is an optional Authorization header
+  // value if that node sits behind a proxy that wants one.
+  ipfsApiUrl: process.env.IPFS_API_URL || "",
+  ipfsApiAuth: process.env.IPFS_API_AUTH || "",
+  // Read paths, tried in order. These are public gateways: retrieval by CID
+  // needs no key, and using more than one means a single slow gateway does not
+  // fail the check.
+  ipfsGateways: (process.env.IPFS_GATEWAYS ||
+    "https://gateway.pinata.cloud,https://ipfs.io,https://dweb.link")
+    .split(",").map(v => v.trim().replace(/\/+$/, "")).filter(Boolean)
 };
 
 function isMissing(v) { return Array.isArray(v) ? v.length === 0 : v == null || v === ""; }

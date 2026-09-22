@@ -148,6 +148,33 @@ export const verifyMilestones = (id) => request(`/oracle/verify/${id}`, { method
 export const simulateFault = (id, fault) =>
   request(`/oracle/simulate/${id}`, { method: "POST", body: { fault } });
 
+// --- e-BL on IPFS ----------------------------------------------------------
+//
+// The pinning credential is a secret and stays on the gateway, so the browser
+// hands it the bytes rather than talking to a pinning service itself. What
+// comes back is the CID the document actually resolves at — that is the value
+// that goes on chain, and the reason it is worth putting there.
+
+/** Pins the e-BL and returns its CID, plus the gateway's read-back check. */
+export const pinEblDocument = ({ fileName, contentBase64, containerRef }) =>
+  request("/ipfs/pin", { method: "POST", body: { fileName, contentBase64, containerRef } });
+
+/** The verdict on a CID: does it resolve, do the bytes hash back to it, is it this e-BL. */
+export const verifyEblCid = (cid, { containerRef, signal } = {}) =>
+  request(`/ipfs/verify/${encodeURIComponent(cid)}${containerRef ? `?containerRef=${encodeURIComponent(containerRef)}` : ""}`, { signal });
+
+export const getIpfsStatus = ({ signal } = {}) => request("/ipfs/status", { signal });
+
+/**
+ * Where to open the document itself.
+ *
+ * Through the gateway rather than a public IPFS gateway: the bytes are the
+ * same either way — that is what a CID guarantees — but this one is known to
+ * be reachable and to send the right content type.
+ */
+export const eblDocumentUrl = (cid) =>
+  cid && apiConfigured ? `${API_BASE}/ipfs/document/${encodeURIComponent(cid)}` : null;
+
 // --- Demo IDRT -------------------------------------------------------------
 export const claimDemoBalance = (smartAccountAddress, role = "importer") =>
   request("/demo-balance/claim", { method: "POST", body: { smartAccountAddress, role } });

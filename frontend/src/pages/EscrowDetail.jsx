@@ -16,7 +16,8 @@ import { getBrowserContract } from "../lib/contract.js";
 import { CURRENCY_LABEL } from "../lib/currency.js";
 import { CONSORTIUM, defaultConsortium } from "../lib/oracles.js";
 import { shortAddress } from "../lib/actors.js";
-import { getTimelock, getVerifiers } from "../lib/sternApi.js";
+import { eblDocumentUrl, getTimelock, getVerifiers } from "../lib/sternApi.js";
+import { shortCid } from "../lib/ebl.js";
 import { ROLE, ROLE_LABEL, roleOnEscrow } from "../lib/roles.js";
 import { raiseDisputeAsUser } from "../lib/disputeFlow.js";
 import {
@@ -678,7 +679,10 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
                     chainMeta ? `${Math.round(chainMeta.timelock / 3600)}h` : "24h"
                   }
                 />
-                <TermRow label="e-BL CID" value={escrow.cid || "not pinned"} truncate />
+                {/* Printed as a link, because an address nobody can follow is
+                    just a long string. The gateway serves the bytes from the
+                    same CID any IPFS gateway would. */}
+                <TermRow label="e-BL CID" value={<EblCidValue cid={escrow.cid} />} truncate title={escrow.cid || undefined} />
                 <TermRow label="Conditions met" value={`${attestedCount} / ${CHECKS.length}`} />
               </div>
             </section>
@@ -794,7 +798,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
               </div>
 
               <p className="mt-3.5 truncate border-t border-sky pt-3 text-2xs text-ink-faint">
-                e-BL CID &nbsp;{escrow.cid || "not pinned"}
+                e-BL CID &nbsp;<EblCidValue cid={escrow.cid} />
               </p>
             </section>
           </article>
@@ -1093,7 +1097,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
 }
 
 /* Dot-leader term row: serif label, leader, mono value. See design system §5.3. */
-function TermRow({ label, value, warn, truncate }) {
+function TermRow({ label, value, warn, truncate, title }) {
   return (
     <div className="flex items-baseline gap-2.5 py-2.5">
       <span className="whitespace-nowrap font-serif text-[15px] text-teal">{label}</span>
@@ -1102,11 +1106,47 @@ function TermRow({ label, value, warn, truncate }) {
         className={`text-xs font-medium tabular-nums ${
           truncate ? "min-w-0 truncate" : "whitespace-nowrap"
         } ${warn ? "text-state-pending" : "text-navy"}`}
-        title={truncate ? value : undefined}
+        // `value` may be a link rather than a string, and a React element in a
+        // title attribute renders as "[object Object]".
+        title={title ?? (truncate && typeof value === "string" ? value : undefined)}
       >
         {value}
       </span>
     </div>
+  );
+}
+
+/**
+ * The escrow's document CID, as something you can follow.
+ *
+ * Three cases worth telling apart: a real IPFS address, which opens; the
+ * pre-IPFS local hash that some older escrows carry, which resolves nowhere
+ * and should not pretend otherwise; and nothing at all.
+ */
+function EblCidValue({ cid }) {
+  if (!cid) return <span className="text-ink-dim">not pinned</span>;
+
+  const url = eblDocumentUrl(cid);
+  const isContentAddress = /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{20,})$/.test(cid);
+
+  if (!isContentAddress || !url) {
+    return (
+      <span className="font-mono" title={`${cid} — a local content hash, not an IPFS address`}>
+        {shortCid(cid)} <span className="text-ink-dim">(not pinned)</span>
+      </span>
+    );
+  }
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      title={cid}
+      className="font-mono text-teal transition-colors duration-150 hover:text-navy"
+    >
+      {shortCid(cid)}
+    </a>
   );
 }
 

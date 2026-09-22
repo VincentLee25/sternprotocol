@@ -21,12 +21,23 @@ const {
 const { config } = require("./config");
 const { getDemoBalance, claimDemoBalance } = require("./faucetService");
 const { createIdentityService } = require("./identityService");
+const {
+  pinDocument,
+  fetchByCid,
+  verifyDocumentCached,
+  ipfsStatus,
+  MAX_DOCUMENT_BYTES
+} = require("./ipfsService");
 
 const app = express();
 app.use(cors({
   origin: config.corsOrigins.includes("*") ? true : config.corsOrigins
 }));
-app.use(express.json({ limit: "1mb" }));
+// 12mb, not 1mb: POST /ipfs/pin carries the e-BL PDF as base64, and base64
+// costs a third on top of the 8mb document ceiling ipfsService enforces.
+// Every other route is small, and the ceiling is checked there rather than
+// relying on this limit to do it.
+app.use(express.json({ limit: "12mb" }));
 
 let identities = null;
 function identityService() {
@@ -74,6 +85,11 @@ app.get("/health", async (_req, res, next) => {
       mockMode: true,
       evidenceMode: true,
       contractAddress: config.contractAddress || null,
+      // Whether the e-BL is being verified for real or falling back to the
+      // placeholder check. Worth having on /health: it is the difference
+      // between two very different claims about the same screen, and it is
+      // decided entirely by an environment variable.
+      ipfs: ipfsStatus(),
       timestamp: new Date().toISOString()
     });
   } catch (error) { next(error); }
@@ -159,9 +175,95 @@ app.get("/verifiers", async (_req, res, next) => {
   try { res.json(await getVerifiers()); } catch (error) { next(error); }
 });
 
+// --- e-BL on IPFS ------------------------------------------------------------
+//
+// The document the escrow is created against is pinned for real, and the CID
+// written on chain is the address it actually resolves at. See ipfsService.js
+// for what is checked and why.
+
+app.get("/ipfs/status", (_req, res) => {
+  res.json(ipfsStatus());
+});
+
+// Pins the e-BL and hands back the CID to put on chain.
+//
+// Not behind requireInternalApiKey: the browser calls this while creating an
+// escrow, and that key must never reach a bundle. What that means is that this
+// route spends the gateway's pinning quota for anyone who can reach it, so it
+// is capped at one document of 8mb and wants a rate limit on a public
+// deployment. It cannot forge anything — a pin is not a proof, and the CID it
+// returns is only worth something once the user's own signature puts it into
+// createEscrow.
+app.post("/ipfs/pin", async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const base64 = String(body.contentBase64 || body.content || "").replace(/^data:[^;]+;base64,/, "");
+    if (!base64) {
+      const error = new Error("Send the document as contentBase64.");
+      error.statusCode = 400;
+      error.code = "IPFS_NO_CONTENT";
+      throw error;
+    }
+
+    const bytes = Buffer.from(base64, "base64");
+    if (bytes.length > MAX_DOCUMENT_BYTES) {
+      const error = new Error(
+        `The document is ${(bytes.length / 1024 / 1024).toFixed(1)} MB; the limit is ${MAX_DOCUMENT_BYTES / 1024 / 1024} MB.`
+      );
+      error.statusCode = 413;
+      error.code = "IPFS_DOCUMENT_TOO_LARGE";
+      throw error;
+    }
+
+    const fileName = String(body.fileName || "e-bill-of-lading.pdf").slice(0, 160);
+    const pinned = await pinDocument(bytes, fileName);
+
+    // Read it straight back and check it as if we were a sceptic, so the
+    // creation screen can show the extracted bill-of-lading fields before the
+    // user commits — and so the verdict is already cached by the time the
+    // escrow's evidence panel asks for it. Best-effort: a pin that succeeded
+    // is still a pin, even if a public gateway has not caught up yet.
+    let verification = null;
+    try {
+      verification = await verifyDocumentCached(pinned.cid, {
+        containerRef: body.containerRef || null
+      });
+    } catch (error) {
+      verification = { available: false, valid: false, reason: error.message };
+    }
+
+    res.json({ ok: true, ...pinned, verification });
+  } catch (error) { next(error); }
+});
+
+// The verdict on a CID: does it resolve, do the bytes hash back to it, and is
+// it a bill of lading for this container.
+app.get("/ipfs/verify/:cid", async (req, res, next) => {
+  try {
+    res.json(await verifyDocumentCached(req.params.cid, {
+      containerRef: req.query.containerRef || null
+    }));
+  } catch (error) { next(error); }
+});
+
+// Serves the document itself, so the app can show the PDF without depending on
+// a public gateway's CORS headers. Inline rather than an attachment: the point
+// is to be able to read the bill of lading next to the escrow it belongs to.
+app.get("/ipfs/document/:cid", async (req, res, next) => {
+  try {
+    const { bytes } = await fetchByCid(req.params.cid);
+    const isPdf = bytes.subarray(0, 5).toString("latin1") === "%PDF-";
+    res.setHeader("content-type", isPdf ? "application/pdf" : "application/octet-stream");
+    res.setHeader("content-disposition", `inline; filename="${req.params.cid}${isPdf ? ".pdf" : ""}"`);
+    // Immutable by construction: the bytes at a CID cannot change.
+    res.setHeader("cache-control", "public, max-age=31536000, immutable");
+    res.send(bytes);
+  } catch (error) { next(error); }
+});
+
 app.get("/oracle/evidence/:contractId", async (req, res, next) => {
   try {
-    const status = getMockStatus(req.params.contractId, req.query);
+    const status = await getMockStatus(req.params.contractId, req.query);
     const onchain = {};
     const comparison = {};
     for (const milestone of ["inspected", "shipped", "arrived_cleared"]) {
@@ -241,7 +343,7 @@ app.get("/oracle/evidence/:contractId", async (req, res, next) => {
 // and submits on its own.
 app.post("/oracle/verify/:contractId", async (req, res, next) => {
   try {
-    const status = getMockStatus(req.params.contractId, mergedOracleOptions(req.body || {}));
+    const status = await getMockStatus(req.params.contractId, mergedOracleOptions(req.body || {}));
     const outcome = await verifyAndSubmitAll(req.params.contractId, status.verification, {
       proofCidPrefix: req.body?.proofCidPrefix || "bafy-verified"
     });
@@ -254,7 +356,7 @@ app.post("/oracle/verify/:contractId", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-app.post("/oracle/simulate/:contractId", (req, res, next) => {
+app.post("/oracle/simulate/:contractId", async (req, res, next) => {
   try {
     const body = req.body || {};
     const fault = body.fault || body.simulateFault || "none";
@@ -267,7 +369,7 @@ app.post("/oracle/simulate/:contractId", (req, res, next) => {
       });
     }
 
-    const status = getMockStatus(req.params.contractId);
+    const status = await getMockStatus(req.params.contractId);
     res.json({
       ok: true,
       mode: "simulation",
@@ -280,14 +382,14 @@ app.post("/oracle/simulate/:contractId", (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-app.get("/mock-status/:contractId", (req, res, next) => {
-  try { res.json(getMockStatus(req.params.contractId, req.query)); } catch (error) { next(error); }
+app.get("/mock-status/:contractId", async (req, res, next) => {
+  try { res.json(await getMockStatus(req.params.contractId, req.query)); } catch (error) { next(error); }
 });
 
 app.post("/submit-oracle/:contractId", requireInternalApiKey, async (req, res, next) => {
   try {
     const body = req.body || {};
-    const status = getMockStatus(req.params.contractId, mergedOracleOptions(body));
+    const status = await getMockStatus(req.params.contractId, mergedOracleOptions(body));
     const result = await submitMilestoneProof(
       req.params.contractId,
       body.milestone || "inspected",
@@ -301,7 +403,7 @@ app.post("/submit-oracle/:contractId", requireInternalApiKey, async (req, res, n
 app.post("/milestones/:contractId/submit", requireInternalApiKey, async (req, res, next) => {
   try {
     const body = req.body || {};
-    const status = getMockStatus(req.params.contractId, mergedOracleOptions(body));
+    const status = await getMockStatus(req.params.contractId, mergedOracleOptions(body));
     const result = await submitMilestoneProof(
       req.params.contractId,
       body.milestone,

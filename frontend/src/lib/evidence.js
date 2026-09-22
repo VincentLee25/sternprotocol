@@ -188,6 +188,43 @@ export function verificationChecks(evidence) {
     { key: "inspectionPassed", label: "Inspection passed", passed: v.inspectionPassed, source: "Inspection" },
     { key: "aisDeparted", label: "AIS departure", passed: v.aisDeparted, source: "AIS" },
     { key: "ceisaApproved", label: "CEISA clearance", passed: v.ceisaApproved, source: "CEISA" },
-    { key: "eblCidValid", label: "Document CID valid", passed: v.eblCidValid, source: "IPFS" }
+    // Was "Document CID valid", back when the check was that a string started
+    // with "bafybeistern". It now retrieves the document from IPFS and reads
+    // it, so the label says what it means.
+    { key: "eblCidValid", label: "e-BL verified", passed: v.eblCidValid, source: "IPFS" }
   ].filter((c) => c.passed !== undefined);
+}
+
+/**
+ * The e-BL source, in the form the panel needs.
+ *
+ * Returns null when the gateway has no pinning service configured — in that
+ * mode its answer is a placeholder, and showing it as a document verification
+ * would be the same overstatement this whole path was built to remove.
+ */
+export function eblSummary(evidence) {
+  const source = evidence?.sources?.ipfs;
+  if (!source || source.mode !== "ipfs") {
+    return source
+      ? { configured: false, note: source.note || null }
+      : null;
+  }
+
+  return {
+    configured: true,
+    cid: source.cid || null,
+    valid: source.valid === true,
+    available: source.available !== false,
+    reason: source.reason || "",
+    simulatedFault: Boolean(source.simulatedFault),
+    placeholder: Boolean(source.placeholder),
+    failedChecks: source.failedChecks || [],
+    checks: source.checks || {},
+    fields: source.fields || null,
+    containerRefExpected: source.containerRefExpected || null,
+    pages: source.document?.pages ?? null,
+    size: source.document?.size ?? null,
+    sha256: source.document?.sha256 || null,
+    retrievedFrom: source.document?.retrievedFrom || null
+  };
 }

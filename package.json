@@ -12,18 +12,21 @@
     "deploy:local": "hardhat run scripts/deploy.js --network localhost",
     "mine:128": "hardhat run scripts/mine-blocks.js --network localhost",
     "post-bond": "node scripts/post-bond.js",
-    "backend": "node scripts/post-bond.js && node backend/oracle-gateway/index.js"
+    "backend": "node scripts/post-bond.js && node backend/oracle-gateway/index.js",
+    "make-demo-ebl": "node scripts/make-demo-ebl.js",
+    "test:ebl": "node scripts/test-ebl-ipfs.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "ethers": "^6.13.5",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "ipfs-only-hash": "^4.0.0",
+    "pdf-parse": "^2.4.5"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@openzeppelin/contracts": "^5.2.0",
-    "hardhat": "^2.26.0",
-    "pdf-parse": "^2.4.5"
+    "hardhat": "^2.26.0"
   }
 }
