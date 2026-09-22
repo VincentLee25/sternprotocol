@@ -115,8 +115,30 @@ function pickVerifier(wallets, milestone) {
   return wallets[index];
 }
 
+/**
+ * Whether the e-BL is a reason to refuse this milestone.
+ *
+ * Only a document that was actually retrieved and then found wrong counts —
+ * wrong container, not a bill of lading, or bytes that do not hash back to the
+ * address the contract stores. A check that could not run says nothing about
+ * the shipment, so it must not stop a settlement: `eblCheckable` is what keeps
+ * a slow IPFS gateway from looking like a failed document.
+ *
+ * Defaults to not blocking when the field is absent, so a caller that builds
+ * a verification object by hand behaves as it did before.
+ */
+function eblBlocks(verification) {
+  return verification.eblCheckable === true && verification.eblCidValid === false;
+}
+
 function milestonePassed(milestone, verification) {
   const normalized = normalizeMilestone(milestone);
+  // The e-BL is the document the whole escrow is written against, so a
+  // milestone cannot be committed while it is known to be the wrong document.
+  // It gates every milestone rather than one, because the objection does not
+  // expire: if this is not the bill of lading for this container, nothing
+  // downstream of it is worth writing on chain.
+  if (eblBlocks(verification)) return false;
   if (normalized === MILESTONES.inspected) {
     return verification.vgmMatch === true && verification.inspectionPassed === true;
   }
@@ -730,9 +752,16 @@ async function verifyAndSubmitAll(contractId, verification, { proofCidPrefix = "
     if (!milestonePassed(name, verification)) {
       // The refusal is the product working. A failing source must never reach
       // the chain, and the caller should see why rather than a bare "failed".
+      //
+      // Name the e-BL when it is the e-BL. Every milestone is gated on it, so
+      // a wrong document fails all three at once — and a generic "the
+      // automated check did not pass" would send someone hunting through VGM,
+      // AIS and CEISA for a fault that is not in any of them.
       results[name] = {
         status: "source_failed",
-        reason: "The automated check did not pass, so no proof was written on chain."
+        reason: eblBlocks(verification)
+          ? "The e-BL document failed verification, so no proof was written on chain. Every milestone is gated on it: re-create the escrow with the correct bill of lading."
+          : "The automated check did not pass, so no proof was written on chain."
       };
       stop = true;
       continue;
@@ -866,6 +895,11 @@ module.exports = {
   submitMilestoneProof,
   verifyAndSubmitAll,
   resolveDispute,
+  // Exported so the gate can be tested directly. Both are pure functions over
+  // a verification object, and the rule they encode — which sources stop which
+  // milestone — is worth a test that does not need a chain to run.
+  milestonePassed,
+  eblBlocks,
   normalizeMilestone,
   getOracleIdentity,
   getOracleStatus,

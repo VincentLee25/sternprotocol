@@ -15,7 +15,8 @@
     "backend": "node scripts/post-bond.js && node backend/oracle-gateway/index.js",
     "make-demo-ebl": "node scripts/make-demo-ebl.js",
     "test:ebl": "node scripts/test-ebl-ipfs.js",
-    "pin-demo-ebl": "node scripts/pin-demo-ebl.js"
+    "pin-demo-ebl": "node scripts/pin-demo-ebl.js",
+    "test:ebl-gate": "node scripts/test-ebl-gate.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

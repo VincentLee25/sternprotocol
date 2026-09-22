@@ -204,6 +204,18 @@ async function getMockStatus(contractId, options = {}) {
     aisDeparted: sources.ais.departure_status === "departed",
     ceisaApproved: sources.ceisa.customs_status === "approved",
     eblCidValid: sources.ipfs.valid === true,
+    // Whether that verdict is one we are entitled to act on.
+    //
+    // "The document is wrong" and "we could not look at the document" both
+    // arrive as eblCidValid === false, and they call for opposite responses:
+    // the first must stop a milestone, the second must not, because a public
+    // IPFS gateway being slow for thirty seconds is not evidence about a
+    // shipment and should never hold up a settlement that is otherwise due.
+    //
+    // The placeholder mock counts as checkable: it is a deliberate mode, and a
+    // deployment running in it should behave exactly as it did before any of
+    // this existed.
+    eblCheckable: sources.ipfs.mode === "mock" || sources.ipfs.available !== false,
     inspectionPassed: sources.inspection.inspection_status === "passed"
   };
   const evidence = [
