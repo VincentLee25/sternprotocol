@@ -302,8 +302,10 @@ app.get("/oracle/evidence/:contractId", async (req, res, next) => {
     // have turned that into a 400 for the whole endpoint. With no chain there
     // are no committed proofs either, so nothing is actionable regardless.
     let actionable = false;
+    let chainNowUnix = null;
     try {
       const now = await chainNow(getProvider());
+      chainNowUnix = now;
       actionable = committedDiscrepancies.some(
         (item) => item.challengeDeadlineUnix && now <= Number(item.challengeDeadlineUnix)
       );
@@ -316,6 +318,20 @@ app.get("/oracle/evidence/:contractId", async (req, res, next) => {
       onchain,
       comparison,
       committedDiscrepancies,
+      // The chain's clock, so the browser can stop using its own.
+      //
+      // Every challengeDeadline in this payload is block.timestamp + the
+      // window, and the contract judges against block.timestamp. A page that
+      // counts those deadlines down against the viewer's clock is comparing
+      // two different clocks: Amoy's block timestamps trail wall time, and
+      // when they trail by more than the window the browser sees every window
+      // as already closed the instant it opens — while the chain still accepts
+      // a dispute for the full window. That is not a drift of a few seconds to
+      // be tolerated; it hides the action completely.
+      clock: {
+        chainNowUnix,
+        serverNowUnix: Math.floor(Date.now() / 1000)
+      },
       disputeDemo: {
         actionable,
         reason: actionable

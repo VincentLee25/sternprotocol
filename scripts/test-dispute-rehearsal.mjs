@@ -60,5 +60,37 @@ check("jumlah baris", w.length, 2);
 check("inspected sudah minus", w.find(x => x.key === "inspected").secondsLeft, -30);
 check("shipped sisa 45", w.find(x => x.key === "shipped").secondsLeft, 45);
 
+
+// --- chain clock ------------------------------------------------------------
+//
+// The case that hid the dispute CTA entirely: Amoy block timestamps trail wall
+// time, so a deadline of block.timestamp+90 can already be in the past by the
+// browser's clock at the instant it is created. Counting down against the
+// viewer's clock then showed every window as closed the moment it opened.
+const { chainClock } = await import(new URL("../frontend/src/lib/evidence.js", import.meta.url));
+
+console.log("\n9. jam rantai tertinggal 150 detik dari waktu sebenarnya");
+// Gateway measured both at once: chain 150s behind its own clock.
+const laggy = {
+  clock: { chainNowUnix: NOW - 150, serverNowUnix: NOW },
+  comparison: { inspected: proof(true, -60) }   // deadline 60s in the PAST locally
+};
+const c = chainClock(laggy, NOW);
+check("offset terdeteksi", c.offsetSeconds, -150);
+check("sumbernya rantai", c.source, "chain");
+// In chain time the deadline is still 90s away, so the window IS open.
+const r9 = disputeRehearsal(laggy, c.now);
+check("jendela dianggap TERBUKA", r9.possible, true);
+check("sisa detik menurut rantai", r9.secondsLeft, 90);
+// The old behaviour, for contrast: judged on the browser clock it was closed.
+check("dengan jam browser dulunya tertutup", disputeRehearsal(laggy, NOW).possible, false);
+
+console.log("\n10. tanpa blok clock (gateway lama) tetap jalan");
+const noClock = { comparison: { inspected: proof(true, 45) } };
+const c10 = chainClock(noClock, NOW);
+check("jatuh ke jam lokal", c10.source, "local");
+check("offset nol", c10.offsetSeconds, 0);
+check("masih bisa", disputeRehearsal(noClock, c10.now).possible, true);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

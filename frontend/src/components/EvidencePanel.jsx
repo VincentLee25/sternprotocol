@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Check, Clock, Loader2, PenLine, RefreshCcw, ShieldAlert, X } from "lucide-react";
 import { getEvidence, simulateFault, verifyMilestones, apiConfigured, eblDocumentUrl } from "../lib/sternApi.js";
-import { disputeOpportunity, disputeRehearsal, eblSummary, faultOptions, activeFault, milestoneRows, sourceEvidence, verificationChecks, verifyResultRows } from "../lib/evidence.js";
+import { chainClock, disputeOpportunity, disputeRehearsal, eblSummary, faultOptions, activeFault, milestoneRows, sourceEvidence, verificationChecks, verifyResultRows } from "../lib/evidence.js";
 import { eblCheckRows, eblFieldRows, shortCid } from "../lib/ebl.js";
 import { previewDispute, raiseDisputeAsUser } from "../lib/disputeFlow.js";
 import TxLink, { AddressLink, BlockLink } from "./TxLink.jsx";
@@ -47,16 +47,22 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
 
 
   const opportunity = disputeOpportunity(evidence);
+
+  // Chain time, not browser time. `tick` drives the re-render once a second;
+  // the offset the gateway reports with the payload is what makes every
+  // comparison below agree with the contract instead of with this laptop.
+  const clock = chainClock(evidence, tick);
+
   const secondsLeft =
-    opportunity.challengeDeadlineUnix != null ? opportunity.challengeDeadlineUnix - tick : null;
+    opportunity.challengeDeadlineUnix != null ? opportunity.challengeDeadlineUnix - clock.now : null;
   // Trust the gateway's answer, but stop trusting it once its own deadline has
-  // passed. The local clock is only used to withdraw the offer, never to make
-  // one — the contract still has the final say.
+  // passed — measured on the chain's clock, so this withdraws the offer at the
+  // same moment the contract would. The contract still has the final say.
   const stillOpen = opportunity.actionable && (secondsLeft == null || secondsLeft > 0);
 
   // Which milestone a rehearsal should contest, and the fault that will make
-  // it disagree. Recomputed against `tick` so the countdown it carries is live.
-  const rehearsal = disputeRehearsal(evidence, tick);
+  // it disagree. Recomputed each tick so its countdown stays live.
+  const rehearsal = disputeRehearsal(evidence, clock.now);
 
   // Re-read once the window lapses, so the panel states the gateway's verdict
   // rather than this browser's guess about it.
@@ -364,8 +370,8 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
                       <Row
                         label="Window"
                         value={
-                          row.challengeDeadlineUnix - tick > 0
-                            ? `${countdown(row.challengeDeadlineUnix - tick)} left`
+                          row.challengeDeadlineUnix - clock.now > 0
+                            ? `${countdown(row.challengeDeadlineUnix - clock.now)} left`
                             : "closed"
                         }
                       />

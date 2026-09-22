@@ -103,6 +103,35 @@ const MILESTONE_FAULT = {
  * window is still open, because nothing is waiting behind it and the whole
  * window is available — and names the fault that will make it disagree.
  */
+/**
+ * "Now" as the contract sees it, from the viewer's clock.
+ *
+ * Every deadline in the evidence payload is block.timestamp plus a window, and
+ * the contract compares against block.timestamp. Amoy's block timestamps trail
+ * wall time; when they trail by more than the challenge window, a countdown
+ * run against the viewer's clock shows every window as closed the moment it
+ * opens, while the chain still accepts a dispute for the full window. The
+ * dispute CTA then never appears no matter how fast anyone is.
+ *
+ * So the gateway sends the chain clock with the payload, and this converts a
+ * local tick into chain time by the offset between them. `tick` still drives
+ * the re-render; it just no longer decides the answer.
+ */
+export function chainClock(evidence, tick = Math.floor(Date.now() / 1000)) {
+  const chain = evidence?.clock?.chainNowUnix;
+  const server = evidence?.clock?.serverNowUnix;
+  if (chain == null || server == null) {
+    // No clock in the payload: an older gateway, or the chain read failed.
+    // Falling back to the local tick keeps the countdown moving, and it is
+    // what the panel did before, so nothing gets worse.
+    return { now: tick, offsetSeconds: 0, source: "local" };
+  }
+  // Measured at the same instant on the gateway, so their difference is the
+  // chain's lag and is independent of how wrong the viewer's clock is.
+  const offsetSeconds = Number(chain) - Number(server);
+  return { now: tick + offsetSeconds, offsetSeconds, source: "chain" };
+}
+
 export function disputeRehearsal(evidence, nowSeconds = Math.floor(Date.now() / 1000)) {
   const rows = milestoneRows(evidence);
   const committed = rows.filter((row) => row.submitted);
