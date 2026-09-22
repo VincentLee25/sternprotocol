@@ -16,7 +16,8 @@
     "make-demo-ebl": "node scripts/make-demo-ebl.js",
     "test:ebl": "node scripts/test-ebl-ipfs.js",
     "pin-demo-ebl": "node scripts/pin-demo-ebl.js",
-    "test:ebl-gate": "node scripts/test-ebl-gate.js"
+    "test:ebl-gate": "node scripts/test-ebl-gate.js",
+    "dispute-status": "node scripts/dispute-status.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
