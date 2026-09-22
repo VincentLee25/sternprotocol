@@ -67,7 +67,12 @@ function pdfParser() {
 const PIN_OPTIONS = { cidVersion: 0, rawLeaves: false };
 
 const MAX_DOCUMENT_BYTES = 8 * 1024 * 1024;
-const FETCH_TIMEOUT_MS = 25000;
+// Pinning uploads a document, so it gets room. Retrieval sits on the critical
+// path of every evidence read and every verify, so it does not: a slow public
+// gateway must not be able to hold up a settlement while somebody watches a
+// spinner.
+const PIN_TIMEOUT_MS = 30000;
+const FETCH_TIMEOUT_MS = 8000;
 
 // A CID names immutable content, so a verdict about one can never go stale —
 // cache successes for the life of the process. Failures are cached briefly
@@ -108,7 +113,7 @@ function providerError(message, code, statusCode = 502) {
   return error;
 }
 
-async function withTimeout(run, ms = FETCH_TIMEOUT_MS) {
+async function withTimeout(run, ms = PIN_TIMEOUT_MS) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
   try {
@@ -245,38 +250,68 @@ async function pinDocument(bytes, fileName = "e-bill-of-lading.pdf") {
   };
 }
 
-/** Retrieves the bytes at a CID, trying each configured gateway in turn. */
+/**
+ * Retrieves the bytes at a CID, racing every configured gateway.
+ *
+ * This used to try them one at a time with a 25-second timeout each, which put
+ * up to 75 seconds on the critical path of every evidence read and every
+ * verify — and the cache that normally hides that is cleared by any gateway
+ * restart. Pressing "Verify milestones" then sat there for a minute before it
+ * had even looked at the chain.
+ *
+ * Racing is the right shape for this: the gateways are interchangeable,
+ * content addressing means a wrong answer is caught anyway, and the slowest
+ * one no longer decides how long anyone waits. The losers are aborted so a
+ * hung request does not hold a socket for the full timeout.
+ */
 async function fetchByCid(cid) {
+  const gateways = config.ipfsGateways;
+  if (!gateways.length) {
+    throw providerError("No IPFS read gateways configured. Set IPFS_GATEWAYS.", "IPFS_NO_GATEWAYS");
+  }
+
   const attempts = [];
-  for (const gateway of config.ipfsGateways) {
+  const controllers = [];
+
+  async function tryGateway(gateway) {
     const url = `${gateway.replace(/\/+$/, "")}/ipfs/${cid}`;
+    const controller = new AbortController();
+    controllers.push(controller);
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     try {
-      const response = await withTimeout((signal) => fetch(url, { signal }));
-      if (!response.ok) {
-        attempts.push(`${gateway} → HTTP ${response.status}`);
-        continue;
-      }
-      const length = Number(response.headers.get("content-length") || 0);
-      if (length > MAX_DOCUMENT_BYTES) {
-        attempts.push(`${gateway} → ${length} bytes, over the limit`);
-        continue;
-      }
+      const response = await fetch(url, { signal: controller.signal });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const declared = Number(response.headers.get("content-length") || 0);
+      if (declared > MAX_DOCUMENT_BYTES) throw new Error(`${declared} bytes, over the limit`);
+
       const bytes = Buffer.from(await response.arrayBuffer());
-      if (bytes.length > MAX_DOCUMENT_BYTES) {
-        attempts.push(`${gateway} → ${bytes.length} bytes, over the limit`);
-        continue;
-      }
+      if (bytes.length > MAX_DOCUMENT_BYTES) throw new Error(`${bytes.length} bytes, over the limit`);
+
       return { bytes, gateway, url };
     } catch (error) {
-      attempts.push(`${gateway} → ${error.name === "AbortError" ? "timed out" : error.message}`);
+      const why = error.name === "AbortError" ? `timed out after ${FETCH_TIMEOUT_MS / 1000}s` : error.message;
+      attempts.push(`${gateway} → ${why}`);
+      throw error;
+    } finally {
+      clearTimeout(timer);
     }
   }
-  const error = providerError(
-    `Could not retrieve ${cid} from any IPFS gateway. Tried: ${attempts.join("; ")}`,
-    "IPFS_UNREACHABLE"
-  );
-  error.details = { attempts };
-  throw error;
+
+  try {
+    const winner = await Promise.any(gateways.map(tryGateway));
+    for (const controller of controllers) {
+      try { controller.abort(); } catch { /* the winner is already read */ }
+    }
+    return winner;
+  } catch {
+    const error = providerError(
+      `Could not retrieve ${cid} from any IPFS gateway. Tried: ${attempts.join("; ")}`,
+      "IPFS_UNREACHABLE"
+    );
+    error.details = { attempts };
+    throw error;
+  }
 }
 
 const FIELD_PATTERNS = {
