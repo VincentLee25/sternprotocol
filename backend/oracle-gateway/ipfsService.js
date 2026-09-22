@@ -25,9 +25,40 @@
 // mock could not express: the contract stores an address, and the address is
 // only worth storing if it pins down the content.
 const crypto = require("node:crypto");
-const Hash = require("ipfs-only-hash");
-const { PDFParse } = require("pdf-parse");
 const { config } = require("./config");
+
+// ipfs-only-hash and pdf-parse are loaded on first use rather than at the top
+// of the file, and a failure to load is recorded instead of thrown.
+//
+// index.js requires this module, so a top-level require here puts the whole
+// gateway behind these two packages: a stale build cache or a bad install
+// would take down escrow reads, the faucet and dispute preparation along with
+// the e-BL check. Degrading one feature is the right failure; taking the
+// service with it is not.
+let dependencyError = null;
+
+function load(name, pick) {
+  try {
+    // eslint-disable-next-line global-require
+    const module_ = require(name);
+    return pick ? pick(module_) : module_;
+  } catch (error) {
+    dependencyError = `${name} could not be loaded (${error.message}). Run npm install on the gateway.`;
+    return null;
+  }
+}
+
+let hashLib;
+function hasher() {
+  if (hashLib === undefined) hashLib = load("ipfs-only-hash");
+  return hashLib;
+}
+
+let pdfLib;
+function pdfParser() {
+  if (pdfLib === undefined) pdfLib = load("pdf-parse", (m) => m.PDFParse);
+  return pdfLib;
+}
 
 // These must match whatever the pinning service uses to build its DAG, or a
 // CID recomputed here will never equal the CID handed back — and that
@@ -48,6 +79,8 @@ const verdicts = new Map();
 
 /** CIDv0 of these exact bytes, computed here rather than taken on trust. */
 async function computeCid(bytes) {
+  const Hash = hasher();
+  if (!Hash) throw providerError(dependencyError, "IPFS_DEPENDENCY_MISSING", 503);
   return Hash.of(bytes, PIN_OPTIONS);
 }
 
@@ -284,6 +317,8 @@ function normaliseRef(value) {
 }
 
 async function extractPdf(bytes) {
+  const PDFParse = pdfParser();
+  if (!PDFParse) throw new Error(dependencyError);
   const parser = new PDFParse({ data: bytes });
   try {
     const result = await parser.getText();
@@ -487,9 +522,18 @@ async function verifyDocumentCached(cid, options = {}) {
 
 function ipfsStatus() {
   const provider = pinningProvider();
+  // Touch both libraries so the status reports a broken install rather than
+  // waiting for the first document to reveal it.
+  const librariesReady = Boolean(hasher() && pdfParser());
+
   return {
-    configured: Boolean(provider),
+    configured: Boolean(provider) && librariesReady,
     provider,
+    // Named apart from `configured`: "no pinning key" and "the install is
+    // broken" want different fixes, and collapsing them sends someone hunting
+    // for a missing environment variable they already set.
+    librariesReady,
+    ...(dependencyError ? { dependencyError } : {}),
     gateways: config.ipfsGateways,
     cidVersion: PIN_OPTIONS.cidVersion,
     maxDocumentBytes: MAX_DOCUMENT_BYTES

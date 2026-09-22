@@ -204,10 +204,27 @@ export function verificationChecks(evidence) {
  */
 export function eblSummary(evidence) {
   const source = evidence?.sources?.ipfs;
-  if (!source || source.mode !== "ipfs") {
-    return source
-      ? { configured: false, note: source.note || null }
-      : null;
+  if (!source) return null;
+
+  // "mock" is a deliberate mode — nobody configured pinning. "broken" is a
+  // fault: pinning IS configured and the check could not run. Reporting the
+  // second as unconfigured would hide a failure behind a setup notice.
+  if (source.mode === "mock") {
+    return { configured: false, note: source.note || null };
+  }
+
+  if (source.mode === "broken") {
+    return {
+      configured: true,
+      broken: true,
+      valid: false,
+      available: false,
+      cid: source.cid || null,
+      reason: source.reason || "The e-BL check could not run on this gateway.",
+      failedChecks: source.failedChecks || [],
+      checks: {},
+      fields: null
+    };
   }
 
   return {

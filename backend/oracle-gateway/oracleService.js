@@ -59,6 +59,26 @@ async function checkEbl(contractId, { fault, overrideCid, overrides }) {
   const simulateFault = fault === "quality" || fault === "ipfs";
   const status = ipfsStatus();
 
+  // A pinning service is configured but the libraries backing the check could
+  // not be loaded. That is a fault, not a mode: somebody intended real
+  // verification and is not getting it. Falling back to the mock here would
+  // return `valid: true` for a check that never ran, which is the exact
+  // overstatement this path exists to remove — so it fails instead, loudly.
+  if (status.provider && !status.librariesReady) {
+    return {
+      mode: "broken",
+      configured: true,
+      cid: overrideCid || null,
+      valid: false,
+      available: false,
+      failedChecks: ["checkUnavailable"],
+      checks: {},
+      fields: null,
+      notes: [status.dependencyError || "The e-BL verification libraries are unavailable."],
+      reason: `The e-BL check cannot run on this gateway: ${status.dependencyError || "its libraries are unavailable."}`
+    };
+  }
+
   if (!status.configured) {
     const mock = validateCid(overrideCid || "bafybeisternelectronicbillofla", { fault, ...overrides });
     return {
@@ -71,10 +91,31 @@ async function checkEbl(contractId, { fault, overrideCid, overrides }) {
 
   const escrow = await escrowDocument(contractId);
   const cid = overrideCid || escrow.documentCid;
-  const result = await verifyDocumentCached(cid, {
-    containerRef: escrow.containerRef,
-    simulateFault
-  });
+
+  let result;
+  try {
+    result = await verifyDocumentCached(cid, {
+      containerRef: escrow.containerRef,
+      simulateFault
+    });
+  } catch (error) {
+    // The e-BL check failing must not take the evidence read with it. The four
+    // other sources are still worth serving, and a check that could not run is
+    // reported as not passing — never as passing.
+    return {
+      mode: "ipfs",
+      configured: true,
+      cid: cid || null,
+      valid: false,
+      available: false,
+      simulatedFault: Boolean(simulateFault),
+      failedChecks: ["checkUnavailable"],
+      checks: {},
+      fields: null,
+      notes: [error.message],
+      reason: `The e-BL check could not run: ${error.message}`
+    };
+  }
 
   return {
     ...result,
