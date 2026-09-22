@@ -21,7 +21,8 @@
     "test:ebl-coherence": "node scripts/test-ebl-coherence.mjs",
     "test:dispute-rehearsal": "node scripts/test-dispute-rehearsal.mjs",
     "test:all": "node scripts/test-ebl-ipfs.js && node scripts/test-ebl-gate.js && node scripts/test-ebl-coherence.mjs && node scripts/test-dispute-rehearsal.mjs && node scripts/test-evidence-subject.mjs && node --test backend/oracle-gateway/identityService.test.js",
-    "test:evidence-subject": "node scripts/test-evidence-subject.mjs"
+    "test:evidence-subject": "node scripts/test-evidence-subject.mjs",
+    "chain-lag": "node scripts/chain-lag.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
