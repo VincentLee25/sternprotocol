@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Check, Clock, Loader2, PenLine, RefreshCcw, ShieldAlert, X } from "lucide-react";
 import { getEvidence, simulateFault, verifyMilestones, apiConfigured, eblDocumentUrl } from "../lib/sternApi.js";
-import { disputeOpportunity, eblSummary, faultOptions, activeFault, milestoneRows, sourceEvidence, verificationChecks, verifyResultRows } from "../lib/evidence.js";
+import { disputeOpportunity, disputeRehearsal, eblSummary, faultOptions, activeFault, milestoneRows, sourceEvidence, verificationChecks, verifyResultRows } from "../lib/evidence.js";
 import { eblCheckRows, eblFieldRows, shortCid } from "../lib/ebl.js";
 import { previewDispute, raiseDisputeAsUser } from "../lib/disputeFlow.js";
 import TxLink, { AddressLink, BlockLink } from "./TxLink.jsx";
@@ -54,13 +54,24 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
   // one — the contract still has the final say.
   const stillOpen = opportunity.actionable && (secondsLeft == null || secondsLeft > 0);
 
+  // Which milestone a rehearsal should contest, and the fault that will make
+  // it disagree. Recomputed against `tick` so the countdown it carries is live.
+  const rehearsal = disputeRehearsal(evidence, tick);
+
   // Re-read once the window lapses, so the panel states the gateway's verdict
   // rather than this browser's guess about it.
+  //
+  // The tick runs whenever ANY committed proof still has a window, not only
+  // when a dispute is already available. Before, the countdown started only
+  // after a discrepancy existed — which is exactly too late on a deployment
+  // with a short window, because the seconds an operator needs to see are the
+  // ones before they switch the fault on.
+  const anyWindowOpen = rehearsal.possible;
   useEffect(() => {
-    if (!opportunity.actionable || opportunity.challengeDeadlineUnix == null) return;
+    if (!anyWindowOpen && !opportunity.actionable) return;
     const id = setInterval(() => setTick(Math.floor(Date.now() / 1000)), 1000);
     return () => clearInterval(id);
-  }, [opportunity.actionable, opportunity.challengeDeadlineUnix]);
+  }, [anyWindowOpen, opportunity.actionable]);
 
   useEffect(() => {
     if (opportunity.actionable && secondsLeft != null && secondsLeft <= 0) load();
@@ -81,8 +92,7 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
 
   // A dispute becomes possible only after a fault makes a committed proof
   // disagree with its source, so re-read evidence rather than patching state.
-  async function onFaultChange(event) {
-    const fault = event.target.value;
+  async function applyFault(fault) {
     setBusy("fault");
     setError("");
     try {
@@ -94,6 +104,18 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
     } finally {
       setBusy("");
     }
+  }
+
+  function onFaultChange(event) {
+    return applyFault(event.target.value);
+  }
+
+  // Stages a contestable discrepancy in one press: it already knows which
+  // milestone has an open window and which source that milestone was based on,
+  // so neither has to be worked out under a running clock.
+  function onRehearse() {
+    if (!rehearsal.possible) return;
+    return applyFault(rehearsal.fault);
   }
 
   // Asks the gateway to verify and commit. The browser never signs a proof —
@@ -333,6 +355,21 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
                     {row.challengeDeadline ? (
                       <Row label="Challenge until" value={new Date(row.challengeDeadline).toLocaleString("id-ID")} />
                     ) : null}
+                    {/* The countdown, on every committed proof rather than
+                        only on one that is already contestable. On a short
+                        challenge window this is the number that decides
+                        whether there is time to act at all, and it used to
+                        appear only once it was too late to use. */}
+                    {row.challengeDeadlineUnix ? (
+                      <Row
+                        label="Window"
+                        value={
+                          row.challengeDeadlineUnix - tick > 0
+                            ? `${countdown(row.challengeDeadlineUnix - tick)} left`
+                            : "closed"
+                        }
+                      />
+                    ) : null}
                   </dl>
                 ) : null}
 
@@ -345,6 +382,65 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
               </li>
             ))}
           </ol>
+
+          {/* Staging a dispute, in one press.
+              Doing it by hand means holding three things at once — which
+              milestone has a proof, which fault that milestone's source
+              answers to, and how many seconds are left — and on a short
+              window the third runs out while you work out the first two. The
+              only feedback was the dispute CTA never appearing. */}
+          {faults.length ? (
+            <div
+              className={`mt-4 rounded-panel border px-3.5 py-3 ${
+                rehearsal.possible
+                  ? "border-teal/40 bg-teal/[0.06]"
+                  : "border-sky bg-sky/20"
+              }`}
+            >
+              <p className="font-mono text-2xs uppercase text-ink-faint">Rehearse a dispute — demo only</p>
+
+              {rehearsal.possible ? (
+                <>
+                  <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">
+                    {rehearsal.alreadyDiscrepant ? (
+                      <>
+                        <span className="text-navy">{rehearsal.milestoneLabel}</span> already disagrees with{" "}
+                        {rehearsal.sourceLabel}. Open the dispute below before its window shuts.
+                      </>
+                    ) : (
+                      <>
+                        This will make <span className="text-navy">{rehearsal.milestoneLabel}</span> disagree with{" "}
+                        {rehearsal.sourceLabel}, which is what a dispute contests. It does not write anything on
+                        chain.
+                      </>
+                    )}
+                  </p>
+                  <p className="mt-1.5 font-mono text-2xs uppercase text-state-pending">
+                    {countdown(rehearsal.secondsLeft)} left on that window
+                  </p>
+                  {!rehearsal.alreadyDiscrepant ? (
+                    <button
+                      type="button"
+                      onClick={onRehearse}
+                      disabled={Boolean(busy)}
+                      className="mt-2.5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-full border border-teal/50 bg-teal/10 py-2 text-xs font-medium text-teal transition-colors duration-150 hover:bg-teal/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {busy === "fault" ? (
+                        <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+                      ) : (
+                        <ShieldAlert size={12} aria-hidden="true" />
+                      )}
+                      {busy === "fault"
+                        ? "Applying…"
+                        : `Make ${rehearsal.milestoneLabel} disagree`}
+                    </button>
+                  ) : null}
+                </>
+              ) : (
+                <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">{rehearsal.reason}</p>
+              )}
+            </div>
+          ) : null}
 
           {/* The e-BL, separately from the four data feeds.
               The other sources are readings — a weight, a departure status.
@@ -599,6 +695,13 @@ function EblCard({ ebl }) {
       ) : null}
     </div>
   );
+}
+
+/** "2m 14s" rather than "134", which nobody reads as a duration under pressure. */
+function countdown(seconds) {
+  if (seconds == null || seconds <= 0) return "0s";
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
 }
 
 function Panel({ children }) {

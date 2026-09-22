@@ -31,7 +31,8 @@ async function escrowDocument(contractId) {
     const escrow = await getEscrow(key);
     const value = {
       documentCid: escrow?.documentCid || null,
-      containerRef: escrow?.containerRef || null
+      containerRef: escrow?.containerRef || null,
+      commodity: escrow?.commodity || null
     };
     if (value.documentCid) escrowDocuments.set(key, value);
     return value;
@@ -39,8 +40,38 @@ async function escrowDocument(contractId) {
     // No chain, or no such escrow. The e-BL check reports itself unavailable
     // rather than failing the whole evidence read — the other four sources are
     // still worth serving.
-    return { documentCid: null, containerRef: null };
+    return { documentCid: null, containerRef: null, commodity: null };
   }
+}
+
+/**
+ * What the four data feeds should be talking about.
+ *
+ * Before this, each feed invented its own facts from the escrow id: container
+ * STERN-0020, vessel IMO9300020, port Tanjung Priok, expected VGM 24020 kg.
+ * The evidence panel then showed those beside the bill of lading's own fields,
+ * and the two described different shipments on the same screen. A reader
+ * notices that long before they get to any of the cryptography.
+ *
+ * The container reference and commodity always come from the contract: those
+ * are what the escrow is, and they are on chain whether a document verified or
+ * not. The rest is taken from the document only when the document actually
+ * passed — a bill of lading for somebody else's shipment must not get to
+ * decide what this shipment's vessel and ports are.
+ */
+function documentContext(ebl, escrow) {
+  const trusted = ebl?.valid === true ? ebl.fields || {} : {};
+  return {
+    containerRef: escrow.containerRef || (trusted.containerNumbers || [])[0] || null,
+    commodity: escrow.commodity || null,
+    vessel: trusted.vessel || null,
+    voyage: trusted.voyage || null,
+    portOfLoading: trusted.portOfLoading || null,
+    portOfDischarge: trusted.portOfDischarge || null,
+    billOfLadingNumber: trusted.billOfLadingNumber || null,
+    grossWeightKg: trusted.grossWeightKg ?? null,
+    verifiedGrossMassKg: trusted.verifiedGrossMassKg ?? null
+  };
 }
 
 /**
@@ -173,31 +204,39 @@ async function getMockStatus(contractId, options = {}) {
     return result;
   };
 
+  // The e-BL is read first, not alongside the others, because the others are
+  // built from what it found. It is also the one source here that leaves the
+  // process — real IPFS retrieval when a pinning service is configured, the
+  // old prefix mock otherwise.
+  const ipfs = await checkEbl(contractId, {
+    fault,
+    overrideCid: flat.eblCid,
+    overrides: (rawOverrides.ipfs && typeof rawOverrides.ipfs === "object") ? rawOverrides.ipfs : {}
+  });
+  const document = documentContext(ipfs, await escrowDocument(contractId));
+
   const sources = {
-    vgm: getVgmData(contractId, {
-      ...sourceOptions,
-      ...pick(["vgm_kg", "containerRef", "vgm_match", "gate_in_status"], "vgm")
-    }),
-    ais: getAisStatus(contractId, {
-      ...sourceOptions,
-      ...pick(["vesselIMO", "departure_status", "timestamp"], "ais")
-    }),
-    ceisa: getCeisaClearance(contractId, {
-      ...sourceOptions,
-      ...pick(["PEB_number", "customs_status", "clearance_date"], "ceisa")
-    }),
-    // Real IPFS retrieval and document verification when a pinning service is
-    // configured; the old prefix mock otherwise. Awaited below with the rest,
-    // since it is the one source here that leaves the process.
-    ipfs: await checkEbl(contractId, {
-      fault,
-      overrideCid: flat.eblCid,
-      overrides: (rawOverrides.ipfs && typeof rawOverrides.ipfs === "object") ? rawOverrides.ipfs : {}
-    }),
-    inspection: getInspectionReport(contractId, {
-      ...sourceOptions,
-      ...pick(["certificate_number", "surveyor", "inspection_status", "inspected_at", "location"], "inspection")
-    })
+    vgm: getVgmData(
+      contractId,
+      { ...sourceOptions, ...pick(["vgm_kg", "containerRef", "vgm_match", "gate_in_status", "port"], "vgm") },
+      document
+    ),
+    ais: getAisStatus(
+      contractId,
+      { ...sourceOptions, ...pick(["vesselIMO", "vessel", "voyage", "departure_status", "timestamp"], "ais") },
+      document
+    ),
+    ceisa: getCeisaClearance(
+      contractId,
+      { ...sourceOptions, ...pick(["PEB_number", "customs_status", "clearance_date"], "ceisa") },
+      document
+    ),
+    ipfs,
+    inspection: getInspectionReport(
+      contractId,
+      { ...sourceOptions, ...pick(["certificate_number", "surveyor", "inspection_status", "inspected_at", "location"], "inspection") },
+      document
+    )
   };
   const verification = {
     vgmMatch: sources.vgm.vgm_match === true && sources.vgm.gate_in_status === "confirmed",

@@ -80,6 +80,77 @@ export function disputeOpportunity(evidence) {
   };
 }
 
+// Which source feeds which milestone. Getting this pairing wrong is the most
+// common reason a rehearsal produces no discrepancy at all: switching on `ais`
+// cannot make the Inspected milestone disagree, because Inspected was never
+// based on AIS. Nothing in the UI said so, and the failure is silent.
+const MILESTONE_FAULT = {
+  inspected: { fault: "inspection", source: "the inspection report" },
+  shipped: { fault: "ais", source: "vessel tracking" },
+  arrived_cleared: { fault: "customs", source: "customs clearance" }
+};
+
+/**
+ * Everything needed to stage a dispute in one press.
+ *
+ * Raising a dispute by hand means holding three things at once: which
+ * milestones have a committed proof, which fault corresponds to each one, and
+ * how many seconds are left before the window shuts. On a deployment with a
+ * short challenge window that last one runs out while you work the first two
+ * out, and the panel's only feedback is the CTA never appearing.
+ *
+ * So this picks the milestone itself — the most recently committed one whose
+ * window is still open, because nothing is waiting behind it and the whole
+ * window is available — and names the fault that will make it disagree.
+ */
+export function disputeRehearsal(evidence, nowSeconds = Math.floor(Date.now() / 1000)) {
+  const rows = milestoneRows(evidence);
+  const committed = rows.filter((row) => row.submitted);
+
+  if (!committed.length) {
+    return {
+      possible: false,
+      reason: "Nothing is committed yet. A dispute contests a proof that already exists, so verify a milestone first."
+    };
+  }
+
+  const open = committed
+    .filter((row) => row.challengeDeadlineUnix && row.challengeDeadlineUnix - nowSeconds > 0)
+    // Latest first: the newest proof has the most of its window left, and no
+    // later milestone is queued behind it.
+    .sort((a, b) => b.challengeDeadlineUnix - a.challengeDeadlineUnix);
+
+  if (!open.length) {
+    return {
+      possible: false,
+      reason:
+        "Every committed proof is past its challenge window. Those proofs now stand, which is the design — a proof is contested inside its window or not at all. Verify the next milestone and act while its window is open."
+    };
+  }
+
+  const target = open[0];
+  const already = target.discrepancy;
+  const mapping = MILESTONE_FAULT[target.key];
+
+  return {
+    possible: true,
+    alreadyDiscrepant: already,
+    milestone: target.key,
+    milestoneLabel: target.label,
+    fault: mapping.fault,
+    sourceLabel: mapping.source,
+    secondsLeft: target.challengeDeadlineUnix - nowSeconds,
+    challengeDeadlineUnix: target.challengeDeadlineUnix
+  };
+}
+
+/** Seconds left on every committed proof, for the per-row countdowns. */
+export function openWindows(evidence, nowSeconds = Math.floor(Date.now() / 1000)) {
+  return milestoneRows(evidence)
+    .filter((row) => row.submitted && row.challengeDeadlineUnix)
+    .map((row) => ({ key: row.key, secondsLeft: row.challengeDeadlineUnix - nowSeconds }));
+}
+
 /** Fault selector options, taken from the gateway rather than hardcoded. */
 export function faultOptions(evidence) {
   const available = evidence?.simulation?.availableFaults || [];

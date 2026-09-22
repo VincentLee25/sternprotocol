@@ -296,6 +296,12 @@ const FIELD_PATTERNS = {
   // Indonesian document, so the number class has to admit it, or the value
   // reads back as "19".
   grossWeight: /\b(?:verified\s+gross\s+mass|gross\s+weight|vgm)\b\s*(?:\(kg\))?\s*[:.\-]?\s*(\d[\d\s .,]{0,18}\d|\d)\s*(kgs?|mt|tonnes?|tons?)?/i,
+  // The VGM is a distinct, legally separate figure from the gross weight: it
+  // includes the tare of the container, and it is the one a terminal actually
+  // checks at the gate. A bill of lading commonly carries both, and reading
+  // the wrong one would put the wrong expected weight in front of a verifier.
+  verifiedGrossMass: /\bverified\s+gross\s+mass\b\s*(?:\(kg\))?\s*[:.\-]?\s*(\d[\d\s .,]{0,18}\d|\d)\s*(kgs?|mt|tonnes?|tons?)?/i,
+  placeOfIssue: /\bplace\s+of\s+issue\s*[:.\-]?\s*([^\n]{2,60})/i,
   issueDate: /\b(?:date\s+of\s+issue|issued?\s+(?:on|date)|shipped\s+on\s+board)\s*[:.\-]?\s*([0-9]{1,2}[\s\-\/][A-Za-z0-9]{2,9}[\s\-\/][0-9]{2,4}|[0-9]{4}-[0-9]{2}-[0-9]{2})/i
 };
 
@@ -332,6 +338,49 @@ async function extractPdf(bytes) {
   }
 }
 
+/**
+ * A weight off a bill of lading, as a number.
+ *
+ * These are written every which way and the separators mean opposite things in
+ * different conventions: 19 200,00 and 19,200.00 and 19.200,00 are all the
+ * same weight. Whichever separator comes last is the decimal one; a lone
+ * separator followed by exactly three digits is a thousands separator, because
+ * a container weight is never given to a thousandth of a kilogram.
+ *
+ * Returns null rather than a guess when the text does not parse — a verifier
+ * comparing against null shows "unknown", which is honest, where a wrong
+ * number would be a fabricated discrepancy.
+ */
+function parseWeight(value, unit) {
+  if (!value) return null;
+  const raw = String(value).replace(/[\s ]/g, "");
+  if (!/^\d[\d.,]*$/.test(raw)) return null;
+
+  const lastComma = raw.lastIndexOf(",");
+  const lastDot = raw.lastIndexOf(".");
+  let normalised;
+
+  if (lastComma >= 0 && lastDot >= 0) {
+    const decimalAt = Math.max(lastComma, lastDot);
+    normalised = raw.slice(0, decimalAt).replace(/[.,]/g, "") + "." + raw.slice(decimalAt + 1);
+  } else if (lastComma >= 0 || lastDot >= 0) {
+    const at = Math.max(lastComma, lastDot);
+    const tail = raw.slice(at + 1);
+    normalised = tail.length === 3
+      ? raw.replace(/[.,]/g, "")
+      : raw.slice(0, at).replace(/[.,]/g, "") + "." + tail;
+  } else {
+    normalised = raw;
+  }
+
+  const number = Number(normalised);
+  if (!Number.isFinite(number)) return null;
+  // Tonnes and tons are close enough for a demo feed; the unit is reported
+  // alongside so nothing downstream has to infer it.
+  const factor = /^(mt|tonnes?|tons?)$/i.test(String(unit || "").trim()) ? 1000 : 1;
+  return Math.round(number * factor * 100) / 100;
+}
+
 function readFields(text) {
   const fields = {};
   for (const [name, pattern] of Object.entries(FIELD_PATTERNS)) {
@@ -341,6 +390,12 @@ function readFields(text) {
   if (fields.grossWeight) {
     const unit = text.match(FIELD_PATTERNS.grossWeight)?.[2];
     fields.grossWeightUnit = unit ? clean(unit).toLowerCase() : null;
+    fields.grossWeightKg = parseWeight(fields.grossWeight, fields.grossWeightUnit);
+  }
+  if (fields.verifiedGrossMass) {
+    const unit = text.match(FIELD_PATTERNS.verifiedGrossMass)?.[2];
+    fields.verifiedGrossMassUnit = unit ? clean(unit).toLowerCase() : null;
+    fields.verifiedGrossMassKg = parseWeight(fields.verifiedGrossMass, fields.verifiedGrossMassUnit);
   }
 
   const containers = new Set();
