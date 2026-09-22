@@ -6,10 +6,23 @@ process.env.IPFS_GATEWAYS = "http://127.0.0.1:5651";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
-const require = createRequire("/home/user/sternprotocol/backend/oracle-gateway/");
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
+// Resolved from this file's own location, never from an absolute path.
+// A hardcoded /home/... specifier works only on the machine it was written on:
+// on Windows it resolved to \home\user\... and the whole suite died with
+// MODULE_NOT_FOUND before running a single check.
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REPO = path.resolve(HERE, "..");
+const GATEWAY = path.join(REPO, "backend", "oracle-gateway");
+const require = createRequire(path.join(GATEWAY, "index.js"));
+const gw = (name) => path.join(GATEWAY, name);
 
 const stub = spawn(process.execPath,
-  [new URL("./test-support/ipfs-node-stub.js", import.meta.url).pathname],
+  // fileURLToPath, not URL.pathname: on Windows the latter yields
+  // "/C:/Users/..." which spawn cannot open.
+  [path.join(HERE, "test-support", "ipfs-node-stub.js")],
   { stdio: "ignore", env: { ...process.env, STUB_PORT: "5651" } });
 
 let pass = 0, fail = 0;
@@ -17,17 +30,24 @@ const check = (l, a, e) => { String(a) === String(e) ? (pass++, console.log(`  o
 
 for (let i = 0; i < 40; i++) { try { await fetch("http://127.0.0.1:5651/ipfs/x"); break; } catch { await new Promise(r => setTimeout(r, 100)); } }
 
-const ipfs = require("./ipfsService.js");
-const pdf = fs.readFileSync("/home/user/sternprotocol/docs/demo/e-bl-TGHU-2026-001.pdf");
+const ipfs = require(gw("ipfsService.js"));
+const FIXTURE = path.join(REPO, "docs", "demo", "e-bl-TGHU-2026-001.pdf");
+if (!fs.existsSync(FIXTURE)) {
+  // *.pdf is gitignored, so a fresh clone has no fixture. Build it.
+  const { buildPdf } = require(path.join(REPO, "scripts", "make-demo-ebl.js"));
+  fs.mkdirSync(path.dirname(FIXTURE), { recursive: true });
+  fs.writeFileSync(FIXTURE, buildPdf("TGHU-2026-001"));
+}
+const pdf = fs.readFileSync(FIXTURE);
 const pinned = await ipfs.pinDocument(pdf, "e-bl.pdf");
 
 function withEscrow(documentCid, containerRef, commodity) {
-  require.cache[require.resolve("./contractService.js")] = {
-    id: require.resolve("./contractService.js"), loaded: true,
+  require.cache[require.resolve(gw("contractService.js"))] = {
+    id: require.resolve(gw("contractService.js")), loaded: true,
     exports: { getEscrow: async () => ({ documentCid, containerRef, commodity }) }
   };
-  delete require.cache[require.resolve("./oracleService.js")];
-  return require("./oracleService.js").getMockStatus;
+  delete require.cache[require.resolve(gw("oracleService.js"))];
+  return require(gw("oracleService.js")).getMockStatus;
 }
 
 console.log("\n=== dokumen benar: feed harus bercerita hal yang sama ===");
@@ -77,8 +97,8 @@ check("expected sintetis (24000+21)", s.sources.vgm.expected_vgm_kg, 24021);
 
 console.log("\n=== tanpa layanan pinning: perilaku lama utuh ===");
 process.env.IPFS_API_URL = "";
-delete require.cache[require.resolve("./config.js")];
-delete require.cache[require.resolve("./ipfsService.js")];
+delete require.cache[require.resolve(gw("config.js"))];
+delete require.cache[require.resolve(gw("ipfsService.js"))];
 s = await (withEscrow(pinned.cid, "TGHU-2026-001", "Kopi"))("20");
 check("mode", s.sources.ipfs.mode, "mock");
 check("kontainer tetap dari kontrak", s.sources.vgm.containerRef, "TGHU-2026-001");

@@ -1,6 +1,10 @@
 // disputeRehearsal is the whole point of the new button: it must pick the
 // right milestone, the right fault, and refuse honestly when neither exists.
-const { disputeRehearsal, openWindows } = await import("/home/user/sternprotocol/frontend/src/lib/evidence.js");
+// Imported relative to this file so the suite runs from any checkout on any
+// platform, rather than only where it was written.
+const { disputeRehearsal, openWindows } = await import(
+  new URL("../frontend/src/lib/evidence.js", import.meta.url)
+);
 
 let pass = 0, fail = 0;
 const check = (l, a, e) => { String(a) === String(e) ? (pass++, console.log(`  ok   ${l} = ${a}`)) : (fail++, console.log(`  FAIL ${l} — mau ${e}, dapat ${a}`)); };
