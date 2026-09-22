@@ -19,7 +19,7 @@ export default function SessionBoot({ label, detail }) {
         />
         <div className="relative flex h-full flex-col justify-between p-12">
           <span className="text-lg font-semibold tracking-[0.14em] text-alabaster">STERN</span>
-          <p className="font-mono text-2xs uppercase text-alabaster/60">
+          <p className="text-2xs text-alabaster/70">
             Polygon Amoy testnet &middot; Fase 0 preview
           </p>
         </div>
@@ -36,16 +36,16 @@ export default function SessionBoot({ label, detail }) {
               className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-teal border-t-transparent"
               aria-hidden="true"
             />
-            <h2 className="text-[22px] font-medium tracking-display text-navy" role="status">
+            <h2 className="text-[22px] font-bold text-navy" role="status">
               {label}
             </h2>
           </div>
 
           {detail ? (
-            <p className="mt-1.5 font-serif text-sm leading-relaxed text-ink-dim">{detail}</p>
+            <p className="mt-1.5 text-sm leading-relaxed text-ink-dim">{detail}</p>
           ) : null}
 
-          <p className="mt-6 font-mono text-2xs uppercase text-ink-faint">
+          <p className="mt-6 text-2xs text-ink-faint">
             Powered by Particle Network
           </p>
         </div>

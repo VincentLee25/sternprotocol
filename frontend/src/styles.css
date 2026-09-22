@@ -1,71 +1,87 @@
-@import url("https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,300&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap");
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /*
- * Theme tokens. Every named color in tailwind.config.js resolves through one
- * of these "R G B" triples, so toggling the `dark` class on <html> re-themes
- * the whole app without touching component classNames. navy/beige are the
- * light-mode identities of alabaster/onyx (same roles, opposite domains) -
- * see tailwind.config.js for how the pairing works.
+ * STERN design tokens — DESIGN.md v2.0.
+ *
+ * Every named colour in tailwind.config.js resolves through one of these
+ * "R G B" triples, so toggling the `dark` class on <html> re-themes the whole
+ * app without touching component classNames. The legacy aliases (navy/beige,
+ * alabaster/onyx) survive on purpose: they are the same *roles* under older
+ * names, and re-pointing them here is what let the v2 palette land without
+ * rewriting several hundred classNames.
+ *
+ * Three status hues are darkened from the literal DESIGN.md hex. DESIGN.md
+ * prints #3D8A68 / #B98235 / #C95D55, which sit at 3.8 / 3.1 / 3.7 : 1 on the
+ * #F7F5F0 page ground — status text is small and load-bearing, so each is taken
+ * to the darkest value that still reads as the same hue and clears 4.5:1. Same
+ * reasoning for ink-faint. The dark ramp needs no such correction and uses the
+ * DESIGN.md values verbatim.
  */
 :root {
-  --rgb-page: 245 239 235; /* beige / onyx: page background */
-  --rgb-surface: 255 255 255; /* card/panel fill (replaces literal white) */
-  --rgb-ink: 42 65 91; /* navy / alabaster: primary text */
-  /* The ink ramp and the semantic tier are tuned for >=4.5:1 on BOTH light
-     grounds (page and surface). 07_DESIGN_SYSTEM §2.4 calls its contrast rules
-     non-negotiable and then prescribes #7C8FA0 / #93A6B6, which sit at 2.2-3.3:1
-     and read as washed out. Pending was the worst at 2.99:1 on beige. */
-  --rgb-ink-dim: 78 94 109;
-  --rgb-ink-faint: 92 110 126;
-  --rgb-sky: 192 208 224; /* borders, subtle fills - never type */
-  --rgb-teal: 62 108 125; /* 5.1:1 on beige; the dark theme re-tunes it */
-  /* Teal as a BACKGROUND fill, e.g. the marketing colour block. Constant across
-     themes: white type sits on it, so lightening it for dark mode (as --rgb-teal
-     is) would drop that type to 3.2:1. */
-  --rgb-teal-solid: 62 108 125;
-  --rgb-state-attested: 60 117 95;
-  --rgb-state-pending: 140 97 35;
-  --rgb-state-disputed: 168 68 60;
+  --rgb-page: 247 245 240; /* #F7F5F0 warm paper ground */
+  --rgb-surface: 255 255 255; /* #FFFFFF card + panel fill */
+  --rgb-surface-soft: 242 246 247; /* #F2F6F7 recessed fill, inputs, chips */
+  --rgb-ink: 19 43 69; /* #132B45 primary type */
+  --rgb-ink-dim: 80 100 122; /* #50647A body + secondary type */
+  --rgb-ink-faint: 100 115 133; /* DESIGN.md #7B8A9A, taken to 4.45:1 */
+  --rgb-sky: 220 228 232; /* #DCE4E8 borders and rules — never type */
+  --rgb-teal: 40 124 131; /* #287C83 accent */
+  /* Teal as a BACKGROUND fill: white type sits on it, so this one is constant
+     across themes. Lightening it for dark mode (as --rgb-teal is) would drop
+     that white to ~3:1. */
+  --rgb-teal-solid: 23 107 115; /* #176B73 */
+  --rgb-ocean: 63 120 181; /* #3F78B5 */
+  --rgb-cyan: 101 191 196; /* #65BFC4 */
+  --rgb-lavender: 169 155 234; /* #A99BEA */
+  --rgb-coral: 230 138 122; /* #E68A7A */
+  --rgb-state-attested: 47 122 89; /* DESIGN.md #3D8A68, contrast-corrected */
+  --rgb-state-pending: 143 99 32; /* DESIGN.md #B98235, contrast-corrected */
+  --rgb-state-disputed: 178 74 66; /* DESIGN.md #C95D55, contrast-corrected */
+
+  --shadow-card: 0 8px 30px rgb(19 43 69 / 0.07);
+  --shadow-elevated: 0 14px 40px rgb(19 43 69 / 0.1);
 }
 
 :root.dark {
-  --rgb-page: 10 10 10;
-  --rgb-surface: 28 37 55;
-  --rgb-ink: 229 228 226;
-  --rgb-ink-dim: 168 182 196;
-  /* Lifted: 122 136 152 fell to 4.2:1 on the raised surface. */
-  --rgb-ink-faint: 133 146 160;
-  --rgb-sky: 64 78 98;
-  /* Teal is NOT constant across themes. The light value is 3.4:1 on onyx and
-     2.7:1 on the raised surface - the same hue, re-tuned for the dark ground. */
-  --rgb-teal: 91 151 174;
-  --rgb-state-attested: 94 176 138;
-  --rgb-state-pending: 214 158 74;
-  --rgb-state-disputed: 214 110 100;
+  --rgb-page: 16 21 27; /* #10151B */
+  --rgb-surface: 24 33 43; /* #18212B */
+  --rgb-surface-soft: 32 43 55; /* #202B37 */
+  --rgb-ink: 241 244 245; /* #F1F4F5 */
+  --rgb-ink-dim: 182 195 206; /* #B6C3CE */
+  --rgb-ink-faint: 135 150 164; /* #8796A4 */
+  --rgb-sky: 52 68 81; /* #344451 */
+  --rgb-teal: 101 191 196; /* #65BFC4 — re-tuned for the dark ground */
+  --rgb-ocean: 106 155 208;
+  --rgb-cyan: 120 201 206;
+  --rgb-lavender: 183 174 239;
+  --rgb-coral: 231 154 140;
+  --rgb-state-attested: 104 185 149;
+  --rgb-state-pending: 213 163 87;
+  --rgb-state-disputed: 223 119 109;
+
+  --shadow-card: 0 8px 30px rgb(0 0 0 / 0.28);
+  --shadow-elevated: 0 14px 40px rgb(0 0 0 / 0.38);
 }
 
-/* Pins a subtree to the dark chrome regardless of the active theme - for
-   panels laid directly over the (always-dark) port photography, where text
-   needs guaranteed contrast against the image rather than the page theme. */
+/* Pins a subtree to the dark chrome regardless of the active theme — for panels
+   laid directly over the (always-dark) port photography, where type needs
+   guaranteed contrast against the image rather than against the page theme. */
 .chrome-dark {
-  --rgb-page: 10 10 10;
-  --rgb-surface: 28 37 55;
-  --rgb-ink: 229 228 226;
-  --rgb-ink-dim: 168 182 196;
-  --rgb-ink-faint: 133 146 160;
-  --rgb-sky: 64 78 98;
-  /* Pinned dark chrome needs the dark teal too, or an eyebrow rendered over
-     the port photography drops to 3.4:1 while the page around it is light. */
-  --rgb-teal: 91 151 174;
-  /* And the semantic tier, for the same reason: the light-mode pending ochre
-     sits at 3.6:1 on onyx, which is where the footer's placeholder notice is. */
-  --rgb-state-attested: 94 176 138;
-  --rgb-state-pending: 214 158 74;
-  --rgb-state-disputed: 214 110 100;
+  --rgb-page: 16 21 27;
+  --rgb-surface: 24 33 43;
+  --rgb-surface-soft: 32 43 55;
+  --rgb-ink: 241 244 245;
+  --rgb-ink-dim: 182 195 206;
+  --rgb-ink-faint: 135 150 164;
+  --rgb-sky: 52 68 81;
+  --rgb-teal: 101 191 196;
+  --rgb-state-attested: 104 185 149;
+  --rgb-state-pending: 213 163 87;
+  --rgb-state-disputed: 223 119 109;
 }
 
 * {
@@ -76,8 +92,9 @@ body {
   margin: 0;
   background: rgb(var(--rgb-page));
   color: rgb(var(--rgb-ink));
-  font-family: "Figtree", system-ui, sans-serif;
+  font-family: "Poppins", system-ui, sans-serif;
   font-size: 15px;
+  font-weight: 400;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -88,16 +105,26 @@ textarea {
   font: inherit;
 }
 
+/* DESIGN.md interaction rules: 2px teal outline, 3px offset. */
 :focus-visible {
-  outline: 2px solid #3e6c7d;
+  outline: 2px solid rgb(var(--rgb-teal));
   outline-offset: 3px;
 }
 
 /*
+ * Nav labels and button text must never wrap onto two lines. Applied at the
+ * shell level rather than per-component so a long label widens or truncates
+ * instead of reflowing the row.
+ */
+.no-wrap {
+  white-space: nowrap;
+}
+
+/*
  * Theme swap. Applied to <html> only for the duration of the flip, then
- * removed. Every token-coloured surface, border and glyph fades together
- * instead of the ground fading while the rest snaps. Leaving this on
- * permanently would tax every hover and scroll in the app.
+ * removed, so every token-coloured surface fades together instead of the ground
+ * fading while the rest snaps. Leaving it on permanently would tax every hover
+ * and scroll in the app.
  */
 .theme-transition,
 .theme-transition *,

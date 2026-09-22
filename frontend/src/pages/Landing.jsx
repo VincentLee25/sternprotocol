@@ -38,12 +38,12 @@ export default function Landing({ onNavigate, onEnter }) {
               <span className="rise-in mb-6 block text-2xs uppercase tracking-macro text-teal">
                 Smart escrow for export&ndash;import settlement
               </span>
-              <h1 style={{ animationDelay: "70ms" }} className="rise-in text-[46px] font-medium leading-[0.98] tracking-display text-alabaster sm:text-[64px] lg:text-[76px]">
-                Paid the moment
+              <h1 style={{ animationDelay: "70ms" }} className="rise-in text-[46px] font-extrabold leading-[1.02] text-alabaster sm:text-[60px] lg:text-[68px]">
+                Verify,
                 <br />
-                it leaves <span className="text-teal">the port.</span>
+                Release,Move <span className="text-teal">the port.</span>
               </h1>
-              <p style={{ animationDelay: "140ms" }} className="rise-in mt-7 max-w-[50ch] font-serif text-[19px] font-light leading-[1.62] text-alabaster/90">
+              <p style={{ animationDelay: "140ms" }} className="rise-in mt-7 max-w-[50ch] text-[19px] leading-[1.62] text-alabaster/90">
                 An Aceh coffee cooperative waits weeks for a letter of credit to clear. STERN locks
                 the buyer&rsquo;s funds on-chain and releases them the instant weight, departure
                 and customs all check out.
@@ -52,15 +52,15 @@ export default function Landing({ onNavigate, onEnter }) {
                 <button
                   type="button"
                   onClick={onEnter}
-                  className="flex cursor-pointer items-center gap-2 rounded-full bg-teal-solid px-6 py-3 text-[13px] font-medium text-white transition-colors duration-150 hover:opacity-90"
+                  className="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-panel bg-teal-solid px-6 py-3 text-[13px] font-medium text-white shadow-card transition-[filter] duration-150 hover:brightness-110"
                 >
-                  Open workspace
+                  Access workspace
                   <ArrowRight size={15} aria-hidden="true" />
                 </button>
                 <button
                   type="button"
                   onClick={() => onNavigate("settlement")}
-                  className="cursor-pointer rounded-full border border-alabaster/25 px-6 py-3 text-[13px] font-medium text-alabaster transition-colors duration-150 hover:border-alabaster/50"
+                  className="cursor-pointer whitespace-nowrap rounded-panel border border-alabaster/25 px-6 py-3 text-[13px] font-medium text-alabaster transition-colors duration-150 hover:border-alabaster/50"
                 >
                   See how settlement works
                 </button>
@@ -95,10 +95,10 @@ export default function Landing({ onNavigate, onEnter }) {
           <div className="grid border-t border-alabaster/25 pb-14 sm:grid-cols-2 lg:grid-cols-4 lg:pb-[90px]">
             {TERMS.map((term) => (
               <div key={term.k} className="border-r border-alabaster/25 px-6 pt-8 first:pl-0 last:border-r-0 last:pr-0 lg:px-8">
-                <div className="text-[42px] font-medium leading-none tracking-display text-alabaster">
+                <div className="text-[42px] font-bold leading-none text-alabaster">
                   {term.k}
                 </div>
-                <p className="mt-3 max-w-[23ch] font-serif text-[14.5px] leading-[1.5] text-alabaster/90">
+                <p className="mt-3 max-w-[23ch] text-[14.5px] leading-[1.5] text-alabaster/90">
                   {term.v}
                 </p>
               </div>
@@ -110,10 +110,10 @@ export default function Landing({ onNavigate, onEnter }) {
       <section className="bg-teal-solid py-14 text-white lg:py-[86px]">
         <div className="mx-auto grid max-w-[1180px] items-center gap-10 px-6 lg:grid-cols-2 lg:gap-[70px] lg:px-14">
           <div>
-            <h2 className="text-balance text-[32px] font-medium leading-[1.04] tracking-display lg:text-[50px]">
+            <h2 className="text-balance text-[32px] font-bold leading-[1.06] lg:text-[46px]">
               The instrument is 400 years old. The delay is the product.
             </h2>
-            <p className="mt-5 font-serif text-[18px] font-light leading-[1.6] text-white/90">
+            <p className="mt-5 text-[18px] leading-[1.6] text-white/90">
               A letter of credit exists because two strangers cannot verify each other. STERN
               replaces the verifier, not the trust: bonded oracles, slashed if they lie.
             </p>
@@ -131,7 +131,7 @@ export default function Landing({ onNavigate, onEnter }) {
                 </div>
                 <div>
                   <div className="text-[17px] font-semibold tracking-[-0.012em]">{step.t}</div>
-                  <p className="mt-1 font-serif text-[15px] leading-[1.5] text-white/90">{step.d}</p>
+                  <p className="mt-1 text-[15px] leading-[1.5] text-white/90">{step.d}</p>
                 </div>
               </div>
             ))}

@@ -47,7 +47,7 @@ export default function CredentialsFooter({ onNavigate, onEnter }) {
               <p className="text-2xs uppercase tracking-macro text-teal">
                 Who is behind this
               </p>
-              <h2 className="mt-3 text-[26px] font-medium tracking-display lg:text-[32px]">
+              <h2 className="mt-3 text-[26px] font-bold lg:text-[32px]">
                 Professional credentials
               </h2>
             </div>
@@ -88,7 +88,7 @@ export default function CredentialsFooter({ onNavigate, onEnter }) {
                   )}
                   <p className="mt-1.5 text-[15px] font-medium text-alabaster">{person.role}</p>
                 </div>
-                <p className="mt-auto font-serif text-[14px] leading-relaxed text-alabaster/90">
+                <p className="mt-auto text-[14px] leading-relaxed text-alabaster/90">
                   {person.credential}
                 </p>
               </div>

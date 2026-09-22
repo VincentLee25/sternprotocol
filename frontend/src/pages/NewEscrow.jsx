@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 import { AlertTriangle, ArrowLeft, Check, ExternalLink, FileCheck2, Loader2, Lock, Paperclip, X } from "lucide-react";
 import Field, { inputClass } from "../components/Field.jsx";
+import { Button, Card, CardTitle, Notice, Tag } from "../components/ui.jsx";
 import { CURRENCY_CAPTION, CURRENCY_LABEL } from "../lib/currency.js";
 import { eblCheckRows, eblFieldRows, formatBytes, pinEbl, shortCid } from "../lib/ebl.js";
 import { eblDocumentUrl } from "../lib/sternApi.js";
+import { shortAddress } from "../lib/actors.js";
 import { hashShipmentDocument } from "../lib/shipmentHash.js";
 import { createEscrow } from "../lib/mockRegistry.js";
 import { createEscrowOnChain, onChainConfigured } from "../lib/sternContract.js";
@@ -41,7 +43,7 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
   //
   // `blocked` is structural: nothing resolves at the CID, or the bytes that do
   // resolve hash to something else. Anchoring that on chain would write an
-  // address that proves nothing, which is the exact failure this whole change
+  // address that proves nothing, which is the exact failure the IPFS work
   // exists to remove — so there is no override for it.
   //
   // `needsAcknowledgement` is about the document's contents: it is a real,
@@ -168,34 +170,33 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
   }
 
   const grossValue = Number(form.value) || 0;
+  const containerLabel = form.containerRef.trim().toUpperCase();
 
   return (
     <div className="w-full">
-      <button
-        type="button"
-        onClick={onBack}
-        className="mb-4 flex cursor-pointer items-center gap-1.5 text-sm text-teal transition-colors duration-150 hover:text-navy"
-      >
-        <ArrowLeft size={14} aria-hidden="true" />
+      <Button icon={ArrowLeft} tone="ghost" size="sm" onClick={onBack} className="-ml-3.5 mb-4">
         Back to escrows
-      </button>
+      </Button>
 
-      <header className="mb-6">
-        <p className="text-2xs uppercase text-ink-faint">Deed of conditional settlement</p>
-        <h1 className="mt-1.5 text-[32px] font-bold leading-none tracking-display text-navy">New escrow</h1>
-        <p className="mt-2.5 max-w-[62ch] font-serif text-[15px] leading-relaxed text-teal">
-          Creating an escrow makes you its <span className="text-navy">Importer</span> — the party
-          that deposits funds. Gasless, sponsored by the Paymaster.
-        </p>
-      </header>
+      <Notice tone="teal" className="mb-5">
+        Creating an escrow makes you its <strong className="font-semibold">importer</strong> &mdash;
+        the party whose funds are locked. The transaction is gasless and sponsored by the paymaster.
+      </Notice>
 
-
-      <form onSubmit={onSubmit} noValidate className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_336px]">
+      <form onSubmit={onSubmit} noValidate className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-5">
-          <section className="rounded-doc bg-surface p-6 shadow-card">
-            <h2 className="mb-4 text-2xs uppercase text-ink-faint">Counterparties</h2>
+          <Card>
+            <CardTitle hint="Both addresses are checked for format, and for being distinct from each other and from you.">
+              Counterparties
+            </CardTitle>
             <div className="space-y-4">
-              <Field label="Exporter wallet" htmlFor="exporter" required error={showError("exporter")} hint="Receives IDRT-demo once all three milestones are verified.">
+              <Field
+                label="Exporter wallet"
+                htmlFor="exporter"
+                required
+                error={showError("exporter")}
+                hint="Receives IDRT-demo once all three milestones are verified. Demo exporter: 0xfAF7af811FC2D0D2a915D9e2d1ce44463Cb96381"
+              >
                 <input
                   id="exporter"
                   name="exporter"
@@ -205,10 +206,16 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
                   placeholder="0x…"
                   spellCheck="false"
                   autoComplete="off"
-                  className={`${inputClass(Boolean(showError("exporter")))} text-xs`}
+                  className={`${inputClass(Boolean(showError("exporter")))} font-mono text-xs`}
                 />
               </Field>
-              <Field label="Arbiter wallet" htmlFor="arbiter" required error={showError("arbiter")} hint="Resolves disputes — independent of importer and exporter.">
+              <Field
+                label="Arbiter wallet"
+                htmlFor="arbiter"
+                required
+                error={showError("arbiter")}
+                hint="Resolves disputes — independent of importer and exporter. Demo arbiter: 0x0997657e121213909bE3E9d7701df0753Fb102ed"
+              >
                 <input
                   id="arbiter"
                   name="arbiter"
@@ -218,16 +225,21 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
                   placeholder="0x…"
                   spellCheck="false"
                   autoComplete="off"
-                  className={`${inputClass(Boolean(showError("arbiter")))} text-xs`}
+                  className={`${inputClass(Boolean(showError("arbiter")))} font-mono text-xs`}
                 />
               </Field>
             </div>
-          </section>
+          </Card>
 
-          <section className="rounded-doc bg-surface p-6 shadow-card">
-            <h2 className="mb-4 text-2xs uppercase text-ink-faint">Shipment terms</h2>
+          <Card>
+            <CardTitle hint={CURRENCY_CAPTION}>Shipment terms</CardTitle>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label={`Contract value (${CURRENCY_LABEL})`} htmlFor="value" required error={showError("value")}>
+              <Field
+                label={`Contract value (${CURRENCY_LABEL})`}
+                htmlFor="value"
+                required
+                error={showError("value")}
+              >
                 <input
                   id="value"
                   name="value"
@@ -236,10 +248,16 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
                   onChange={update}
                   onBlur={markTouched}
                   placeholder="45000000"
-                  className={inputClass(Boolean(showError("value")))}
+                  className={`${inputClass(Boolean(showError("value")))} tabular-nums`}
                 />
               </Field>
-              <Field label="Settlement deadline" htmlFor="deadline" required error={showError("deadline")} hint="Global safety valve — importer can refund any time after this passes.">
+              <Field
+                label="Settlement deadline"
+                htmlFor="deadline"
+                required
+                error={showError("deadline")}
+                hint="Global safety valve — the importer can refund at any time after this passes."
+              >
                 <input
                   id="deadline"
                   name="deadline"
@@ -261,7 +279,12 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
                   className={inputClass(Boolean(showError("commodity")))}
                 />
               </Field>
-              <Field label="Container reference" htmlFor="containerRef" required error={showError("containerRef")}>
+              <Field
+                label="Container reference"
+                htmlFor="containerRef"
+                required
+                error={showError("containerRef")}
+              >
                 <input
                   id="containerRef"
                   name="containerRef"
@@ -270,55 +293,58 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
                   onBlur={markTouched}
                   placeholder="TGHU-2026-001"
                   spellCheck="false"
-                  className={`${inputClass(Boolean(showError("containerRef")))} text-xs uppercase`}
+                  className={`${inputClass(Boolean(showError("containerRef")))} uppercase`}
                 />
               </Field>
             </div>
-            <p className="mt-3 font-serif text-xs leading-relaxed text-ink-dim">{CURRENCY_CAPTION}</p>
-          </section>
+          </Card>
 
-          <section className="rounded-doc bg-surface p-6 shadow-card">
-            <h2 className="mb-1 text-2xs uppercase text-ink-faint">Electronic bill of lading</h2>
-            <p className="mb-3 font-serif text-xs leading-relaxed text-ink-dim">
-              Pinned to IPFS, then read back from its own address and checked: that the bytes hash
-              to the address, and that the document is a bill of lading for container{" "}
-              <span className="font-mono text-navy">{form.containerRef.trim().toUpperCase() || "…"}</span>.
-              The contract stores that address.
-            </p>
+          <Card>
+            <CardTitle
+              hint={`Pinned to IPFS, then read back from its own address and checked: that the bytes hash to the address, and that the document is a bill of lading for container ${containerLabel || "…"}. The contract stores that address.`}
+            >
+              Electronic bill of lading
+            </CardTitle>
             <label
-              className={`flex cursor-pointer items-center gap-3 rounded-panel border border-dashed px-3.5 py-3 transition-colors duration-150 ${
+              className={`flex cursor-pointer items-center gap-3 rounded-panel border border-dashed px-3.5 py-3.5 transition-colors duration-150 ${
                 showError("document") ? "border-state-disputed/60" : "border-sky hover:border-teal/50"
               }`}
             >
-              <input type="file" accept="application/pdf,.pdf" onChange={onFileChange} className="sr-only" />
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                onChange={onFileChange}
+                className="sr-only"
+              />
               {hashing ? (
-                <Loader2 size={16} className="shrink-0 animate-spin text-teal" aria-hidden="true" />
+                <Loader2 size={17} className="shrink-0 animate-spin text-teal" aria-hidden="true" />
               ) : blocked ? (
-                <AlertTriangle size={16} className="shrink-0 text-state-disputed" aria-hidden="true" />
+                <AlertTriangle size={17} className="shrink-0 text-state-disputed" aria-hidden="true" />
               ) : document_ ? (
-                <FileCheck2 size={16} className="shrink-0 text-state-attested" aria-hidden="true" />
+                <FileCheck2 size={17} className="shrink-0 text-state-attested" aria-hidden="true" />
               ) : (
-                <Paperclip size={16} className="shrink-0 text-ink-dim" aria-hidden="true" />
+                <Paperclip size={17} className="shrink-0 text-ink-dim" aria-hidden="true" />
               )}
               <span className="min-w-0">
                 {hashing ? (
-                  <span className="text-xs text-teal">Pinning to IPFS and reading it back…</span>
+                  <span className="text-[13px] text-teal">Pinning to IPFS and reading it back…</span>
                 ) : document_ ? (
                   <>
-                    <span className="block truncate text-xs font-medium text-navy">
-                      {document_.fileName} <span className="text-ink-dim">({formatBytes(document_.size)})</span>
+                    <span className="block truncate text-[13px] font-medium text-navy">
+                      {document_.fileName}{" "}
+                      <span className="font-normal text-ink-dim">({formatBytes(document_.size)})</span>
                     </span>
                     <span className="block truncate font-mono text-2xs text-teal">
                       {document_.mode === "ipfs" ? document_.cid : `${document_.cid.slice(0, 24)}…`}
                     </span>
                   </>
                 ) : (
-                  <span className="text-xs text-teal">Choose the e-BL (PDF)</span>
+                  <span className="text-[13px] text-ink-dim">Choose the e-BL — PDF</span>
                 )}
               </span>
             </label>
             {showError("document") ? (
-              <p role="alert" className="mt-1.5 text-xs text-state-disputed">
+              <p role="alert" className="mt-2 text-[12.5px] text-state-disputed">
                 {errors.document}
               </p>
             ) : null}
@@ -335,22 +361,31 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
             ) : null}
 
             {document_?.mode === "local" ? (
-              <p className="mt-3 rounded-panel border border-state-pending/40 bg-state-pending/[0.08] px-3.5 py-2.5 font-serif text-xs leading-relaxed text-state-pending">
+              <Notice tone="pending" icon={AlertTriangle} className="mt-3">
                 This gateway has no IPFS pinning service configured, so the document was not pinned.
                 What goes on chain is a local content hash — it identifies the file, but nothing
                 resolves at it and no one else can retrieve the document from it. Set{" "}
                 <span className="font-mono">PINATA_JWT</span> on the gateway to pin for real.
-              </p>
+              </Notice>
             ) : null}
-          </section>
+          </Card>
         </div>
 
-        <aside className="h-fit rounded-doc bg-surface p-6 shadow-card lg:sticky lg:top-6">
-          <h2 className="mb-4 text-2xs uppercase text-ink-faint">Review &amp; lock</h2>
-          <div className="space-y-2.5 text-sm">
+        {/* Review rail. DESIGN.md: the final review names importer, exporter,
+            arbiter, contract value and the action being signed before anything
+            is committed. */}
+        <Card as="aside" className="h-fit lg:sticky lg:top-0">
+          <CardTitle>Review and lock</CardTitle>
+          <div className="divide-y divide-sky/70">
             <Row label="Deposit" value={`${grossValue.toLocaleString("id-ID")} ${CURRENCY_LABEL}`} />
-            <Row label="Your balance" value={`${Number(balance || 0).toLocaleString("id-ID")} ${CURRENCY_LABEL}`} />
-            <Row label="Milestones" value="3 — Inspected, Shipped, Arrived & cleared" />
+            <Row
+              label="Your balance"
+              value={`${Number(balance || 0).toLocaleString("id-ID")} ${CURRENCY_LABEL}`}
+            />
+            <Row label="You sign as" value="Importer" />
+            <Row label="Exporter" value={shortAddress(form.exporter) || "not set"} />
+            <Row label="Arbiter" value={shortAddress(form.arbiter) || "not set"} />
+            <Row label="Milestones" value="3 — inspected, shipped, cleared" />
             <Row label="Challenge window" value="6h per milestone" />
             <Row label="Timelock" value="24h after final milestone" />
             <Row label="Dispute path" value="Arbiter decides, 2% buyer bond" />
@@ -367,27 +402,33 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
           </div>
 
           {submitError ? (
-            <p role="alert" className="mt-4 rounded-panel border border-state-disputed/40 bg-state-disputed/10 px-3 py-2.5 font-serif text-xs text-state-disputed">
+            <Notice tone="disputed" role="alert" className="mt-4">
               {submitError}
-            </p>
+            </Notice>
           ) : null}
 
-          <button
+          <Button
             type="submit"
+            tone="primary"
+            size="lg"
+            full
+            busy={submitting}
             disabled={submitting || hashing || blocked || (needsAcknowledgement && !acknowledged)}
-            className="mt-5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-navy py-3 text-sm font-medium text-beige transition-colors duration-150 hover:bg-teal-solid disabled:cursor-not-allowed disabled:opacity-50"
+            icon={Lock}
+            className="mt-5"
           >
-            {submitting ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Lock size={14} aria-hidden="true" />}
             {submitting
               ? onChainConfigured
                 ? "Locking funds on chain…"
                 : "Locking funds…"
               : "Lock funds in escrow"}
-          </button>
-          <p className="mt-2.5 text-center text-2xs uppercase text-ink-faint">
-            {onChainConfigured ? "Gasless — sponsored by Pimlico" : "Demo data — nothing is sent on chain"}
+          </Button>
+          <p className="mt-2.5 text-center text-2xs text-ink-faint">
+            {onChainConfigured
+              ? "Gasless — sponsored by Pimlico"
+              : "Demo data — nothing is sent on chain"}
           </p>
-        </aside>
+        </Card>
       </form>
     </div>
   );
@@ -395,9 +436,9 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
 
 function Row({ label, value }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 border-b border-dotted border-sky pb-2">
-      <span className="text-2xs uppercase text-ink-faint">{label}</span>
-      <span className="text-right font-serif text-[13.5px] text-navy">{value}</span>
+    <div className="flex items-baseline justify-between gap-3 py-2.5">
+      <span className="whitespace-nowrap text-[13px] text-ink-dim">{label}</span>
+      <span className="text-right text-[13px] font-medium tabular-nums text-navy">{value}</span>
     </div>
   );
 }
@@ -417,21 +458,21 @@ function EblReport({ document_, verification, blocked, needsAcknowledgement, ack
 
   return (
     <div className="mt-3 space-y-3">
-      <div className="rounded-panel border border-sky bg-beige/50 px-3.5 py-3">
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-2xs uppercase text-ink-faint">IPFS address</span>
-          <span className="font-serif text-2xs text-ink-dim">
+      <div className="rounded-panel border border-sky bg-surface-soft px-3.5 py-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <span className="text-[13px] text-ink-dim">IPFS address</span>
+          <span className="text-2xs text-ink-faint">
             {document_.provider === "pinata" ? "Pinata" : "IPFS node"}
           </span>
         </div>
         <p className="mt-1 break-all font-mono text-2xs text-navy">{document_.cid}</p>
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
           {documentUrl ? (
             <a
               href={documentUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 font-mono text-2xs uppercase text-teal transition-colors duration-150 hover:text-navy"
+              className="inline-flex items-center gap-1 text-2xs font-medium text-teal transition-colors duration-150 hover:text-navy"
             >
               Open the document
               <ExternalLink size={10} aria-hidden="true" />
@@ -439,29 +480,21 @@ function EblReport({ document_, verification, blocked, needsAcknowledgement, ack
           ) : null}
           {/* The distinction that makes the pin worth anything: the CID was
               recomputed here from the bytes, not simply believed. */}
-          <span
-            className={`font-mono text-2xs uppercase ${
-              document_.cidSelfChecked ? "text-state-attested" : "text-state-pending"
-            }`}
-          >
-            {document_.cidSelfChecked ? "Address reproduced independently" : "Address not reproduced locally"}
-          </span>
+          <Tag tone={document_.cidSelfChecked ? "attested" : "pending"}>
+            {document_.cidSelfChecked
+              ? "Address reproduced independently"
+              : "Address not reproduced locally"}
+          </Tag>
         </div>
       </div>
 
       {checks.length ? (
         <ul className="flex flex-wrap gap-1.5">
           {checks.map((check) => (
-            <li
-              key={check.key}
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-2xs uppercase ${
-                check.passed
-                  ? "bg-state-attested/10 text-state-attested"
-                  : "bg-state-disputed/10 text-state-disputed"
-              }`}
-            >
-              {check.passed ? <Check size={10} aria-hidden="true" /> : <X size={10} aria-hidden="true" />}
-              {check.label}
+            <li key={check.key}>
+              <Tag tone={check.passed ? "attested" : "disputed"} icon={check.passed ? Check : X}>
+                {check.label}
+              </Tag>
             </li>
           ))}
         </ul>
@@ -469,43 +502,32 @@ function EblReport({ document_, verification, blocked, needsAcknowledgement, ack
 
       {fields.length ? (
         <div className="rounded-panel border border-sky px-3.5 py-3">
-          <p className="mb-2 text-2xs uppercase text-ink-faint">Read from the document</p>
-          <dl className="space-y-1">
+          <p className="mb-2 text-[13px] text-ink-dim">Read from the document</p>
+          <dl className="divide-y divide-sky/70">
             {fields.map((field) => (
-              <div key={field.key} className="flex items-baseline justify-between gap-3">
-                <dt className="shrink-0 text-2xs uppercase text-ink-faint">{field.label}</dt>
-                <dd className="min-w-0 text-right font-serif text-2xs text-navy">{field.value}</dd>
+              <div key={field.key} className="flex items-baseline justify-between gap-3 py-1.5">
+                <dt className="shrink-0 text-2xs text-ink-faint">{field.label}</dt>
+                <dd className="min-w-0 text-right text-2xs text-navy">{field.value}</dd>
               </div>
             ))}
           </dl>
         </div>
       ) : null}
 
-      {verification?.notes?.length ? (
-        <ul className="space-y-1.5">
-          {verification.notes.map((note) => (
-            <li
-              key={note}
-              className={`flex items-start gap-1.5 rounded-panel px-3 py-2 font-serif text-xs leading-relaxed ${
-                blocked
-                  ? "border border-state-disputed/40 bg-state-disputed/[0.07] text-state-disputed"
-                  : "border border-state-pending/40 bg-state-pending/[0.07] text-state-pending"
-              }`}
-            >
-              <AlertTriangle size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
+      {verification?.notes?.length
+        ? verification.notes.map((note) => (
+            <Notice key={note} tone={blocked ? "disputed" : "pending"} icon={AlertTriangle}>
               {note}
-            </li>
-          ))}
-        </ul>
-      ) : null}
+            </Notice>
+          ))
+        : null}
 
       {blocked ? (
-        <p className="rounded-panel border border-state-disputed/45 bg-state-disputed/[0.08] px-3.5 py-2.5 font-serif text-xs leading-relaxed text-state-disputed">
-          {verification?.reason ||
-            "The document could not be retrieved from its own address."}{" "}
+        <Notice tone="disputed">
+          {verification?.reason || "The document could not be retrieved from its own address."}{" "}
           Anchoring this address would put a reference on chain that resolves to nothing, so it
           cannot be used. Attach the document again.
-        </p>
+        </Notice>
       ) : null}
 
       {needsAcknowledgement ? (
@@ -516,7 +538,7 @@ function EblReport({ document_, verification, blocked, needsAcknowledgement, ack
             onChange={(event) => onAcknowledge(event.target.checked)}
             className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-state-pending"
           />
-          <span className="font-serif text-xs leading-relaxed text-state-pending">
+          <span className="text-[13px] leading-relaxed text-state-pending">
             The document is retrievable and its address checks out, but it did not pass every
             content check above. Anchor it anyway — the verifiers will see the same result.
           </span>

@@ -2,10 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 
 const STORAGE_KEY = "stern-theme";
 
-function systemPrefersDark() {
-  return typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
-}
-
 function readStoredTheme() {
   try {
     return localStorage.getItem(STORAGE_KEY);
@@ -18,22 +14,16 @@ function applyTheme(isDark) {
   document.documentElement.classList.toggle("dark", isDark);
 }
 
-// Mirrors the inline no-flash script in index.html: explicit choice wins,
-// otherwise follow the OS preference (and keep following it live).
+// Mirrors the inline no-flash script in index.html. DESIGN.md v2.0 specifies a
+// light-theme product with dark as an opt-in, so the OS preference no longer
+// selects the theme — only a stored choice does. The toggle still works, and a
+// visitor who picked dark keeps it across reloads.
 export function useTheme() {
-  const [theme, setTheme] = useState(() => (readStoredTheme() || (systemPrefersDark() ? "dark" : "light")));
+  const [theme, setTheme] = useState(() => (readStoredTheme() === "dark" ? "dark" : "light"));
 
   useEffect(() => {
     applyTheme(theme === "dark");
   }, [theme]);
-
-  useEffect(() => {
-    if (readStoredTheme()) return undefined;
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const onChange = (event) => setTheme(event.matches ? "dark" : "light");
-    media.addEventListener("change", onChange);
-    return () => media.removeEventListener("change", onChange);
-  }, []);
 
   // The swap cross-fades every token-coloured surface at once. The class is
   // added around the flip and pulled straight back off, so nothing else in the

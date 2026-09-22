@@ -57,20 +57,20 @@ export default function Timeline({ state }) {
               >
                 {step.label}
               </p>
-              <p className="font-serif text-xs text-ink-dim">{step.detail}</p>
+              <p className="text-xs text-ink-dim">{step.detail}</p>
             </div>
           </li>
         );
       })}
 
       {isDisputed ? (
-        <li className="mt-1 flex items-center gap-2 rounded-panel bg-state-pending/10 px-3 py-2.5 font-serif text-sm text-state-pending">
+        <li className="mt-1 flex items-center gap-2 rounded-panel bg-state-pending/10 px-3 py-2.5 text-sm text-state-pending">
           <Scale size={13} aria-hidden="true" className="shrink-0" />
           Disputed: funds frozen until the appointed arbiter resolves it
         </li>
       ) : null}
       {isRefunded ? (
-        <li className="mt-1 flex items-center gap-2 rounded-panel bg-sky/40 px-3 py-2.5 font-serif text-sm text-ink-dim">
+        <li className="mt-1 flex items-center gap-2 rounded-panel bg-sky px-3 py-2.5 text-sm text-ink-dim">
           <Undo2 size={13} aria-hidden="true" className="shrink-0" />
           Refunded: escrow value returned to the importer
         </li>

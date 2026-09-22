@@ -15,7 +15,7 @@ export default function ThemeToggle({ className = "" }) {
       aria-pressed={isDark}
       aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
       title={isDark ? "Switch to light theme" : "Switch to dark theme"}
-      className={`grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-full border border-navy/15 text-navy transition-colors duration-150 hover:bg-navy/8 ${className}`}
+      className={`grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-panel border border-sky text-ink-dim transition-colors duration-150 hover:bg-surface-soft hover:text-navy ${className}`}
     >
       {/* Both icons are mounted so the swap can cross-fade and rotate rather
           than pop. The stack is one grid cell, so nothing shifts. */}

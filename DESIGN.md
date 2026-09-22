@@ -1,52 +1,74 @@
 ---
 design_system: STERN Protocol
-version: 1.0
+version: 2.0
 product_type: enterprise trade-finance escrow workspace
 principles:
   - evidence before assertion
   - restrained operational clarity
-  - trust is communicated by traceability not decoration
+  - premium human-designed visual system
+  - trust is communicated by traceability, not decoration
   - every money-moving action exposes actor state and consequence
+  - the public website may be expressive; operational screens remain focused and scannable
 tokens:
   color:
     light:
-      page: "#F5EFEB"
+      page: "#F7F5F0"
       surface: "#FFFFFF"
-      ink: "#2A415B"
-      ink_dim: "#4E5E6D"
-      ink_faint: "#5C6E7E"
-      border: "#C0D0E0"
-      accent: "#3E6C7D"
-      accent_solid: "#3E6C7D"
-      success: "#3C755F"
-      warning: "#8C6123"
-      danger: "#A8443C"
+      surface_soft: "#F2F6F7"
+      ink: "#132B45"
+      ink_dim: "#50647A"
+      ink_faint: "#7B8A9A"
+      border: "#DCE4E8"
+      accent: "#287C83"
+      accent_solid: "#176B73"
+      ocean: "#3F78B5"
+      cyan: "#65BFC4"
+      lavender: "#A99BEA"
+      coral: "#E68A7A"
+      success: "#3D8A68"
+      warning: "#B98235"
+      danger: "#C95D55"
+      gradient_primary: "linear-gradient(135deg, #EAF7F5 0%, #E9F1FB 52%, #F0ECFA 100%)"
+      gradient_ocean: "linear-gradient(135deg, #E8F4F8 0%, #DDECF8 55%, #EDE9F8 100%)"
+      gradient_soft: "linear-gradient(135deg, #F1FAF8 0%, #F4F1FB 100%)"
     dark:
-      page: "#0A0A0A"
-      surface: "#1C2537"
-      ink: "#E5E4E2"
-      ink_dim: "#A8B6C4"
-      ink_faint: "#8592A0"
-      border: "#404E62"
-      accent: "#5B97AE"
-      success: "#5EB08A"
-      warning: "#D69E4A"
-      danger: "#D66E64"
+      page: "#10151B"
+      surface: "#18212B"
+      surface_soft: "#202B37"
+      ink: "#F1F4F5"
+      ink_dim: "#B6C3CE"
+      ink_faint: "#8796A4"
+      border: "#344451"
+      accent: "#65BFC4"
+      accent_solid: "#4AA8AE"
+      ocean: "#6A9BD0"
+      cyan: "#78C9CE"
+      lavender: "#B7AEEF"
+      coral: "#E79A8C"
+      success: "#68B995"
+      warning: "#D5A357"
+      danger: "#DF776D"
   typography:
-    sans: "Figtree, system-ui, sans-serif"
-    serif: "Source Serif 4, Georgia, serif"
-    display_weight: 700
+    primary: "Poppins, system-ui, sans-serif"
+    display: "Poppins, system-ui, sans-serif"
+    display_weight: 800
+    heading_weight: 700
     body_weight: 400
-  spacing: [4, 8, 12, 16, 20, 24, 32, 40, 48, 64]
+    medium_weight: 500
+    semibold_weight: 600
+  spacing: [4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 80]
   radius:
-    control: 6
-    panel: 10
-    document: 14
+    control: 12
+    card: 18
+    panel: 22
+    hero: 30
+    document: 16
   shadow:
-    card: "0 2px 16px rgba(42,65,91,0.075)"
+    card: "0 8px 30px rgba(19,43,69,0.07)"
+    elevated: "0 14px 40px rgba(19,43,69,0.10)"
   motion:
     interaction_ms: 180
-    page_enter_ms: 560
+    page_enter_ms: 450
     reduced_motion: true
 ---
 
@@ -54,49 +76,105 @@ tokens:
 
 ## Brand Definition
 
-**STERN Protocol** is an evidence-led trade-finance workspace for controlled export-import settlement. It should feel like a disciplined operations product used by companies, verifiers, and arbiters, not a consumer crypto wallet, an exchange, or a marketing landing page.
+**STERN Protocol** is an evidence-led trade-finance workspace for controlled export-import settlement. It should feel like a premium maritime fintech product used by companies, verifiers, and arbiters: trustworthy and operationally serious without looking like a traditional banking portal, crypto wallet, or generic enterprise dashboard.
 
-The brand personality is calm, maritime, precise, and accountable. The visual language takes cues from shipping documents, port operations, and regulated financial systems: clear hierarchy, document-like details, semantic status colors, and readable audit trails. The product communicates that each assertion is backed by an artifact, a party, and a timestamp.
+The brand personality is maritime, precise, accountable, modern, and quietly premium. The visual language combines international trade operations with contemporary fintech and editorial web design. Trust comes from visible evidence, parties, timestamps, lifecycle state, and auditability — not from decorative blockchain imagery.
 
 Use the tagline only where it adds context: **Evidence-led escrow for export-import settlement.**
 
 ## Visual Direction
 
-Use an enterprise gateway pattern with minimal Swiss-style discipline: deliberate white space, hard-working grids, clean typography, and subtle borders. The STERN tokens above are authoritative; do not replace them with generic blue/purple gradients or a gold crypto aesthetic.
+Create a polished LIGHT-THEME product ecosystem. The public website can be visually expressive and colorful; authenticated operational screens should retain the same brand but become denser and more functional.
 
-- Light mode is the default working environment: warm paper-like page ground, white work surfaces, maritime navy ink, muted teal action color.
-- Dark mode is available for low-light operations and product marketing chrome, not a different brand.
-- Show actual ports, containers, bills of lading, evidence documents, or real operational state where imagery is needed. Do not use decorative abstract blockchain graphics.
+- Use a warm off-white / paper-like page ground rather than stark white or dark canvas.
+- Use clean white surfaces, deep maritime navy typography, and maritime teal as the primary action color.
+- Add soft ocean blue, cyan, lavender, coral, and green as supporting accents so the product does not feel monochromatic.
+- Use tasteful low-saturation gradients, especially soft ocean blue → teal → lavender. Gradients are for composition and emphasis, not every component.
+- Use real maritime and trade imagery when imagery is needed: ports, container ships, cargo inspection, documents, customs, and logistics operations.
 - Use Lucide icons. Never use emoji as interface icons.
-- Preserve status semantics everywhere: green is attested/completed, ochre is waiting/time-sensitive, red is disputed/error, muted gray-blue is inactive/reference data.
+- Preserve status semantics everywhere: green is attested/completed, ochre is waiting/time-sensitive, coral/red is disputed/error, muted blue-gray is inactive/reference data.
+- The design must look intentionally composed by a professional product designer, not like an AI-generated template.
+- Avoid dark infinite canvases, dotted backgrounds, floating artboards, excessive glassmorphism, generic AI illustrations, crypto coins, chains, neon, cyberpunk effects, and Web3 visual clichés.
+
+## Color and Gradient Rules
+
+Color should create visual rhythm across a page rather than decorate every box.
+
+Preferred sequence for public pages:
+
+`warm cream → white → soft blue/teal gradient → white → maritime photography → white → soft lavender/blue → warm cream`
+
+Use gradients on:
+- hero compositions
+- large feature backgrounds
+- selected CTA sections
+- highlighted evidence/product demonstrations
+
+Do not use gradients on every card, table row, button, or status element. Keep operational data surfaces mostly white.
+
+Do not use saturated rainbow palettes or neon purple/blue crypto gradients.
 
 ## Typography
 
-- **Figtree**: navigation, labels, buttons, forms, tables, numeric UI, compact operations text.
-- **Source Serif 4**: operational explanations, document metadata, evidence narrative, empty-state support text, and longer human-readable detail.
-- Page title: 28-36px, Figtree 700, normal tracking. Use hero scale only on a true marketing page.
-- Section title: 16-20px, Figtree 600-700.
-- Body: 14-15px, Figtree or Source Serif 4 depending on data density.
-- Label/meta: 10-12px, Figtree, uppercase only for short labels; letter spacing 0.12-0.18em.
-- Never use negative letter spacing. Never scale font size based on viewport width.
+- **Poppins** is the primary and only UI typeface for this version of STERN.
+- Poppins 800: hero/display headlines.
+- Poppins 700: page and section headings.
+- Poppins 600: navigation emphasis, card headings, important labels.
+- Poppins 500: buttons, tabs, metadata that needs emphasis.
+- Poppins 400: body copy and supporting descriptions.
+- Hero heading: 48-72px on desktop depending on composition; never use excessive tracking.
+- Page title: 28-36px.
+- Section title: 22-32px.
+- Body: 14-16px.
+- Compact operational metadata: 11-13px.
+- Avoid tiny text used merely to fill empty space.
+- Avoid excessive uppercase labels. Use sentence case by default.
+- Never use negative letter spacing.
 
 ## Layout Rules
 
-- Desktop application shell: fixed 240-280px sidebar, one scrollable main workspace, max content width 1440px.
-- Main content uses 24px gap on desktop and 16px on mobile. Page padding: 24px mobile, 32-40px desktop.
-- Do not put page sections inside decorative cards. Cards are for repeated rows, evidence artifacts, modals, and focused operational tools only.
-- Panels use 10px radius. Document/artifact previews may use 14px radius. Avoid pills except statuses, avatars, and compact filters.
-- Tables have fixed headers when useful, clear row separators, right-aligned numeric columns, and responsive card transformation on narrow screens.
-- At 375px, stack all columns, preserve a visible primary action, and avoid horizontal scrolling except in a deliberately scrollable evidence table.
+- Public website: generous whitespace, asymmetric compositions, varied section layouts, strong visual hierarchy, and occasional full-width visual sections.
+- Application shell: fixed 240-280px sidebar, one scrollable main workspace, max content width around 1440px.
+- Desktop page padding: 32-40px. Mobile: 20-24px.
+- Use 20-32px spacing between major sections and 16-24px inside grouped UI.
+- Do not put every page section inside a decorative card.
+- Cards are for repeated records, evidence artifacts, focused operational tools, and highlighted content.
+- Prefer one strong composition over many identical cards.
+- Use asymmetric grids where appropriate instead of repetitive three-column layouts.
+- Panels and cards use 18-22px radius. Hero containers use 28-30px radius. Controls use approximately 12px radius.
+- Buttons are rounded but not capsule-shaped unless used for a compact status/filter.
+- Tables use clear row separators, comfortable row height, fixed headers when useful, right-aligned numeric columns, and mobile card transformation.
+- At 375px, stack columns, preserve the primary action, and avoid horizontal scrolling except for intentionally scrollable evidence tables.
+
+## Public Website Rules
+
+- The landing page is a real marketing/product website, not a design-system presentation.
+- Use a clean top navbar with brand, concise navigation, Sign in, and Access Workspace.
+- Hero imagery should be integrated into the composition rather than appearing as a generic stock-photo rectangle with arbitrary floating badges.
+- Marketing sections should vary composition: editorial split, process flow, large evidence showcase, image-led section, and CTA.
+- Avoid endless rows of identical cards.
+- Use product UI previews when they communicate the product better than illustrations.
+- Keep copy concise and credible.
+
+## Application Rules
+
+- Authenticated pages share the public brand but prioritize operational clarity.
+- Light theme remains the default.
+- Use mostly white operational surfaces with subtle gradient highlights only where they improve hierarchy.
+- The sidebar should be light or softly tinted, not a heavy dark dashboard sidebar.
+- Primary actions use maritime teal or a restrained teal/ocean treatment.
+- Financial values and lifecycle states should have strong hierarchy.
+- Dense information is acceptable, but remove unnecessary micro-copy and decorative metadata.
+- Avoid making every KPI or row into a separate colorful card.
 
 ## Interaction Rules
 
-- Every primary action must make its actor and effect explicit: `Lock IDRT`, `Submit proof`, `Open dispute`, `Approve deadline`, `Resolve to refund`.
+- Every primary action must make its actor and effect explicit: `Lock IDRT`, `Submit evidence`, `Open dispute`, `Approve deadline`, `Resolve to refund`.
 - Destructive or irreversible actions require a confirmation dialog stating asset, recipient, and irreversible consequence.
 - Keep submit buttons disabled while a wallet operation is pending. Show transaction status with hash link, confirmation state, and actionable failure message.
 - Tooltips explain icon-only controls. Keyboard focus is a 2px teal outline with 3px offset.
 - Use 150-220ms color/opacity transitions only. Respect `prefers-reduced-motion`.
-- Do not hide material errors behind toasts alone; show them next to the failed operation and preserve in activity history.
+- Do not hide material errors behind toasts alone; show them next to the failed operation and preserve them in activity history.
 
 ## Information Architecture and Required Pages
 
@@ -104,10 +182,13 @@ Use an enterprise gateway pattern with minimal Swiss-style discipline: deliberat
 
 Purpose: explain the business problem and direct companies to sign in or request a pilot.
 
-- Full-bleed verified port/container image with text directly over the image, never in a floating card.
-- Brand name, one-sentence promise, primary `Access workspace`, secondary `Request pilot`.
-- A short evidence-to-settlement flow, industries served, integration status, and legal/compliance footer.
-- Keep the next section visible below the first viewport on desktop and mobile.
+- Premium maritime hero with headline, supporting copy, primary `Access Workspace`, and secondary `Request Pilot`.
+- Evidence-to-settlement process visual.
+- Evidence-first product demonstration.
+- Trade operations / industries section.
+- Integration and trust signals.
+- Final CTA and legal/compliance footer.
+- Use varied editorial layouts rather than repeated card grids.
 
 ### 2. Company Access
 
@@ -125,7 +206,8 @@ Purpose: daily operational scan for a company.
 - Compact KPI strip: active escrow value, awaiting evidence, disputes, deadlines in next 72 hours.
 - Searchable escrow table with state, counterparties, commodity/container, IDRT amount, deadline, owner, and latest event.
 - Filters: role, lifecycle state, evidence status, date range.
-- Primary action: `Create escrow`.
+- Primary action: `Create Escrow`.
+- Use a real operational table as the main information structure, not a grid of generic dashboard cards.
 
 ### 4. Create Escrow
 
@@ -140,9 +222,10 @@ Purpose: create a correct, fundable transaction.
 Purpose: single source of truth for one trade instrument.
 
 - Header: escrow ID, semantic lifecycle status, value, commodity/container, deadline, and primary role action.
-- Center column: lifecycle rail, proof/evidence list, document metadata, activity timeline.
+- Center column: lifecycle rail, evidence list, document metadata, activity timeline.
 - Right rail: contextual actions, dispute status, amendment state, and time remaining.
 - Clearly distinguish `on-chain proof`, `current provider result`, and `simulated test result`.
+- Keep the page visually consistent with the light premium brand; do not revert to an old compact banking-portal aesthetic.
 
 ### 6. Evidence and Verification
 
@@ -181,7 +264,7 @@ Purpose: corporate identity, membership, and access management.
 Purpose: restricted verifier/arbiter/admin work.
 
 - Separate route and elevated-session indicator.
-- Verifier bond health, assigned milestone, provider health, queued proof submissions, and alert feed.
+- Verifier bond health, assigned milestone, provider health, queued evidence submissions, and alert feed.
 - Arbiter case queue with no private key entry in normal production UI; use managed signer/hardware wallet integration.
 
 ### 11. Settings and Integration Status
@@ -217,8 +300,8 @@ Examples:
 
 ## Stitch Prompt Seed
 
-Use this with Stitch after it reads this file:
+Always treat this DESIGN.md as the primary design and product source of truth. Generate one page at a time while preserving the same STERN visual language across every page.
 
 ```text
-Create the STERN Escrow Detail page defined in DESIGN.md. Use the exact light-mode tokens, Figtree and Source Serif 4, a restrained trade-finance operations shell, a left sidebar, a centered evidence/lifecycle workspace, and a right action rail. Show real operational components only: escrow status, IDRT value, shipment evidence, challenge deadline, activity timeline, and role-gated actions. Do not use crypto gradients, neon, generic dashboard cards, emoji, or decorative blockchain graphics.
+Read DESIGN.md before generating the page. Follow its product requirements and visual system exactly. Generate ONLY the requested STERN Protocol page, not the entire website. Maintain the premium light-theme maritime fintech identity: warm off-white background, white surfaces, deep navy Poppins typography, maritime teal with soft ocean blue/cyan/lavender accents, tasteful low-saturation gradients, 18–24px rounded surfaces, subtle shadows, and realistic maritime/trade imagery where appropriate. Do not revert to the old compact banking-portal style, dark canvas, dotted background, generic dashboard cards, crypto/Web3 visuals, neon gradients, or AI-template layouts.
 ```
