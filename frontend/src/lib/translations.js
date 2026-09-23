@@ -40,6 +40,8 @@ const id = {
   "Deadline": "Batas waktu",
   "Progress": "Progres",
   "Refresh": "Muat ulang",
+  "Username": "Nama pengguna",
+  "The local gateway did not respond. Please try again.": "Gateway lokal tidak merespons. Silakan coba lagi.",
   "Active escrow value": "Nilai escrow aktif",
   "Milestone checks remaining": "Pemeriksaan tahap yang tersisa",
   "Open disputes": "Sengketa terbuka",
@@ -345,6 +347,7 @@ const id = {
   ,"Your balance": "Saldo Anda"
   ,"You sign as": "Anda menandatangani sebagai"
   ,"3 — inspected, shipped, cleared": "3 — diperiksa, dikirim, lolos bea cukai"
+  ,"3 milestones: inspected, shipped, cleared": "3 tahap: diperiksa, dikirim, lolos bea cukai"
   ,"Challenge window": "Jendela sanggahan"
   ,"6h per milestone": "6 jam per tahap"
   ,"24h after final milestone": "24 jam setelah tahap terakhir"

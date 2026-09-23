@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AtSign, Building2, Mail, ShieldCheck } from "lucide-react";
+import { Building2, Mail, ShieldCheck } from "lucide-react";
 import HandleCard from "../components/HandleCard.jsx";
 import { updateCompanyMe } from "../lib/sternApi.js";
 import { useLanguage } from "../lib/language.jsx";
@@ -52,10 +52,9 @@ export default function Account({ session, onSessionChange }) {
         <section className="stern-workspace-card rounded-doc bg-surface p-5 shadow-card sm:p-6" aria-labelledby="profile-title">
           <h2 id="profile-title" className="text-lg font-semibold text-navy">{t("STERN profile")}</h2>
           <form onSubmit={save} className="mt-6">
-            <label htmlFor="stern-username" className="block text-sm font-medium text-navy">{t("Username / handle")}</label>
+            <label htmlFor="stern-username" className="block text-sm font-medium text-navy">{t("Username")}</label>
             <div className="mt-2 flex max-w-md items-center rounded-xl border border-sky bg-white px-3 transition-colors focus-within:border-teal">
-              <AtSign size={17} className="shrink-0 text-teal" aria-hidden="true" />
-              <input id="stern-username" value={username} onChange={(event) => { setUsername(event.target.value.toLowerCase().replace(/^@/, "")); setSaved(false); }} autoComplete="username" spellCheck="false" maxLength={32} className="h-11 min-w-0 flex-1 bg-transparent px-2 text-sm text-navy outline-none" />
+              <input id="stern-username" value={username} onChange={(event) => { setUsername(event.target.value.toLowerCase().replace(/^@/, "")); setSaved(false); }} autoComplete="username" spellCheck="false" maxLength={32} className="h-11 min-w-0 flex-1 bg-transparent px-1 text-sm text-navy outline-none" />
             </div>
             <p className="mt-2 text-xs leading-relaxed text-ink-dim">{t("This is your STERN handle. It does not need to match your Particle email.")}</p>
             {error ? <p role="alert" className="mt-3 text-xs text-state-disputed">{error}</p> : null}

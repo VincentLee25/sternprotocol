@@ -50,8 +50,17 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
   async function load(signal) {
     setLoading(true);
     setChainStatus("");
+    const requestController = new AbortController();
+    let timedOut = false;
+    const cancelWithPage = () => requestController.abort();
+    if (signal?.aborted) requestController.abort();
+    else signal?.addEventListener("abort", cancelWithPage, { once: true });
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      requestController.abort();
+    }, 15000);
     try {
-      const full = await loadEscrowRows({ address: walletAddress, signal });
+      const full = await loadEscrowRows({ address: walletAddress, signal: requestController.signal });
       setRows(full);
       onRegistryLoad?.(full);
       if (sourceIsLive && full.length === 0) {
@@ -59,7 +68,7 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
       }
       // The table is on screen by now. Activity is an event scan per escrow, so
       // it arrives afterwards and updates in place rather than holding the page.
-      setLoading(false);
+        setLoading(false);
       if (full.length) {
         loadActivityForRows(full, { signal })
           .then((withActivity) => {
@@ -69,9 +78,15 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
           .catch(() => {});
       }
     } catch (error) {
+      if (timedOut) {
+        setChainStatus(t("The local gateway did not respond. Please try again."));
+        return;
+      }
       if (error.name === "AbortError") return;
       setChainStatus(error.message);
     } finally {
+      window.clearTimeout(timeoutId);
+      signal?.removeEventListener("abort", cancelWithPage);
       setLoading(false);
     }
   }

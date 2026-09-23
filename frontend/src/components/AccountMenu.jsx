@@ -10,7 +10,7 @@ export default function AccountMenu({ session, onNavigate, onSignOut, onSessionC
   const [switching, setSwitching] = useState(false);
   const [switchError, setSwitchError] = useState("");
   const rootRef = useRef(null);
-  const handle = session?.user?.username ? `@${session.user.username}` : t("STERN account");
+  const handle = session?.user?.username || t("STERN account");
 
   useEffect(() => {
     if (!open) return undefined;

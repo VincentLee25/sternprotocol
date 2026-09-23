@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const { ethers } = require("ethers");
 const { config, requireConfig } = require("./config");
+const { createRpcProvider } = require("./rpcProvider");
 
 const MILESTONES = {
   none: 0,
@@ -35,9 +36,11 @@ function loadAbi() {
   return JSON.parse(fs.readFileSync(artifactPath, "utf8")).abi;
 }
 
+let providerCache;
 function getProvider() {
   requireConfig(["rpcUrl", "contractAddress"]);
-  return new ethers.JsonRpcProvider(config.rpcUrl);
+  if (!providerCache) providerCache = createRpcProvider([config.rpcUrl, ...config.rpcFallbackUrls], config.rpcChainId);
+  return providerCache;
 }
 
 function getVerifierWallets(provider) {

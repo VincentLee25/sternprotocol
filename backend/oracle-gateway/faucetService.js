@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const { ethers } = require("ethers");
 const { config, requireConfig } = require("./config");
+const { createRpcProvider } = require("./rpcProvider");
 
 const ESCROW_ABI = ["function idrtToken() view returns (address)"];
 const IDRT_ABI = [
@@ -32,9 +33,11 @@ function validateAddress(address) {
   }
   return ethers.getAddress(address);
 }
+let providerCache;
 function getProvider() {
   requireConfig(["rpcUrl", "contractAddress"]);
-  return new ethers.JsonRpcProvider(config.rpcUrl);
+  if (!providerCache) providerCache = createRpcProvider([config.rpcUrl, ...config.rpcFallbackUrls], config.rpcChainId);
+  return providerCache;
 }
 async function getToken(provider) {
   const escrow = new ethers.Contract(config.contractAddress, ESCROW_ABI, provider);

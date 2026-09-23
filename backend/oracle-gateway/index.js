@@ -38,9 +38,55 @@ const {
 const manifests = require("./manifestService");
 
 const app = express();
+app.set("trust proxy", 1);
+
+function createRateLimit({ limit, windowMs, label }) {
+  const clients = new Map();
+  return (req, res, next) => {
+    const now = Date.now();
+    const key = req.ip || req.socket.remoteAddress || "unknown";
+    let entry = clients.get(key);
+    if (!entry || entry.resetAt <= now) entry = { count: 0, resetAt: now + windowMs };
+    if (entry.count >= limit) {
+      const retryAfter = Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
+      res.set("Retry-After", String(retryAfter));
+      res.set("RateLimit-Limit", String(limit));
+      res.set("RateLimit-Remaining", "0");
+      res.set("RateLimit-Reset", String(Math.ceil(entry.resetAt / 1000)));
+      return res.status(429).json({
+        ok: false,
+        code: "RATE_LIMITED",
+        error: `Too many ${label} requests. Please wait and try again.`
+      });
+    }
+    entry.count += 1;
+    clients.set(key, entry);
+    res.set("RateLimit-Limit", String(limit));
+    res.set("RateLimit-Remaining", String(limit - entry.count));
+    res.set("RateLimit-Reset", String(Math.ceil(entry.resetAt / 1000)));
+    if (clients.size > 5000) {
+      for (const [client, bucket] of clients) if (bucket.resetAt <= now) clients.delete(client);
+    }
+    next();
+  };
+}
+
+const limitOracleVerify = createRateLimit({ limit: 20, windowMs: 5 * 60 * 1000, label: "verification" });
+const limitIpfsPin = createRateLimit({ limit: 10, windowMs: 5 * 60 * 1000, label: "document pin" });
+const limitDemoClaim = createRateLimit({ limit: 10, windowMs: 60 * 60 * 1000, label: "demo balance claim" });
+
 app.use(cors({
   origin: config.corsOrigins.includes("*") ? true : config.corsOrigins
 }));
+// Apply limits before JSON parsing so oversized repeated payloads cannot use
+// the pin route to consume parser memory before being throttled.
+app.use((req, res, next) => {
+  if (req.method !== "POST") return next();
+  if (req.path.startsWith("/oracle/verify/")) return limitOracleVerify(req, res, next);
+  if (req.path === "/ipfs/pin") return limitIpfsPin(req, res, next);
+  if (req.path === "/demo-balance/claim") return limitDemoClaim(req, res, next);
+  return next();
+});
 // 20mb, not 1mb: POST /ipfs/manifest carries the bill of lading, the commercial
 // invoice and the packing list in one body as base64, and base64 costs a third
 // on top of the bytes. The real ceilings are enforced where the documents are

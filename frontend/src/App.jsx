@@ -50,13 +50,38 @@ const canClaim = sourceIsLive || !onChainConfigured;
 // Particle restores that itself, and the ops console key is deliberately wiped
 // by a reload.
 const VIEW_KEY = "stern-view";
+const VIEW_PATHS = {
+  login: "/access",
+  overview: "/workspace/escrows",
+  create: "/workspace/new-escrow",
+  ops: "/workspace/operations",
+  security: "/workspace/security",
+  account: "/workspace/account",
+  team: "/workspace/company-team"
+};
 const KNOWN_VIEWS = new Set([
   "landing", "instrument", "settlement", "oracles",
   "login", "overview", "create", "escrow", "ops", "security", "account", "team"
 ]);
 
+function viewFromPath(pathname = window.location.pathname) {
+  if (pathname === "/workspace" || pathname === VIEW_PATHS.overview) return { name: "overview" };
+  const escrowMatch = pathname.match(/^\/workspace\/escrows\/([^/]+)$/);
+  if (escrowMatch) return { name: "escrow", id: decodeURIComponent(escrowMatch[1]) };
+  const entry = Object.entries(VIEW_PATHS).find(([, path]) => path !== VIEW_PATHS.overview && path === pathname);
+  return entry ? { name: entry[0] } : null;
+}
+
+function pathFromView(view) {
+  if (MARKETING[view.name] || view.name === "landing") return "/";
+  if (view.name === "escrow" && view.id != null) return `/workspace/escrows/${encodeURIComponent(view.id)}`;
+  return VIEW_PATHS[view.name] || "/";
+}
+
 function readStoredView() {
   if (new URLSearchParams(window.location.search).has("invite")) return { name: "login" };
+  const routedView = viewFromPath();
+  if (routedView) return routedView;
   if (readCompanySession()) {
     try {
       const stored = JSON.parse(localStorage.getItem(VIEW_KEY));
@@ -159,6 +184,15 @@ function SternApp() {
       // app simply goes back to forgetting.
     }
   }, [view]);
+
+  useEffect(() => {
+    function restoreRoute() {
+      const routedView = viewFromPath();
+      setView(routedView || (readCompanySession() ? readStoredView() : { name: "landing" }));
+    }
+    window.addEventListener("popstate", restoreRoute);
+    return () => window.removeEventListener("popstate", restoreRoute);
+  }, []);
 
   // Bumping this re-runs Overview's load. Used after a transaction or a fault
   // simulation, so the list reflects the new state without a page reload.
@@ -294,6 +328,13 @@ function SternApp() {
   // than setting state on sign-in avoids a frame where the workspace is ready
   // but the router still points at the login screen.
   const activeView = workspaceReady && view.name === "login" && !inviteCode ? { name: "overview" } : view;
+
+  useEffect(() => {
+    const targetPath = pathFromView(activeView);
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState({ sternView: activeView }, "", `${targetPath}${window.location.search}${window.location.hash}`);
+    }
+  }, [activeView.name, activeView.id]);
 
   const activeEscrow = useMemo(
     () => (activeView.name === "escrow" ? escrows.find((escrow) => escrow.id === activeView.id) : null),

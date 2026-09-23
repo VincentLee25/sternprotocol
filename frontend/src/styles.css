@@ -242,6 +242,48 @@ html {
   border-color: rgb(86 124 141 / 0.26);
 }
 
+/* The new-escrow lead surfaces use shape, tone and a quiet maritime wave in
+   place of another pair of rigid outlined boxes. */
+.new-escrow-surface {
+  position: relative;
+  overflow: hidden;
+  border: 0;
+  background: linear-gradient(135deg, rgb(var(--rgb-surface)) 72%, rgb(var(--rgb-sky) / 0.25));
+  box-shadow: var(--shadow-card);
+}
+
+.new-escrow-surface::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 190px;
+  height: 54px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 190 54' fill='none'%3E%3Cpath d='M0 20C28 20 28 7 56 7s28 13 56 13 28-13 56-13 14 4 22 7' stroke='%23567C8D' stroke-opacity='.2' stroke-width='2'/%3E%3Cpath d='M0 34c28 0 28-11 56-11s28 11 56 11 28-11 56-11 14 3 22 6' stroke='%23C8D9E6' stroke-width='2'/%3E%3C/svg%3E") no-repeat top right / contain;
+  content: "";
+  pointer-events: none;
+}
+
+.new-escrow-note {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+  background: linear-gradient(105deg, rgb(var(--rgb-sky) / 0.48), rgb(var(--rgb-surface)) 78%);
+  padding: 15px 20px;
+  color: rgb(var(--rgb-ink));
+  line-height: 1.6;
+}
+
+.new-escrow-note::after {
+  position: absolute;
+  right: 18px;
+  bottom: 5px;
+  width: 110px;
+  height: 16px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 110 16' fill='none'%3E%3Cpath d='M1 8c13 0 13-6 27-6s14 6 27 6 14-6 28-6 14 6 26 6' stroke='%23567C8D' stroke-opacity='.28' stroke-width='2'/%3E%3C/svg%3E") no-repeat center / contain;
+  content: "";
+  pointer-events: none;
+}
+
 .stern-workspace-summary {
   display: grid;
   overflow: hidden;

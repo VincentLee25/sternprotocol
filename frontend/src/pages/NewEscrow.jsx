@@ -268,14 +268,13 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
         <p className="mt-2 text-[14px] leading-relaxed text-ink-dim">{t("Set counterparties, shipment terms and the source document in one clear instruction.")}</p>
       </header>
 
-      <Notice tone="teal" className="mb-5">
-        {t("Creating an escrow makes you its")} <strong className="font-semibold">{t("importer")}</strong> &mdash;
-        {t("the party whose funds are locked. The transaction is gasless and sponsored by the paymaster.")}
-      </Notice>
+      <div className="new-escrow-note mb-5">
+        {t("Creating an escrow makes you its")} <strong className="font-semibold">{t("importer")}</strong>, {t("the party whose funds are locked. The transaction is gasless and sponsored by the paymaster.")}
+      </div>
 
       <form onSubmit={onSubmit} noValidate className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-5">
-          <Card>
+          <Card className="new-escrow-surface new-escrow-counterparties">
             <CardTitle hint={t("Both addresses are checked for format, and for being distinct from each other and from you.")}>
               {t("Counterparties")}
             </CardTitle>
@@ -515,7 +514,7 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
         {/* Review rail. DESIGN.md: the final review names importer, exporter,
             arbiter, contract value and the action being signed before anything
             is committed. */}
-        <Card as="aside" className="h-fit lg:sticky lg:top-0">
+        <Card as="aside" className="new-escrow-surface new-escrow-review h-fit lg:sticky lg:top-0">
           <CardTitle>{t("Review and lock")}</CardTitle>
           <div className="divide-y divide-sky/70">
             <Row label={t("Deposit")} value={`${grossValue.toLocaleString("id-ID")} ${CURRENCY_LABEL}`} />
@@ -526,7 +525,7 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
             <Row label={t("You sign as")} value={t("Importer")} />
             <Row label={t("Exporter")} value={shortAddress(form.exporter) || t("not set")} />
             <Row label={t("Arbiter")} value={shortAddress(form.arbiter) || t("not set")} />
-            <Row label={t("Milestones")} value={t("3 — inspected, shipped, cleared")} />
+            <Row label={t("Milestones")} value={t("3 milestones: inspected, shipped, cleared")} />
             <Row label={t("Challenge window")} value={t("6h per milestone")} />
             <Row label={t("Timelock")} value={t("24h after final milestone")} />
             <Row label={t("Dispute path")} value={t("Arbiter decides, 2% buyer bond")} />

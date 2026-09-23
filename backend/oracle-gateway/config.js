@@ -3,15 +3,33 @@ require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
 const oraclePrivateKeys = (process.env.ORACLE_PRIVATE_KEYS || process.env.ORACLE_PRIVATE_KEY || "")
   .split(",").map(k => k.trim()).filter(Boolean);
+const primaryRpcUrl = process.env.RPC_URL || "";
+const rpcFallbackUrls = [
+  ...(process.env.RPC_FALLBACK_URLS || "").split(",").map(value => value.trim()).filter(Boolean),
+  ...(primaryRpcUrl.includes("polygon-amoy-bor-rpc.publicnode.com")
+    ? ["https://rpc-amoy.polygon.technology"]
+    : [])
+].filter((url, index, urls) => url !== primaryRpcUrl && urls.indexOf(url) === index);
+const defaultCorsOrigins = [
+  "https://thesternman.up.railway.app",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173"
+];
+const configuredCorsOrigins = (process.env.CORS_ORIGINS || "").split(",").map(v => v.trim()).filter(Boolean);
+const corsOrigins = configuredCorsOrigins.length && !configuredCorsOrigins.includes("*")
+  ? configuredCorsOrigins
+  : defaultCorsOrigins;
 
 const config = {
   port: Number(process.env.PORT || 4000),
-  rpcUrl: process.env.RPC_URL,
+  rpcUrl: primaryRpcUrl,
+  rpcFallbackUrls,
+  rpcChainId: Number(process.env.RPC_CHAIN_ID || 80002),
   oraclePrivateKeys,
   arbiterPrivateKey: process.env.ARBITER_PRIVATE_KEY,
   idrtMinterPrivateKey: process.env.IDRT_MINTER_PRIVATE_KEY || process.env.DEPLOYER_PRIVATE_KEY,
   internalApiKey: process.env.INTERNAL_API_KEY,
-  corsOrigins: (process.env.CORS_ORIGINS || "*").split(",").map(v => v.trim()).filter(Boolean),
+  corsOrigins,
   demoBalanceIdrt: process.env.DEMO_BALANCE_IDRT || "150000000.00",
   demoClaimsFile: process.env.DEMO_CLAIMS_FILE,
   contractAddress: process.env.CONTRACT_ADDRESS,
