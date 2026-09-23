@@ -12,6 +12,7 @@ export default function Login({
   accountAddress,
   onPrepareAccount,
   onGoogleSignIn,
+  onDisconnectAccount,
   accountError,
   onBack
 }) {
@@ -49,6 +50,8 @@ export default function Login({
                 error={accountError}
                 onPrepare={onPrepareAccount}
                 onClear={onClearCompanySession}
+                onDisconnectAccount={onDisconnectAccount}
+                socialAvailable={Boolean(onGoogleSignIn)}
               />
             ) : (
               <CompanyAccess
@@ -56,6 +59,7 @@ export default function Login({
                 accountStatus={accountStatus}
                 onPrepareAccount={onPrepareAccount}
                 onGoogleSignIn={onGoogleSignIn}
+                onDisconnectAccount={onDisconnectAccount}
                 onAuthenticated={onCompanyAuthenticated}
                 accountError={accountError}
               />
@@ -69,7 +73,7 @@ export default function Login({
   );
 }
 
-function WorkspaceAccessStep({ session, accountReady, accountStatus, accountAddress, error, onPrepare, onClear }) {
+function WorkspaceAccessStep({ session, accountReady, accountStatus, accountAddress, error, onPrepare, onClear, onDisconnectAccount, socialAvailable }) {
   const preparing = accountStatus === AUTH.LOADING || accountStatus === AUTH.AUTHENTICATING;
   const expected = session.user?.walletAddress?.toLowerCase();
   const actual = accountAddress?.toLowerCase();
@@ -97,12 +101,13 @@ function WorkspaceAccessStep({ session, accountReady, accountStatus, accountAddr
       ) : mismatch ? (
         <div className="mt-5 border-l-2 border-state-disputed bg-state-disputed/5 px-4 py-3">
           <p className="text-xs font-semibold text-state-disputed">This workspace identity is not linked to the company user.</p>
-          <p className="mt-1 text-[11px] leading-relaxed text-ink-dim">Sign out below, then continue with the identity originally connected to this company account.</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-ink-dim">Switch the connected account, then choose the identity originally linked to this company.</p>
+          <button type="button" onClick={onDisconnectAccount} className="mt-3 cursor-pointer text-xs font-semibold text-teal underline underline-offset-2">Switch sign-in provider</button>
         </div>
       ) : (
         <button type="button" onClick={onPrepare} disabled={preparing} className="mt-6 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-navy px-4 py-3 text-xs font-semibold text-white transition-colors duration-200 hover:bg-teal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal/40 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60">
           {preparing ? <LoaderCircle size={14} className="animate-spin" /> : <KeyRound size={14} />}
-          {preparing ? "Finalizing access…" : "Continue to workspace"}
+          {preparing ? "Finalizing access…" : socialAvailable ? "Continue with Google, Apple & more" : "Continue to workspace"}
         </button>
       )}
 

@@ -5,7 +5,7 @@ import { companyLogin, registerCompany, verifyMfa } from "../lib/sternApi.js";
 const initialRegistration = { companyName: "", email: "", username: "", password: "" };
 const fieldClass = "mt-2 block h-11 w-full rounded-xl border border-sky bg-white px-3.5 text-[13px] normal-case tracking-normal text-navy outline-none transition-all placeholder:text-ink-faint focus:border-teal focus:ring-2 focus:ring-teal/10";
 
-export default function CompanyAccess({ accountAddress, accountStatus, onPrepareAccount, onGoogleSignIn, onAuthenticated, accountError }) {
+export default function CompanyAccess({ accountAddress, accountStatus, onPrepareAccount, onGoogleSignIn, onDisconnectAccount, onAuthenticated, accountError }) {
   const [mode, setMode] = useState("login");
   const [registration, setRegistration] = useState(initialRegistration);
   const [login, setLogin] = useState({ email: "", password: "" });
@@ -59,20 +59,24 @@ export default function CompanyAccess({ accountAddress, accountStatus, onPrepare
         <ModeButton active={mode === "register"} onClick={() => { setMode("register"); setError(""); }} label="Register company" />
       </div>
 
-      {mode === "login" && onGoogleSignIn ? (
+      {mode === "login" ? (
         <div className="mt-6">
           {accountAddress ? (
-            <div className="stern-google-connected"><Check size={16} aria-hidden="true" /><span>Secure account connected</span></div>
-          ) : (
             <>
-              <button type="button" onClick={onGoogleSignIn} disabled={accountStatus === "authenticating" || accountStatus === "loading"} className="stern-google-button">
+              <div className="stern-google-connected"><Check size={16} aria-hidden="true" /><span>Secure account connected</span></div>
+              <button type="button" onClick={onDisconnectAccount} className="stern-auth-other-methods mt-2.5">Switch Google, Apple or other account</button>
+            </>
+          ) : (
+            <div className="stern-auth-provider-actions">
+              <button type="button" onClick={onGoogleSignIn} disabled={!onGoogleSignIn || accountStatus === "authenticating" || accountStatus === "loading"} className="stern-google-button">
                 {accountStatus === "authenticating" ? <LoaderCircle size={17} className="animate-spin" aria-hidden="true" /> : <GoogleMark />}
                 {accountStatus === "authenticating" ? "Connecting with Google…" : "Continue with Google"}
               </button>
-              <button type="button" onClick={onPrepareAccount} className="stern-auth-other-methods">Apple or another account method</button>
-            </>
+              <button type="button" onClick={onPrepareAccount} disabled={!onGoogleSignIn || accountStatus === "authenticating" || accountStatus === "loading"} className="stern-auth-other-methods"><KeyRound size={16} aria-hidden="true" />Continue with Apple or another provider</button>
+            </div>
           )}
-          <p className="mt-2 text-[11px] leading-relaxed text-ink-dim">Company access is confirmed with your work credentials and MFA when enabled.</p>
+          {!onGoogleSignIn ? <p role="status" className="mt-3 text-[11px] leading-relaxed text-state-disputed">Social sign-in is unavailable here because Particle is not configured. Work email access remains available.</p> : null}
+          <p className="mt-3 text-[11px] leading-relaxed text-ink-dim">Company access is confirmed with your work credentials and MFA when enabled.</p>
           <div className="stern-auth-method-divider"><span>Work email + password</span></div>
         </div>
       ) : null}
@@ -87,7 +91,7 @@ export default function CompanyAccess({ accountAddress, accountStatus, onPrepare
           <div className="sm:col-span-2"><SubmitButton busy={busy} disabled={!accountAddress} label="Create company account" busyLabel="Creating company…" icon={KeyRound} /></div>
         </form>
       ) : (
-        <form className={`${onGoogleSignIn ? "mt-2" : "mt-6"} space-y-4`} onSubmit={(event) => { event.preventDefault(); run(async () => { const result = await companyLogin(login); if (result.mfaRequired) { setMfaToken(result.mfaToken); setCode(""); } else onAuthenticated(result); }); }}>
+        <form className="mt-2 space-y-4" onSubmit={(event) => { event.preventDefault(); run(async () => { const result = await companyLogin(login); if (result.mfaRequired) { setMfaToken(result.mfaToken); setCode(""); } else onAuthenticated(result); }); }}>
           <FormField label="Work email" name="email" value={login.email} setValue={setLogin} type="email" autoComplete="email" />
           <FormField label="Account password" name="password" value={login.password} setValue={setLogin} type="password" autoComplete="current-password" />
           <SubmitButton busy={busy} label="Continue" busyLabel="Signing in…" icon={KeyRound} />

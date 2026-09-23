@@ -840,7 +840,10 @@ textarea {
 
 .stern-auth-step { width: min(100%, 480px); }
 
+.stern-auth-provider-actions { display: grid; gap: 10px; }
+
 .stern-google-button,
+.stern-auth-other-methods,
 .stern-google-connected {
   display: flex;
   width: 100%;
@@ -856,18 +859,19 @@ textarea {
   font-weight: 700;
 }
 
-.stern-google-button {
+.stern-google-button,
+.stern-auth-other-methods {
   cursor: pointer;
   transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
 
-.stern-google-button:hover { border-color: #567C8D; box-shadow: 0 8px 22px rgb(47 65 86 / .09); transform: translateY(-1px); }
-.stern-google-button:focus-visible { outline: 2px solid #567C8D; outline-offset: 3px; }
-.stern-google-button:disabled { cursor: wait; opacity: .64; transform: none; }
+.stern-google-button:hover:not(:disabled),
+.stern-auth-other-methods:hover:not(:disabled) { border-color: #567C8D; box-shadow: 0 8px 22px rgb(47 65 86 / .09); transform: translateY(-1px); }
+.stern-google-button:focus-visible,
+.stern-auth-other-methods:focus-visible { outline: 2px solid #567C8D; outline-offset: 3px; }
+.stern-google-button:disabled,
+.stern-auth-other-methods:disabled { cursor: not-allowed; opacity: .56; transform: none; }
 .stern-google-connected { justify-content: flex-start; padding: 0 15px; color: #567C8D; }
-.stern-auth-other-methods { display: block; margin: 12px auto 0; color: #567C8D; font-size: 11px; font-weight: 700; text-decoration: underline; text-decoration-color: rgb(86 124 141 / .38); text-underline-offset: 3px; cursor: pointer; }
-.stern-auth-other-methods:hover { color: #2F4156; }
-.stern-auth-other-methods:focus-visible { outline: 2px solid #567C8D; outline-offset: 4px; }
 
 .stern-auth-method-divider {
   display: flex;

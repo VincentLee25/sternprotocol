@@ -270,6 +270,7 @@ function SternApp() {
         accountAddress={address}
         onPrepareAccount={connect}
         onGoogleSignIn={connectGoogle}
+        onDisconnectAccount={disconnect}
         accountError={error}
         onBack={() => setView({ name: "landing" })}
       />
