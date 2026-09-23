@@ -5,11 +5,10 @@
 // EscrowDetail — is untouched by the Particle migration. They only ever needed
 // an address.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAccount, useConnect, useConnectors, useDisconnect, useModal, useWallets } from "@particle-network/connectkit";
+import { useAccount, useDisconnect, useModal, useParticleAuth as useParticleAuthCore, useWallets } from "@particle-network/connectkit";
 import { particleEnabled } from "./particle.js";
 import { createSternSmartAccount, gaslessConfigured } from "./smartAccount.js";
-import { postAuthSession, signOut as mockSignOut } from "./mockBackend.js";
-import { adoptDemoEscrows } from "./mockRegistry.js";
+import { signOut as mockSignOut } from "./mockBackend.js";
 
 // Status the UI switches on. Deliberately not the same vocabulary as Particle's:
 // "loading" folds together two different waits that look identical to a user
@@ -26,18 +25,20 @@ function useParticleAuth() {
   const account = useAccount();
   const [primaryWallet] = useWallets();
   const { setOpen } = useModal();
-  const { connectAsync } = useConnect();
-  const connectors = useConnectors();
   const { disconnectAsync } = useDisconnect();
+  const { getUserInfo } = useParticleAuthCore();
 
   const [user, setUser] = useState(null);
+  const [particleIdentity, setParticleIdentity] = useState(null);
   const [error, setError] = useState("");
   // permissionless SmartAccountClient. Null until the Safe is built, and stays
   // null when no Pimlico key is configured — the address still resolves.
   const [smartAccountClient, setSmartAccountClient] = useState(null);
-  // Guards against a second registration when React StrictMode double-invokes
-  // the effect, and against re-registering on every incidental re-render.
+  // Guards against re-deriving the account for the same Particle identity when
+  // React StrictMode double-invokes the effect or an incidental render occurs.
   const registeredFor = useRef(null);
+  const getUserInfoRef = useRef(getUserInfo);
+  getUserInfoRef.current = getUserInfo;
 
   const connected = account.status === "connected";
 
@@ -55,24 +56,21 @@ function useParticleAuth() {
         if (cancelled) return;
         setSmartAccountClient(client);
 
-        if (registeredFor.current === smartAccountAddress) return;
-        registeredFor.current = smartAccountAddress;
+        const info = getUserInfoRef.current();
+        if (!info?.uuid || !info?.token) throw new Error("Particle could not provide a verified sign-in session. Please reconnect.");
 
-        // Register/lookup the user in our own backend (docs/03 §5 step 3).
-        // Particle authenticates; it does not know about STERN's user table.
-        const session = await postAuthSession({
-          authType: account.connector?.id || "particle",
-          email: undefined,
-          smartAccountAddress,
-          eoaOwnerAddress: account.address
-        });
+        const identityKey = `${info.uuid}:${smartAccountAddress.toLowerCase()}`;
+        if (registeredFor.current === identityKey) return;
+        registeredFor.current = identityKey;
 
         if (cancelled) return;
         setUser({
-          ...session,
           smartAccountAddress,
-          eoaOwnerAddress: account.address
+          eoaOwnerAddress: account.address,
+          email: info.email || info.google_email || info.apple_email || info.facebook_email || info.github_email || info.linkedin_email || "",
+          hasClaimedDemoBalance: false
         });
+        setParticleIdentity({ uuid: info.uuid, token: info.token });
         setError("");
       } catch (err) {
         if (cancelled) return;
@@ -90,6 +88,7 @@ function useParticleAuth() {
     if (account.status === "disconnected") {
       registeredFor.current = null;
       setUser(null);
+      setParticleIdentity(null);
       setSmartAccountClient(null);
     }
   }, [account.status]);
@@ -100,26 +99,13 @@ function useParticleAuth() {
     setOpen(true);
   }, [setOpen]);
 
-  const connectGoogle = useCallback(async () => {
-    setError("");
-    try {
-      // Use the same configured Particle connector as the existing modal. This
-      // selects its Google provider directly; company credentials/MFA remain
-      // the backend authority for workspace access.
-      const connector = connectors.find((item) => item.id === "particleEVM");
-      if (!connector) throw new Error("Google sign-in is not available right now.");
-      await connectAsync({ connector, authParams: { socialType: "google", prompt: "select_account" } });
-    } catch (err) {
-      setError(err?.message || "Google sign-in could not be completed.");
-    }
-  }, [connectAsync, connectors]);
-
   const disconnect = useCallback(async () => {
     try {
       await disconnectAsync();
     } finally {
       registeredFor.current = null;
       setUser(null);
+      setParticleIdentity(null);
       setSmartAccountClient(null);
       mockSignOut();
     }
@@ -138,9 +124,9 @@ function useParticleAuth() {
   return {
     status,
     user,
+    particleIdentity,
     error,
     connect,
-    connectGoogle,
     disconnect,
     setUser,
     smartAccountClient,
@@ -148,48 +134,20 @@ function useParticleAuth() {
   };
 }
 
-// Mock path: no Particle credentials, or VITE_PARTICLE_ENABLED=false. Same
-// return shape so App.jsx and Login.jsx never branch on which one is active.
-function useMockAuth() {
-  const [user, setUser] = useState(null);
-  const [status, setStatus] = useState(AUTH.ANONYMOUS);
-  const [error, setError] = useState("");
-
-  const connect = useCallback(async () => {
-    setStatus(AUTH.AUTHENTICATING);
-    setError("");
-    try {
-      const session = await postAuthSession({ authType: "google", email: "buyer@example.com" });
-      // The seeded escrows name fixed demo addresses. Now that the role is read
-      // off the escrow rather than picked in the sidebar, leaving them that way
-      // would make this wallet a party to nothing and the whole demo read-only.
-      adoptDemoEscrows(session.smartAccountAddress);
-      setUser(session);
-      setStatus(AUTH.READY);
-    } catch (err) {
-      setError(err?.message || "Login failed");
-      setStatus(AUTH.ERROR);
-    }
-  }, []);
-
-  const disconnect = useCallback(async () => {
-    mockSignOut();
-    setUser(null);
-    setStatus(AUTH.ANONYMOUS);
-  }, []);
-
+// Missing Particle configuration is a setup error, never a mock company login.
+function useUnavailableAuth() {
   return {
-    status,
-    user,
-    error,
-    connect,
-    connectGoogle: null,
-    disconnect,
-    setUser,
+    status: AUTH.ERROR,
+    user: null,
+    particleIdentity: null,
+    error: "Particle Auth is not configured. Set the Particle project, client, and app IDs before accessing the workspace.",
+    connect: null,
+    disconnect: async () => {},
+    setUser: () => {},
     smartAccountClient: null,
     gasless: false
   };
 }
 
 // Chosen once at module load, so hook order stays stable for the session.
-export const useSternAuth = particleEnabled ? useParticleAuth : useMockAuth;
+export const useSternAuth = particleEnabled ? useParticleAuth : useUnavailableAuth;

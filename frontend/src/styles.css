@@ -780,57 +780,12 @@ textarea {
   display: flex;
   flex: 1;
   align-items: center;
-  justify-content: space-between;
-  gap: clamp(48px, 7vw, 116px);
-  padding: 42px clamp(0px, 4vw, 54px) 52px;
-}
-
-.stern-auth-editorial {
-  width: min(34%, 350px);
-  flex: 0 0 auto;
-  color: #2F4156;
-}
-
-.stern-auth-editorial-copy span {
-  color: #567C8D;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: .16em;
-}
-
-.stern-auth-editorial-copy p {
-  margin: 14px 0 26px;
-  font-size: clamp(22px, 2.5vw, 31px);
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: -.035em;
-}
-
-.stern-auth-editorial-figure {
-  overflow: hidden;
-  margin: 0;
-  border-radius: 15px;
-  background: #2F4156;
-  box-shadow: 0 17px 42px rgb(47 65 86 / .13);
-}
-
-.stern-auth-editorial-figure img {
-  display: block;
-  width: 100%;
-  height: 184px;
-  object-fit: cover;
-  filter: saturate(.68) contrast(.96);
-}
-
-.stern-auth-editorial-figure figcaption {
-  padding: 11px 16px;
-  color: rgb(255 255 255 / .78);
-  font-size: 11px;
+  justify-content: center;
+  padding: 46px 0 58px;
 }
 
 .stern-auth-card {
   width: min(100%, 540px);
-  flex: 0 1 540px;
   border: 1px solid rgb(200 217 230 / 0.75);
   border-radius: 24px;
   background: rgb(255 255 255 / 0.94);
@@ -839,51 +794,6 @@ textarea {
 }
 
 .stern-auth-step { width: min(100%, 480px); }
-
-.stern-auth-provider-actions { display: grid; gap: 10px; }
-
-.stern-google-button,
-.stern-auth-other-methods,
-.stern-google-connected {
-  display: flex;
-  width: 100%;
-  min-height: 46px;
-  align-items: center;
-  justify-content: center;
-  gap: 11px;
-  border: 1px solid rgb(47 65 86 / .17);
-  border-radius: 11px;
-  background: #fff;
-  color: #2F4156;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.stern-google-button,
-.stern-auth-other-methods {
-  cursor: pointer;
-  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
-}
-
-.stern-google-button:hover:not(:disabled),
-.stern-auth-other-methods:hover:not(:disabled) { border-color: #567C8D; box-shadow: 0 8px 22px rgb(47 65 86 / .09); transform: translateY(-1px); }
-.stern-google-button:focus-visible,
-.stern-auth-other-methods:focus-visible { outline: 2px solid #567C8D; outline-offset: 3px; }
-.stern-google-button:disabled,
-.stern-auth-other-methods:disabled { cursor: not-allowed; opacity: .56; transform: none; }
-.stern-google-connected { justify-content: flex-start; padding: 0 15px; color: #567C8D; }
-
-.stern-auth-method-divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 18px 0 0;
-  color: #567C8D;
-  font-size: 11px;
-  font-weight: 600;
-}
-.stern-auth-method-divider::before,
-.stern-auth-method-divider::after { height: 1px; flex: 1; background: rgb(200 217 230 / .9); content: ""; }
 
 .stern-auth-footer {
   flex: 0 0 auto;
@@ -930,8 +840,6 @@ textarea {
 }
 
 @media (max-width: 900px) {
-  .stern-auth-panel-body { justify-content: center; padding-right: 0; }
-  .stern-auth-editorial { display: none; }
   .stern-auth-footer { text-align: center; }
 }
 

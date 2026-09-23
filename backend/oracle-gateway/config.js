@@ -38,6 +38,9 @@ const config = {
   // so this wants the same persistent volume as the two stores above.
   customsStoreFile: process.env.CUSTOMS_STORE_FILE || path.resolve(__dirname, "../data/customs.json"),
   authTokenSecret: process.env.AUTH_TOKEN_SECRET,
+  particleProjectId: process.env.PARTICLE_PROJECT_ID || process.env.VITE_PARTICLE_PROJECT_ID || "",
+  particleServerKey: process.env.PARTICLE_SERVER_KEY || "",
+  particleSafeRpcUrl: process.env.PARTICLE_SAFE_RPC_URL || "https://polygon-amoy-bor-rpc.publicnode.com",
 
   // --- IPFS ------------------------------------------------------------------
   // The e-BL document is pinned for real, and the CID that goes on chain is

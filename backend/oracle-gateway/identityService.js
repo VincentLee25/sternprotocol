@@ -47,7 +47,7 @@ function createIdentityService({ storeFile, tokenSecret }) {
   function normalUsername(value) { return String(value || "").trim().toLowerCase(); }
   function normalWallet(value) { return String(value || "").trim().toLowerCase(); }
 
-  function validateIdentity({ email, username, walletAddress, password }) {
+  function validateIdentity({ email, username, walletAddress, password }, { requirePassword = true } = {}) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalEmail(email))) throw appError("A valid email is required.", 422, "EMAIL_INVALID");
     if (!/^[a-z0-9][a-z0-9_.-]{2,31}$/.test(normalUsername(username))) {
       throw appError("Username must be 3-32 lowercase letters, digits, dot, dash, or underscore.", 422, "USERNAME_INVALID");
@@ -55,9 +55,15 @@ function createIdentityService({ storeFile, tokenSecret }) {
     if (!/^0x[a-fA-F0-9]{40}$/.test(String(walletAddress || "").trim())) {
       throw appError("A valid EVM wallet address is required.", 422, "WALLET_INVALID");
     }
-    if (typeof password !== "string" || password.length < 12) {
+    if (requirePassword && (typeof password !== "string" || password.length < 12)) {
       throw appError("Password must be at least 12 characters.", 422, "PASSWORD_WEAK");
     }
+  }
+
+  function validateParticleUserId(value) {
+    const particleUserId = String(value || "").trim();
+    if (!/^[a-zA-Z0-9-]{8,128}$/.test(particleUserId)) throw appError("A valid Particle identity is required.", 422, "PARTICLE_ID_INVALID");
+    return particleUserId;
   }
 
   function hashPassword(password, salt = crypto.randomBytes(16).toString("base64url")) {
@@ -101,6 +107,7 @@ function createIdentityService({ storeFile, tokenSecret }) {
       email: user.email,
       username: user.username,
       walletAddress: user.walletAddress,
+      particleUserId: user.particleUserId || null,
       role: user.role,
       mfaEnabled: Boolean(user.mfa?.enabled),
       createdAt: user.createdAt
@@ -130,7 +137,7 @@ function createIdentityService({ storeFile, tokenSecret }) {
   }
 
   function registerCompany(input) {
-    validateIdentity(input);
+    validateIdentity(input, { requirePassword: !input.particleUserId });
     const companyName = String(input.companyName || "").trim();
     if (companyName.length < 2 || companyName.length > 120) throw appError("Company name must be 2-120 characters.", 422, "COMPANY_INVALID");
     const store = readStore();
@@ -141,9 +148,14 @@ function createIdentityService({ storeFile, tokenSecret }) {
     if (store.users.some((item) => item.username === username)) throw appError("Username is already registered.", 409, "USERNAME_EXISTS");
     if (store.users.some((item) => item.walletAddress === walletAddress)) throw appError("Wallet is already linked to an account.", 409, "WALLET_EXISTS");
     const company = { id: id("company"), name: companyName, ownerUserId: null, createdAt: nowIso() };
+    const particleUserId = input.particleUserId ? validateParticleUserId(input.particleUserId) : null;
+    if (particleUserId && store.users.some((item) => item.particleUserId === particleUserId)) {
+      throw appError("This Particle account is already registered.", 409, "PARTICLE_ID_EXISTS");
+    }
     const user = {
       id: id("user"), companyId: company.id, email, username, walletAddress, role: "owner",
-      passwordHash: hashPassword(input.password), mfa: { enabled: false, secret: null }, createdAt: nowIso()
+      passwordHash: typeof input.password === "string" && input.password ? hashPassword(input.password) : null,
+      particleUserId, mfa: { enabled: false, secret: null }, createdAt: nowIso()
     };
     company.ownerUserId = user.id;
     store.companies.push(company);
@@ -162,6 +174,45 @@ function createIdentityService({ storeFile, tokenSecret }) {
       return { mfaRequired: true, mfaToken: sign({ type: "mfa", userId: user.id }, MFA_TTL_SECONDS) };
     }
     return { mfaRequired: false, user: publicUser(user), company: publicCompany(store.companies.find((item) => item.id === user.companyId)), ...issueSession(user) };
+  }
+
+  function particleSession({ particleUserId, smartAccountAddress }) {
+    const normalizedParticleId = validateParticleUserId(particleUserId);
+    const walletAddress = normalWallet(smartAccountAddress);
+    if (!/^0x[a-f0-9]{40}$/.test(walletAddress)) throw appError("A valid settlement account is required.", 422, "WALLET_INVALID");
+
+    const store = readStore();
+    let user = store.users.find((item) => item.particleUserId === normalizedParticleId);
+    // Older STERN registrations predate Particle linkage. A verified Particle
+    // owner may claim only the exact Safe already recorded for that member.
+    // This lookup is safe only because the route derives smartAccountAddress
+    // server-side from Particle's verified owner wallet.
+    const legacyMember = !user && store.users.find((item) => !item.particleUserId && normalWallet(item.walletAddress) === walletAddress);
+    if (legacyMember) user = legacyMember;
+    if (user) {
+      if (normalWallet(user.walletAddress) !== walletAddress) {
+        throw appError("This Particle identity is linked to a different settlement account.", 403, "PARTICLE_WALLET_MISMATCH");
+      }
+      if (user.mfa?.enabled) {
+        return { registered: true, mfaRequired: true, mfaToken: sign({ type: "mfa", userId: user.id, particleUserId: legacyMember ? normalizedParticleId : undefined, walletAddress }, MFA_TTL_SECONDS) };
+      }
+      if (legacyMember) {
+        user.particleUserId = normalizedParticleId;
+        writeStore(store);
+      }
+      return {
+        registered: true,
+        mfaRequired: false,
+        user: publicUser(user),
+        company: publicCompany(store.companies.find((item) => item.id === user.companyId)),
+        ...issueSession(user)
+      };
+    }
+
+    if (store.users.some((item) => normalWallet(item.walletAddress) === walletAddress)) {
+      throw appError("This settlement account belongs to another Particle identity.", 403, "PARTICLE_WALLET_CLAIMED");
+    }
+    return { registered: false, registrationRequired: true };
   }
 
   function base32Encode(buffer) {
@@ -237,6 +288,12 @@ function createIdentityService({ storeFile, tokenSecret }) {
     const store = readStore();
     const user = userById(store, payload.userId);
     if (!user.mfa?.enabled || !validTotp(user.mfa.secret, code)) throw appError("Invalid MFA code.", 401, "MFA_INVALID");
+    if (payload.particleUserId) {
+      if (user.particleUserId && user.particleUserId !== payload.particleUserId) throw appError("This company account is linked to another Particle identity.", 403, "PARTICLE_ID_MISMATCH");
+      if (normalWallet(user.walletAddress) !== payload.walletAddress) throw appError("The settlement account changed during verification.", 403, "PARTICLE_WALLET_MISMATCH");
+      user.particleUserId = payload.particleUserId;
+      writeStore(store);
+    }
     return { mfaRequired: false, user: publicUser(user), company: publicCompany(store.companies.find((item) => item.id === user.companyId)), ...issueSession(user) };
   }
 
@@ -263,7 +320,7 @@ function createIdentityService({ storeFile, tokenSecret }) {
     return { company: publicCompany(store.companies.find((item) => item.id === companyId)), users: store.users.filter((item) => item.companyId === companyId).map(publicUser) };
   }
 
-  return { registerCompany, login, authenticate, setupMfa, confirmMfa, verifyMfa, addCompanyUser, companyUsers, publicUser, publicCompany };
+  return { registerCompany, login, particleSession, authenticate, setupMfa, confirmMfa, verifyMfa, addCompanyUser, companyUsers, publicUser, publicCompany };
 }
 
 module.exports = { createIdentityService };

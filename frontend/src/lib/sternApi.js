@@ -95,7 +95,8 @@ function identityRequest(path, { token, ...options } = {}) {
 }
 
 export const registerCompany = (body) => identityRequest("/auth/register-company", { method: "POST", body });
-export const companyLogin = (body) => identityRequest("/auth/login", { method: "POST", body });
+export const authorizeParticle = (body) => identityRequest("/auth/particle/session", { method: "POST", body });
+export const getCompanyMe = (token) => identityRequest("/auth/me", { token });
 export const beginMfaSetup = (token) => identityRequest("/auth/mfa/setup", { method: "POST", token });
 export const confirmMfaSetup = (body) => identityRequest("/auth/mfa/confirm", { method: "POST", body });
 export const verifyMfa = (body) => identityRequest("/auth/mfa/verify", { method: "POST", body });

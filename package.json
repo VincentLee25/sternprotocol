@@ -36,7 +36,9 @@
     "ethers": "^6.13.5",
     "express": "^4.21.2",
     "ipfs-only-hash": "^4.0.0",
-    "pdf-parse": "^2.4.5"
+    "pdf-parse": "^2.4.5",
+    "permissionless": "0.4.0",
+    "viem": "2.44.4"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",

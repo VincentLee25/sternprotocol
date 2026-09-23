@@ -15,7 +15,7 @@ Backend service for the Phase 0 / MVP Oracle EOA flow plus read APIs and a demo 
 
 ## What the backend does NOT own
 
-- Particle login/session.
+- Particle login/session storage. The backend verifies Particle's identity token for company authorization but does not replace Particle as the primary sign-in provider.
 - Importer/exporter private keys.
 - Importer/exporter `createEscrow`, `raiseDispute`, `claimRefund`, or other user-owned transactions.
 - Frontend UI.
@@ -39,6 +39,10 @@ Company identity and MFA additionally require:
 
 - `AUTH_TOKEN_SECRET`: a random secret of at least 32 characters. Generate and keep this only in Railway variables; changing it invalidates active sessions.
 - `IDENTITY_STORE_FILE`: an absolute path on a Railway persistent volume, for example `/data/identities.json`. The default is a local development file under `backend/data` and is not durable on a Railway ephemeral filesystem.
+- `PARTICLE_PROJECT_ID` and `PARTICLE_SERVER_KEY`: used by the backend to verify Particle's signed-in identity before checking STERN company membership. The project ID can fall back to `VITE_PARTICLE_PROJECT_ID`; the server key must remain backend-only and must never use a `VITE_` variable.
+- `PARTICLE_SAFE_RPC_URL` (optional): Polygon Amoy RPC used to independently derive the same Safe account as the frontend; defaults to the frontend's public RPC fallback. Keep the frontend and backend Safe library versions and account parameters aligned.
+
+Particle is the public sign-in entry point. `POST /auth/particle/session` verifies the Particle token with Particle's server API, derives the Safe from its verified EVM owner, then resolves STERN membership. A pre-Particle member is linked only when that derived Safe exactly matches the stored company wallet; MFA, if enabled, must pass before the link and workspace session are issued. Unknown identities receive `registrationRequired` and use `POST /auth/register-company` with the same Particle proof. Neither route trusts a browser-supplied wallet address.
 
 Never put server private keys or INTERNAL_API_KEY in the frontend or source control. Privileged write endpoints require INTERNAL_API_KEY via X-API-Key or Authorization: Bearer.
 
@@ -83,8 +87,9 @@ There is deliberately **no backend `raiseDispute` endpoint**. The dispute opener
 
 ### Company identity
 
-- `POST /auth/register-company` creates a company plus its `owner` account using company name, email, username, primary wallet, and password.
-- `POST /auth/login` returns a session or a short-lived MFA challenge.
+- `POST /auth/particle/session` verifies the Particle identity with Particle's server API, then checks whether it is linked to a STERN company user. A registered identity receives a STERN session or a short-lived MFA challenge; an unregistered identity does not receive workspace access.
+- `POST /auth/register-company` verifies Particle first, then creates a company plus its `owner` account using company name, email, username, and the automatically linked primary wallet.
+- `POST /auth/login` remains available for backend compatibility, but the public workspace UI uses Particle Auth as its single authentication entry point.
 - `POST /auth/mfa/setup`, `POST /auth/mfa/confirm`, and `POST /auth/mfa/verify` implement TOTP for Google Authenticator-compatible apps.
 - `GET|POST /companies/:companyId/users` reads or creates `admin` and `operator` accounts. The owner can create either role; an admin can create operators only.
 

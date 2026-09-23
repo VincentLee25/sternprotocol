@@ -17,6 +17,7 @@ import { AUTH, useSternAuth } from "./lib/useSternAuth.js";
 import { getIdrtBalance, onChainConfigured } from "./lib/sternContract.js";
 import { LanguageProvider } from "./lib/language.jsx";
 import { clearCompanySession, readCompanySession, writeCompanySession } from "./lib/companySession.js";
+import { getCompanyMe } from "./lib/sternApi.js";
 
 // The old standalone marketing documents are intentionally retired. Public
 // navigation always resolves to the one coherent landing experience instead
@@ -64,7 +65,7 @@ export default function App() {
 }
 
 function SternApp() {
-  const { status, user, error, connect, connectGoogle, disconnect, setUser, smartAccountClient } = useSternAuth();
+  const { status, user, particleIdentity, error, connect, disconnect, setUser, smartAccountClient } = useSternAuth();
   const [balance, setBalance] = useState("0.00");
   const [claiming, setClaiming] = useState(false);
   const [claimError, setClaimError] = useState("");
@@ -72,16 +73,51 @@ function SternApp() {
   const [escrows, setEscrows] = useState([]);
   const [navOpen, setNavOpen] = useState(false);
   const [companySession, setCompanySession] = useState(readCompanySession);
+  const [companySessionValidated, setCompanySessionValidated] = useState(false);
 
   const address = user?.smartAccountAddress;
   const expectedAddress = companySession?.user?.walletAddress?.toLowerCase();
   const accountMatches = !expectedAddress || !address || expectedAddress === address.toLowerCase();
-  const workspaceReady = Boolean(companySession && status === AUTH.READY && address && accountMatches);
+  const companyIdentityMatches = Boolean(companySession?.user?.particleUserId && particleIdentity?.uuid === companySession.user.particleUserId);
+  const workspaceReady = Boolean(companySession && companySessionValidated && companyIdentityMatches && status === AUTH.READY && address && accountMatches);
 
   const updateCompanySession = useCallback((session) => {
+    setCompanySessionValidated(false);
     setCompanySession(session);
     writeCompanySession(session);
   }, []);
+
+  useEffect(() => {
+    if (!companySession?.accessToken || status !== AUTH.READY || !address || !particleIdentity?.uuid) {
+      setCompanySessionValidated(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setCompanySessionValidated(false);
+    getCompanyMe(companySession.accessToken)
+      .then(({ user: verifiedUser, company }) => {
+        if (cancelled) return;
+        const sameParticleUser = verifiedUser?.particleUserId === particleIdentity.uuid;
+        const sameSettlementAccount = verifiedUser?.walletAddress?.toLowerCase() === address.toLowerCase();
+        if (!sameParticleUser || !sameSettlementAccount) {
+          clearCompanySession();
+          setCompanySession(null);
+          return;
+        }
+        setCompanySession((current) => current?.accessToken === companySession.accessToken
+          ? { ...current, user: verifiedUser, company }
+          : current);
+        setCompanySessionValidated(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        clearCompanySession();
+        setCompanySession(null);
+      });
+
+    return () => { cancelled = true; };
+  }, [companySession?.accessToken, status, address, particleIdentity?.uuid]);
 
   useEffect(() => {
     try {
@@ -215,6 +251,7 @@ function SternApp() {
 
   const handleClearCompanyAccess = useCallback(async () => {
     clearCompanySession();
+    setCompanySessionValidated(false);
     setCompanySession(null);
     await disconnect();
   }, [disconnect]);
@@ -260,16 +297,20 @@ function SternApp() {
     return <SessionBoot label="Preparing your workspace" detail="Loading your company access and settlement permissions." />;
   }
 
+  if (companySession && activeView.name !== "login" && status === AUTH.READY && address && particleIdentity?.uuid && !companySessionValidated) {
+    return <SessionBoot label="Checking company access" detail="Confirming your Particle identity and STERN company membership." />;
+  }
+
   if (!workspaceReady) {
     return (
       <Login
         companySession={companySession}
         onCompanyAuthenticated={updateCompanySession}
-        onClearCompanySession={handleClearCompanyAccess}
         accountStatus={status}
         accountAddress={address}
+        particleIdentity={particleIdentity}
+        particleEmail={user?.email}
         onPrepareAccount={connect}
-        onGoogleSignIn={connectGoogle}
         onDisconnectAccount={disconnect}
         accountError={error}
         onBack={() => setView({ name: "landing" })}

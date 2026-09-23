@@ -7,8 +7,8 @@ import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import { particleConfig } from "./lib/particle.js";
 import "./styles.css";
 
-// With no credentials `particleConfig` is null and we mount App bare — the app
-// then runs on the mock layer instead of crashing inside the provider.
+// With no credentials, render a clear setup error instead of fabricating an
+// authenticated company session.
 const withProvider = particleConfig ? (
   <ConnectKitProvider config={particleConfig}>
     <App />

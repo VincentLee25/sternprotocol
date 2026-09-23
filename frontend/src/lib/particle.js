@@ -15,9 +15,8 @@ const projectId = import.meta.env.VITE_PARTICLE_PROJECT_ID;
 const clientKey = import.meta.env.VITE_PARTICLE_CLIENT_KEY;
 const appId = import.meta.env.VITE_PARTICLE_APP_ID;
 
-// Two independent reasons to stay on the mock layer: the operator turned
-// Particle off, or the credentials simply are not present. Treat both the same
-// so a missing .env degrades to a working demo instead of a blank screen.
+// Workspace authentication requires a configured Particle project. A missing
+// config must not silently fall back to a mock identity.
 const flagEnabled = import.meta.env.VITE_PARTICLE_ENABLED !== "false";
 const hasCredentials = Boolean(projectId && clientKey && appId);
 

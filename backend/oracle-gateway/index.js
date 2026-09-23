@@ -21,6 +21,8 @@ const {
 const { config } = require("./config");
 const { getDemoBalance, claimDemoBalance } = require("./faucetService");
 const { createIdentityService } = require("./identityService");
+const { createParticleAuthService } = require("./particleAuthService");
+const { createParticleSafeService } = require("./particleSafeService");
 const directory = require("./directoryService");
 const {
   pinDocument,
@@ -48,6 +50,26 @@ let identities = null;
 function identityService() {
   if (!identities) identities = createIdentityService({ storeFile: config.identityStoreFile, tokenSecret: config.authTokenSecret });
   return identities;
+}
+
+let particleAuth = null;
+function particleAuthService() {
+  if (!particleAuth) particleAuth = createParticleAuthService({ projectId: config.particleProjectId, serverKey: config.particleServerKey });
+  return particleAuth;
+}
+
+const particleSafe = createParticleSafeService({ rpcUrl: config.particleSafeRpcUrl });
+
+async function resolveParticleAccount(body, expectedAddress) {
+  const particle = await particleAuthService().verify(body?.particleIdentity);
+  const smartAccountAddress = await particleSafe.derive(particle.ownerAddress);
+  if (expectedAddress && smartAccountAddress.toLowerCase() !== String(expectedAddress).toLowerCase()) {
+    const error = new Error("The connected Particle account does not own this STERN settlement account.");
+    error.statusCode = 403;
+    error.code = "PARTICLE_SAFE_MISMATCH";
+    throw error;
+  }
+  return { particleUserId: particle.particleUserId, smartAccountAddress };
 }
 
 function requireSession(req, _res, next) {
@@ -100,8 +122,19 @@ app.get("/health", async (_req, res, next) => {
   } catch (error) { next(error); }
 });
 
-app.post("/auth/register-company", (req, res, next) => {
-  try { res.status(201).json(identityService().registerCompany(req.body || {})); } catch (error) { next(error); }
+app.post("/auth/particle/session", async (req, res, next) => {
+  try {
+    const particle = await resolveParticleAccount(req.body, req.body?.smartAccountAddress);
+    res.json(identityService().particleSession(particle));
+  } catch (error) { next(error); }
+});
+
+app.post("/auth/register-company", async (req, res, next) => {
+  try {
+    const particle = await resolveParticleAccount(req.body, req.body?.walletAddress);
+    const { particleIdentity: _proof, walletAddress: _untrustedWallet, ...input } = req.body || {};
+    res.status(201).json(identityService().registerCompany({ ...input, walletAddress: particle.smartAccountAddress, particleUserId: particle.particleUserId }));
+  } catch (error) { next(error); }
 });
 
 app.post("/auth/login", (req, res, next) => {
