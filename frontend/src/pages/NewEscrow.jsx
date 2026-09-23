@@ -200,7 +200,7 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
       );
       if (incomplete >= 0) {
         throw new Error(
-          `Clause ${incomplete + 1} is not finished — it needs wording of at least 12 characters and the address of the person who will judge it.`
+          t("Clause {number} is not finished — it needs wording of at least 12 characters and the address of the person who will judge it.", { number: incomplete + 1 })
         );
       }
 
@@ -647,11 +647,11 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
               }
             />
             <Row
-              label="Human review"
+              label={t("Human review")}
               value={
                 clauses.length
-                  ? `${clauses.length} clause${clauses.length === 1 ? "" : "s"} to be judged`
-                  : "None — all conditions automated"
+                  ? t("{count} clauses to be judged", { count: clauses.length })
+                  : t("None — all conditions automated")
               }
             />
           </div>
@@ -698,6 +698,7 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
  * reviewer is a clause nobody owns, and the gateway refuses it.
  */
 function ClauseRow({ index, clause, arbiter, onChange, onRemove }) {
+  const { t } = useLanguage();
   const short = clause.text.trim().length > 0 && clause.text.trim().length < 12;
   const badAddress =
     clause.reviewer.trim().length > 0 && !/^0x[a-fA-F0-9]{40}$/.test(clause.reviewer.trim());
@@ -705,49 +706,48 @@ function ClauseRow({ index, clause, arbiter, onChange, onRemove }) {
   return (
     <div className="rounded-panel border border-sky bg-surface-soft/60 p-3.5">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-2xs uppercase text-ink-faint">Clause {index + 1}</p>
+        <p className="text-2xs uppercase text-ink-faint">{t("Clause")} {index + 1}</p>
         <button
           type="button"
           onClick={onRemove}
           className="cursor-pointer text-2xs uppercase text-ink-faint transition-colors duration-150 hover:text-state-disputed"
         >
-          Remove
+          {t("Remove")}
         </button>
       </div>
 
       <label htmlFor={`clause-text-${index}`} className="sr-only">
-        Clause wording
+        {t("Clause wording")}
       </label>
       <textarea
         id={`clause-text-${index}`}
         rows={2}
         value={clause.text}
         onChange={(event) => onChange({ text: event.target.value })}
-        placeholder="Biji kopi harus dalam kondisi layak jual dan bebas dari bau apek."
+        placeholder={t("Coffee beans must arrive in merchantable condition, free of musty odour.")}
         className={`${inputClass(short)} resize-y`}
       />
       {short ? (
         <p className="mt-1 text-[12.5px] text-state-disputed">
-          Write it out — this is the wording someone will be asked to judge, and it is fixed the
-          moment the manifest is pinned.
+          {t("Write it out — this is the wording someone will be asked to judge, and it is fixed the moment the manifest is pinned.")}
         </p>
       ) : null}
 
       <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2">
         <label className="block">
-          <span className="text-2xs uppercase text-ink-faint">Holds milestone</span>
+          <span className="text-2xs uppercase text-ink-faint">{t("Holds milestone")}</span>
           <select
             value={clause.milestone}
             onChange={(event) => onChange({ milestone: event.target.value })}
             className={`${inputClass(false)} mt-1 cursor-pointer`}
           >
-            <option value="inspected">Inspected</option>
-            <option value="shipped">Shipped</option>
-            <option value="arrived_cleared">Arrived and cleared</option>
+            <option value="inspected">{t("Inspected")}</option>
+            <option value="shipped">{t("Shipped")}</option>
+            <option value="arrived_cleared">{t("Arrived and cleared")}</option>
           </select>
         </label>
         <label className="block">
-          <span className="text-2xs uppercase text-ink-faint">Judged by</span>
+          <span className="text-2xs uppercase text-ink-faint">{t("Judged by")}</span>
           <input
             value={clause.reviewer}
             onChange={(event) => onChange({ reviewer: event.target.value })}
@@ -759,13 +759,15 @@ function ClauseRow({ index, clause, arbiter, onChange, onRemove }) {
       </div>
       {badAddress ? (
         <p className="mt-1 text-[12.5px] text-state-disputed">
-          That is not a wallet address. The reviewer signs in with it to record their verdict.
+          {t("That is not a wallet address. The reviewer signs in with it to record their verdict.")}
         </p>
       ) : null}
       <p className="mt-1.5 text-2xs text-ink-faint">
-        {clause.reviewer.trim() && arbiter && clause.reviewer.trim().toLowerCase() === arbiter.toLowerCase()
-          ? "The arbiter on this escrow."
-          : "Anyone you appoint — a surveyor, a lab, your own quality manager."}
+        {t(
+          clause.reviewer.trim() && arbiter && clause.reviewer.trim().toLowerCase() === arbiter.toLowerCase()
+            ? "The arbiter on this escrow."
+            : "Anyone you appoint — a surveyor, a lab, your own quality manager."
+        )}
       </p>
     </div>
   );

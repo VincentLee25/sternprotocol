@@ -11,6 +11,7 @@ import {
 import { AddressLink } from "./TxLink.jsx";
 import { CURRENCY_LABEL } from "../lib/currency.js";
 import { shortCid } from "../lib/ebl.js";
+import { useLanguage } from "../lib/language.jsx";
 
 // What the two parties can do after a dispute is raised, and before the arbiter
 // has to impose an answer.
@@ -58,6 +59,7 @@ function money(units, decimals = 2) {
 }
 
 export default function NegotiationPanel({ escrowId, walletAddress, escrow, onStateChanged }) {
+  const { t } = useLanguage();
   const decimals = Number(escrow?.decimals ?? 2);
   const [thread, setThread] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -114,7 +116,7 @@ export default function NegotiationPanel({ escrowId, walletAddress, escrow, onSt
         <Head />
         <p className="mt-2 flex items-center gap-2 font-serif text-sm text-ink-dim">
           <Loader2 size={13} className="animate-spin" aria-hidden="true" />
-          Reading the settlement thread…
+          {t("Reading the settlement thread…")}
         </p>
       </Card>
     );
@@ -129,23 +131,19 @@ export default function NegotiationPanel({ escrowId, walletAddress, escrow, onSt
     <Card>
       <Head />
       <p className="mt-2 font-serif text-sm leading-relaxed text-ink-dim">
-        A dispute leaves the arbiter one binary choice — the whole value to the exporter, or the
-        whole value back to the importer. Most quality claims are not worth either. Agree on the
-        figure here and the arbiter executes your agreement instead of deciding for you.
+        {t("A dispute leaves the arbiter one binary choice — the whole value to the exporter, or the whole value back to the importer. Most quality claims are not worth either. Agree on the figure here and the arbiter executes your agreement instead of deciding for you.")}
       </p>
 
       {error ? (
         <p className="mt-3 border-l-2 border-state-disputed pl-3 font-serif text-sm leading-relaxed text-state-disputed">
-          {error}
+          {t(error)}
         </p>
       ) : null}
 
       {!splitExecutable ? (
         // Said before anyone proposes a split, not after both have signed one.
         <p className="mt-3 border-l-2 border-state-pending pl-3 font-serif text-sm leading-relaxed text-state-pending">
-          The contract at this address can only release or refund in full, so a partial split
-          cannot be executed on chain here. You can still record one — it is a real agreement and
-          it is pinned — but settling it needs a deployment that has{" "}
+          {t("The contract at this address can only release or refund in full, so a partial split cannot be executed on chain here. You can still record one — it is a real agreement and it is pinned — but settling it needs a deployment that has")}{" "}
           <code className="font-mono text-xs">resolveDisputeByAgreement()</code>.
         </p>
       ) : null}
@@ -178,7 +176,7 @@ export default function NegotiationPanel({ escrowId, walletAddress, escrow, onSt
         </ul>
       ) : (
         <p className="mt-4 border-t border-sky/70 pt-4 font-serif text-sm leading-relaxed text-ink-dim">
-          Nothing proposed yet.
+          {t("Nothing proposed yet.")}
         </p>
       )}
 
@@ -201,23 +199,20 @@ export default function NegotiationPanel({ escrowId, walletAddress, escrow, onSt
             onClick={() => setComposing(true)}
             className="mt-4 cursor-pointer font-mono text-2xs uppercase text-teal transition-colors duration-150 hover:text-navy"
           >
-            {live ? "Counter this proposal" : "Propose a settlement"}
+            {t(live ? "Counter this proposal" : "Propose a settlement")}
           </button>
         )
       ) : null}
 
       {isArbiter ? (
         <p className="mt-4 border-t border-sky/70 pt-3 font-serif text-xs leading-relaxed text-ink-dim">
-          You are the arbiter on this escrow. If the parties agree, execute their agreement from the
-          ops console, where your own key signs — the gateway never holds a key that can settle a
-          dispute.
+          {t("You are the arbiter on this escrow. If the parties agree, execute their agreement from the ops console, where your own key signs — the gateway never holds a key that can settle a dispute.")}
         </p>
       ) : null}
 
       {!isParty && !isArbiter ? (
         <p className="mt-4 border-t border-sky/70 pt-3 font-serif text-xs leading-relaxed text-ink-dim">
-          Only the importer and the exporter can propose or accept a settlement. You can read the
-          thread in full.
+          {t("Only the importer and the exporter can propose or accept a settlement. You can read the thread in full.")}
         </p>
       ) : null}
     </Card>
@@ -225,6 +220,7 @@ export default function NegotiationPanel({ escrowId, walletAddress, escrow, onSt
 }
 
 function Agreement({ agreement, decimals, canWithdraw, busy, onWithdraw }) {
+  const { t } = useLanguage();
   const executable = agreement.executable === true;
   return (
     <div
@@ -233,25 +229,25 @@ function Agreement({ agreement, decimals, canWithdraw, busy, onWithdraw }) {
       }`}
     >
       <p className="font-mono text-2xs uppercase text-ink-faint">
-        Agreed · {new Date(agreement.agreedAt).toLocaleString("id-ID")}
+        {t("Agreed")} · {new Date(agreement.agreedAt).toLocaleString("id-ID")}
       </p>
       <p className="mt-1 font-serif text-sm leading-relaxed text-navy">
-        {OUTCOME_LABEL[agreement.outcome] || agreement.outcome}
+        {t(OUTCOME_LABEL[agreement.outcome] || agreement.outcome)}
         {agreement.outcome === "split" && agreement.amountToExporter ? (
           <>
             {" — "}
-            <span className="tabular-nums">{money(agreement.amountToExporter, decimals)}</span> to the
-            exporter
+            <span className="tabular-nums">{money(agreement.amountToExporter, decimals)}</span>{" "}
+            {t("to the exporter")}
             {agreement.splitToExporterBps
               ? ` (${(agreement.splitToExporterBps / 100).toFixed(2).replace(/\.00$/, "")}%)`
               : ""}
-            , the rest returned to the importer.
+            {t(", the rest returned to the importer.")}
           </>
         ) : null}
       </p>
       <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-2xs uppercase text-ink-faint">
-        <AddressLink address={agreement.proposedBy} label="proposed" />
-        <AddressLink address={agreement.acceptedBy} label="accepted" />
+        <AddressLink address={agreement.proposedBy} label={t("proposed by")} />
+        <AddressLink address={agreement.acceptedBy} label={t("accepted")} />
         {/* The agreement is pinned, so what the arbiter writes on chain is the
             parties' own document rather than a third party's summary of it. */}
         {agreement.cid ? (
@@ -265,7 +261,7 @@ function Agreement({ agreement, decimals, canWithdraw, busy, onWithdraw }) {
             {shortCid(agreement.cid)}
           </a>
         ) : (
-          <span className="text-state-pending">not pinned</span>
+          <span className="text-state-pending">{t("not pinned")}</span>
         )}
       </p>
 
@@ -287,7 +283,7 @@ function Agreement({ agreement, decimals, canWithdraw, busy, onWithdraw }) {
           disabled={busy}
           className="mt-2.5 cursor-pointer font-mono text-2xs uppercase text-ink-faint transition-colors duration-150 hover:text-navy disabled:opacity-50"
         >
-          {busy ? "Withdrawing…" : "Withdraw and renegotiate"}
+          {t(busy ? "Withdrawing…" : "Withdraw and renegotiate")}
         </button>
       ) : null}
     </div>
@@ -295,6 +291,7 @@ function Agreement({ agreement, decimals, canWithdraw, busy, onWithdraw }) {
 }
 
 function Proposal({ proposal, decimals, mine, canAccept, busy, onAccept }) {
+  const { t } = useLanguage();
   const state = proposal.acceptedBy
     ? { tone: "attested", label: "Accepted" }
     : proposal.superseded
@@ -305,18 +302,19 @@ function Proposal({ proposal, decimals, mine, canAccept, busy, onAccept }) {
     <li className={`py-4 ${proposal.superseded ? "opacity-60" : ""}`}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <p className="font-mono text-2xs uppercase text-ink-faint">
-          {proposal.byRole}
-          {mine ? " · you" : ""} · {new Date(proposal.at).toLocaleString("id-ID")}
+          {t(proposal.byRole)}
+          {mine ? ` · ${t("you")}` : ""} · {new Date(proposal.at).toLocaleString("id-ID")}
         </p>
-        <Dot tone={state.tone}>{state.label}</Dot>
+        <Dot tone={state.tone}>{t(state.label)}</Dot>
       </div>
 
       <p className="mt-1.5 font-serif text-sm leading-relaxed text-navy">
-        {OUTCOME_LABEL[proposal.outcome] || proposal.outcome}
+        {t(OUTCOME_LABEL[proposal.outcome] || proposal.outcome)}
         {proposal.outcome === "split" ? (
           <>
             {" — "}
-            <span className="tabular-nums">{money(proposal.amountToExporter, decimals)}</span> to the exporter
+            <span className="tabular-nums">{money(proposal.amountToExporter, decimals)}</span>{" "}
+            {t("to the exporter")}
             {proposal.splitToExporterBps
               ? ` (${(proposal.splitToExporterBps / 100).toFixed(2).replace(/\.00$/, "")}%)`
               : ""}
@@ -333,13 +331,12 @@ function Proposal({ proposal, decimals, mine, canAccept, busy, onAccept }) {
           className="mt-2.5 flex cursor-pointer items-center gap-2 rounded-full bg-navy px-4 py-2 text-xs font-medium text-beige transition-colors duration-150 hover:bg-teal-solid disabled:cursor-not-allowed disabled:opacity-50"
         >
           {busy ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : null}
-          {busy ? "Signing…" : "Accept this settlement"}
+          {t(busy ? "Signing…" : "Accept this settlement")}
         </button>
       ) : null}
       {mine && !proposal.superseded && !proposal.acceptedBy ? (
         <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">
-          Waiting on your counterparty. You cannot accept your own proposal — a settlement takes
-          two.
+          {t("Waiting on your counterparty. You cannot accept your own proposal — a settlement takes two.")}
         </p>
       ) : null}
     </li>
@@ -347,6 +344,7 @@ function Proposal({ proposal, decimals, mine, canAccept, busy, onAccept }) {
 }
 
 function ProposalForm({ contractValue, decimals, splitExecutable, counterTo, busy, onCancel, onSubmit }) {
+  const { t } = useLanguage();
   const [outcome, setOutcome] = useState("split");
   const [percent, setPercent] = useState("85");
   const [note, setNote] = useState("");
@@ -382,11 +380,11 @@ function ProposalForm({ contractValue, decimals, splitExecutable, counterTo, bus
     >
       {counterTo ? (
         <p className="font-serif text-xs leading-relaxed text-ink-dim">
-          This replaces the proposal currently on the table, so only one offer is ever live.
+          {t("This replaces the proposal currently on the table, so only one offer is ever live.")}
         </p>
       ) : null}
 
-      <p className="mt-2 font-mono text-2xs uppercase text-ink-faint">What you propose</p>
+      <p className="mt-2 font-mono text-2xs uppercase text-ink-faint">{t("What you propose")}</p>
       <div className="mt-2 space-y-1.5">
         {Object.entries(OUTCOME_LABEL).map(([key, label]) => (
           <label
@@ -401,10 +399,10 @@ function ProposalForm({ contractValue, decimals, splitExecutable, counterTo, bus
               onChange={() => setOutcome(key)}
               className="accent-teal"
             />
-            {label}
+            {t(label)}
             {key === "split" && !splitExecutable ? (
               <span className="font-mono text-2xs uppercase text-state-pending">
-                recorded, not executable here
+                {t("recorded, not executable here")}
               </span>
             ) : null}
           </label>
@@ -414,7 +412,7 @@ function ProposalForm({ contractValue, decimals, splitExecutable, counterTo, bus
       {outcome === "split" ? (
         <div className="mt-3">
           <label htmlFor="split-percent" className="block font-mono text-2xs uppercase text-ink-faint">
-            Share to the exporter
+            {t("Share to the exporter")}
           </label>
           <div className="mt-1 flex items-center gap-2">
             <input
@@ -427,32 +425,33 @@ function ProposalForm({ contractValue, decimals, splitExecutable, counterTo, bus
               onChange={(event) => setPercent(event.target.value)}
               className="w-24 rounded-panel border border-sky bg-beige/40 px-3 py-2 font-mono text-sm tabular-nums text-navy outline-none transition-colors duration-150 focus:border-teal/60"
             />
-            <span className="font-serif text-sm text-ink-dim">% of the escrow value</span>
+            <span className="font-serif text-sm text-ink-dim">{t("% of the escrow value")}</span>
           </div>
           {preview ? (
             <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">
-              <span className="tabular-nums text-navy">{preview.exporter}</span> to the exporter,{" "}
-              <span className="tabular-nums text-navy">{preview.importer}</span> back to the
-              importer.
+              <span className="tabular-nums text-navy">{preview.exporter}</span>{" "}
+              {t("to the exporter")},{" "}
+              <span className="tabular-nums text-navy">{preview.importer}</span>{" "}
+              {t("back to the importer.")}
             </p>
           ) : null}
           {!bpsValid ? (
             <p className="mt-1.5 font-serif text-xs leading-relaxed text-state-pending">
-              A split is between 0.01% and 99.99%. Nothing and everything are the other two options.
+              {t("A split is between 0.01% and 99.99%. Nothing and everything are the other two options.")}
             </p>
           ) : null}
         </div>
       ) : null}
 
       <label htmlFor="settlement-note" className="mt-3 block font-mono text-2xs uppercase text-ink-faint">
-        Why
+        {t("Why")}
       </label>
       <textarea
         id="settlement-note"
         rows={3}
         value={note}
         onChange={(event) => setNote(event.target.value)}
-        placeholder="The figure, and what it is based on."
+        placeholder={t("The figure, and what it is based on.")}
         className="mt-1 w-full rounded-panel border border-sky bg-beige/40 px-3 py-2 font-serif text-sm text-navy outline-none transition-colors duration-150 focus:border-teal/60"
       />
       <p
@@ -461,8 +460,10 @@ function ProposalForm({ contractValue, decimals, splitExecutable, counterTo, bus
         }`}
       >
         {shortNote
-          ? `${MIN_NOTE - note.trim().length} more characters. A number with no reason behind it can only be refused, not answered.`
-          : "Your counterparty sees this, and so does the arbiter if it comes to that."}
+          ? t("{count} more characters. A number with no reason behind it can only be refused, not answered.", {
+              count: MIN_NOTE - note.trim().length
+            })
+          : t("Your counterparty sees this, and so does the arbiter if it comes to that.")}
       </p>
 
       <div className="mt-3 flex items-center gap-4">
@@ -472,7 +473,7 @@ function ProposalForm({ contractValue, decimals, splitExecutable, counterTo, bus
           className="flex cursor-pointer items-center gap-2 rounded-full bg-navy px-4 py-2 text-xs font-medium text-beige transition-colors duration-150 hover:bg-teal-solid disabled:cursor-not-allowed disabled:opacity-50"
         >
           {busy ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : null}
-          {busy ? "Posting…" : "Post proposal"}
+          {t(busy ? "Posting…" : "Post proposal")}
         </button>
         <button
           type="button"
@@ -480,7 +481,7 @@ function ProposalForm({ contractValue, decimals, splitExecutable, counterTo, bus
           disabled={busy}
           className="cursor-pointer font-mono text-2xs uppercase text-ink-faint transition-colors duration-150 hover:text-navy disabled:opacity-50"
         >
-          Cancel
+          {t("Cancel")}
         </button>
       </div>
     </form>
@@ -496,10 +497,11 @@ function Card({ children }) {
 }
 
 function Head() {
+  const { t } = useLanguage();
   return (
     <h2 className="flex items-center gap-2 font-mono text-2xs uppercase text-ink-faint">
       <Handshake size={12} aria-hidden="true" />
-      Negotiated settlement · before the arbiter decides
+      {t("Negotiated settlement · before the arbiter decides")}
     </h2>
   );
 }

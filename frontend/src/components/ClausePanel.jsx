@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, ScrollText } from "lucide-react";
 import { apiConfigured, eblDocumentUrl, getClauses, reviewClause } from "../lib/sternApi.js";
+import { useLanguage } from "../lib/language.jsx";
 import { AddressLink } from "./TxLink.jsx";
 import { shortCid } from "../lib/ebl.js";
 
@@ -69,6 +70,7 @@ const MIN_REASONING = 40;
 const same = (a, b) => String(a || "").toLowerCase() === String(b || "").toLowerCase();
 
 export default function ClausePanel({ escrowId, walletAddress, onStateChanged }) {
+  const { t } = useLanguage();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -121,7 +123,7 @@ export default function ClausePanel({ escrowId, walletAddress, onStateChanged })
         <Head />
         <p className="mt-2 flex items-center gap-2 font-serif text-sm text-ink-dim">
           <Loader2 size={13} className="animate-spin" aria-hidden="true" />
-          Reading the clauses from the pinned instrument…
+          {t("Reading the clauses from the pinned instrument…")}
         </p>
       </Card>
     );
@@ -132,7 +134,7 @@ export default function ClausePanel({ escrowId, walletAddress, onStateChanged })
       <Card>
         <Head />
         <p className="mt-2 border-l-2 border-state-disputed pl-3 font-serif text-sm leading-relaxed text-state-disputed">
-          {error}
+          {t(error)}
         </p>
       </Card>
     );
@@ -148,10 +150,7 @@ export default function ClausePanel({ escrowId, walletAddress, onStateChanged })
       <Card>
         <Head />
         <p className="mt-2 font-serif text-sm leading-relaxed text-ink-dim">
-          This instrument declared no interpretive clauses, so every condition on it is a
-          machine-readable reading. Clauses that need a person — merchantable quality, packaging fit
-          for ocean carriage — are declared when the escrow is created, so their wording is inside
-          the pinned manifest and cannot be added afterwards.
+          {t("This instrument declared no interpretive clauses, so every condition on it is a machine-readable reading. Clauses that need a person — merchantable quality, packaging fit for ocean carriage — are declared when the escrow is created, so their wording is inside the pinned manifest and cannot be added afterwards.")}
         </p>
       </Card>
     );
@@ -163,25 +162,24 @@ export default function ClausePanel({ escrowId, walletAddress, onStateChanged })
     <Card>
       <Head />
       <p className="mt-2 font-serif text-sm leading-relaxed text-ink-dim">
-        These are the terms no feed can answer. Each names the person who must judge it, and their
-        verdict is not accepted without a written reason. Until a required clause has one, the
-        gateway refuses to submit the milestone it governs.
+        {t("These are the terms no feed can answer. Each names the person who must judge it, and their verdict is not accepted without a written reason. Until a required clause has one, the gateway refuses to submit the milestone it governs.")}
       </p>
 
       {held.length ? (
         <p className="mt-3 border-l-2 border-state-pending pl-3 font-serif text-sm leading-relaxed text-state-pending">
-          {held.map(([name]) => MILESTONE_LABEL[name] || name).join(" and ")}{" "}
-          {held.length === 1 ? "is" : "are"} held pending review.
+          {t("Held pending review: {milestones}.", {
+            milestones: held.map(([name]) => t(MILESTONE_LABEL[name] || name)).join(", ")
+          })}
         </p>
       ) : (
         <p className="mt-3 border-l-2 border-state-attested pl-3 font-serif text-sm leading-relaxed text-state-attested">
-          Every declared clause has been answered. No milestone is held by one.
+          {t("Every declared clause has been answered. No milestone is held by one.")}
         </p>
       )}
 
       {error ? (
         <p className="mt-3 border-l-2 border-state-disputed pl-3 font-serif text-sm leading-relaxed text-state-disputed">
-          {error}
+          {t(error)}
         </p>
       ) : null}
 
@@ -203,6 +201,7 @@ export default function ClausePanel({ escrowId, walletAddress, onStateChanged })
 }
 
 function ClauseRow({ clause, isReviewer, open, onToggle, busy, onSubmit }) {
+  const { t } = useLanguage();
   const review = clause.review;
   const automated = clause.kind === "automated";
 
@@ -210,12 +209,12 @@ function ClauseRow({ clause, isReviewer, open, onToggle, busy, onSubmit }) {
     <li className="py-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <p className="font-mono text-2xs uppercase text-ink-faint">
-          {clause.id} · {MILESTONE_LABEL[clause.milestone] || clause.milestone}
-          {automated ? " · automated" : ""}
-          {clause.required ? "" : " · advisory"}
+          {clause.id} · {t(MILESTONE_LABEL[clause.milestone] || clause.milestone)}
+          {automated ? ` · ${t("automated")}` : ""}
+          {clause.required ? "" : ` · ${t("advisory")}`}
         </p>
         <Dot tone={automated ? "muted" : STATE_TONE[clause.state]}>
-          {automated ? "Read by a feed" : STATE_LABEL[clause.state] || clause.state}
+          {t(automated ? "Read by a feed" : STATE_LABEL[clause.state] || clause.state)}
         </Dot>
       </div>
 
@@ -223,27 +222,27 @@ function ClauseRow({ clause, isReviewer, open, onToggle, busy, onSubmit }) {
 
       {clause.standard ? (
         <p className="mt-1 font-serif text-xs leading-relaxed text-ink-dim">
-          Standard: {clause.standard}
+          {t("Standard")}: {clause.standard}
         </p>
       ) : null}
 
       {clause.reviewer ? (
         <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-2xs uppercase text-ink-faint">
-          <span>{clause.reviewerRole}</span>
-          <AddressLink address={clause.reviewer} label="reviewer" />
-          {isReviewer ? <span className="text-teal">that is you</span> : null}
+          <span>{t(clause.reviewerRole)}</span>
+          <AddressLink address={clause.reviewer} label={t("reviewer")} />
+          {isReviewer ? <span className="text-teal">{t("that is you")}</span> : null}
         </p>
       ) : null}
 
       {review ? (
         <div className="mt-2.5 border-l-2 border-sky pl-3">
           <p className="font-mono text-2xs uppercase text-ink-faint">
-            {STATE_LABEL[review.verdict] || review.verdict} ·{" "}
+            {t(STATE_LABEL[review.verdict] || review.verdict)} ·{" "}
             {new Date(review.reviewedAt).toLocaleString("id-ID")}
           </p>
           <p className="mt-1 font-serif text-sm leading-relaxed text-navy">{review.reasoning}</p>
           <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-2xs uppercase text-ink-faint">
-            <AddressLink address={review.reviewedBy} label="decided by" />
+            <AddressLink address={review.reviewedBy} label={t("decided by")} />
             {/* The reasoning is pinned, so the verdict points at an address
                 anyone can fetch rather than at a row in our own database. When
                 pinning is not configured the record says so instead of implying
@@ -259,7 +258,7 @@ function ClauseRow({ clause, isReviewer, open, onToggle, busy, onSubmit }) {
                 {shortCid(review.reasoningCid)}
               </a>
             ) : (
-              <span className="text-state-pending">not pinned</span>
+              <span className="text-state-pending">{t("not pinned")}</span>
             )}
           </p>
         </div>
@@ -279,7 +278,7 @@ function ClauseRow({ clause, isReviewer, open, onToggle, busy, onSubmit }) {
             onClick={onToggle}
             className="mt-2.5 cursor-pointer font-mono text-2xs uppercase text-teal transition-colors duration-150 hover:text-navy"
           >
-            {review ? "Revise this verdict" : "Record a verdict"}
+            {t(review ? "Revise this verdict" : "Record a verdict")}
           </button>
         )
       ) : null}
@@ -288,6 +287,7 @@ function ClauseRow({ clause, isReviewer, open, onToggle, busy, onSubmit }) {
 }
 
 function VerdictForm({ busy, revising, onCancel, onSubmit }) {
+  const { t } = useLanguage();
   const [verdict, setVerdict] = useState("met");
   const [reasoning, setReasoning] = useState("");
   const short = reasoning.trim().length < MIN_REASONING;
@@ -301,7 +301,7 @@ function VerdictForm({ busy, revising, onCancel, onSubmit }) {
         if (!short) onSubmit(verdict, reasoning.trim());
       }}
     >
-      <p className="font-mono text-2xs uppercase text-ink-faint">Your verdict</p>
+      <p className="font-mono text-2xs uppercase text-ink-faint">{t("Your verdict")}</p>
       <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1.5">
         {VERDICTS.map((option) => (
           <label
@@ -316,24 +316,24 @@ function VerdictForm({ busy, revising, onCancel, onSubmit }) {
               onChange={() => setVerdict(option.key)}
               className="accent-teal"
             />
-            {option.label}
+            {t(option.label)}
           </label>
         ))}
       </div>
-      <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">{chosen?.hint}</p>
+      <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">{chosen ? t(chosen.hint) : null}</p>
 
       <label
         htmlFor="clause-reasoning"
         className="mt-3 block font-mono text-2xs uppercase text-ink-faint"
       >
-        Why
+        {t("Why")}
       </label>
       <textarea
         id="clause-reasoning"
         rows={3}
         value={reasoning}
         onChange={(event) => setReasoning(event.target.value)}
-        placeholder="What you examined, and what you found."
+        placeholder={t("What you examined, and what you found.")}
         className="mt-1 w-full rounded-panel border border-sky bg-beige/40 px-3 py-2 font-serif text-sm text-navy outline-none transition-colors duration-150 focus:border-teal/60"
       />
       {/* Not a formality. A verdict with no argument behind it would look like a
@@ -345,13 +345,15 @@ function VerdictForm({ busy, revising, onCancel, onSubmit }) {
         }`}
       >
         {short
-          ? `${MIN_REASONING - reasoning.trim().length} more characters. A verdict nobody can argue with is the thing this exists to prevent.`
-          : "This is pinned alongside the verdict, so it can be read and contested later."}
+          ? t("{count} more characters. A verdict nobody can argue with is the thing this exists to prevent.", {
+              count: MIN_REASONING - reasoning.trim().length
+            })
+          : t("This is pinned alongside the verdict, so it can be read and contested later.")}
       </p>
 
       {revising ? (
         <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">
-          Your earlier verdict stays in the record. This is added to it, not over it.
+          {t("Your earlier verdict stays in the record. This is added to it, not over it.")}
         </p>
       ) : null}
 
@@ -362,7 +364,7 @@ function VerdictForm({ busy, revising, onCancel, onSubmit }) {
           className="flex cursor-pointer items-center gap-2 rounded-full bg-navy px-4 py-2 text-xs font-medium text-beige transition-colors duration-150 hover:bg-teal-solid disabled:cursor-not-allowed disabled:opacity-50"
         >
           {busy ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : null}
-          {busy ? "Recording…" : "Record verdict"}
+          {t(busy ? "Recording…" : "Record verdict")}
         </button>
         <button
           type="button"
@@ -370,7 +372,7 @@ function VerdictForm({ busy, revising, onCancel, onSubmit }) {
           disabled={busy}
           className="cursor-pointer font-mono text-2xs uppercase text-ink-faint transition-colors duration-150 hover:text-navy disabled:opacity-50"
         >
-          Cancel
+          {t("Cancel")}
         </button>
       </div>
     </form>
@@ -386,10 +388,11 @@ function Card({ children }) {
 }
 
 function Head() {
+  const { t } = useLanguage();
   return (
     <h2 className="flex items-center gap-2 font-mono text-2xs uppercase text-ink-faint">
       <ScrollText size={12} aria-hidden="true" />
-      Interpretive clauses · human review
+      {t("Interpretive clauses · human review")}
     </h2>
   );
 }
