@@ -9,6 +9,7 @@ import {
   withdrawSettlement
 } from "../lib/sternApi.js";
 import { AddressLink } from "./TxLink.jsx";
+import { inputClass } from "./Field.jsx";
 import { CURRENCY_LABEL } from "../lib/currency.js";
 import { shortCid } from "../lib/ebl.js";
 import { useLanguage } from "../lib/language.jsx";
@@ -415,16 +416,21 @@ function ProposalForm({ contractValue, decimals, splitExecutable, counterTo, bus
             {t("Share to the exporter")}
           </label>
           <div className="mt-1 flex items-center gap-2">
-            <input
-              id="split-percent"
-              type="number"
-              min="0.01"
-              max="99.99"
-              step="0.01"
-              value={percent}
-              onChange={(event) => setPercent(event.target.value)}
-              className="w-24 rounded-panel border border-sky bg-beige/40 px-3 py-2 font-mono text-sm tabular-nums text-navy outline-none transition-colors duration-150 focus:border-teal/60"
-            />
+            {/* Boxed at a fixed width rather than overriding inputClass's
+                w-full, which Tailwind resolves by stylesheet order and not by
+                the order these classes are written in. */}
+            <div className="w-28 shrink-0">
+              <input
+                id="split-percent"
+                type="number"
+                min="0.01"
+                max="99.99"
+                step="0.01"
+                value={percent}
+                onChange={(event) => setPercent(event.target.value)}
+                className={`${inputClass(false)} font-mono tabular-nums`}
+              />
+            </div>
             <span className="font-serif text-sm text-ink-dim">{t("% of the escrow value")}</span>
           </div>
           {preview ? (
@@ -452,7 +458,7 @@ function ProposalForm({ contractValue, decimals, splitExecutable, counterTo, bus
         value={note}
         onChange={(event) => setNote(event.target.value)}
         placeholder={t("The figure, and what it is based on.")}
-        className="mt-1 w-full rounded-panel border border-sky bg-beige/40 px-3 py-2 font-serif text-sm text-navy outline-none transition-colors duration-150 focus:border-teal/60"
+        className={`${inputClass(false)} mt-1 font-serif`}
       />
       <p
         className={`mt-1 font-serif text-xs leading-relaxed ${

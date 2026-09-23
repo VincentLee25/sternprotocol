@@ -3,6 +3,7 @@ import { Loader2, ScrollText } from "lucide-react";
 import { apiConfigured, eblDocumentUrl, getClauses, reviewClause } from "../lib/sternApi.js";
 import { useLanguage } from "../lib/language.jsx";
 import { AddressLink } from "./TxLink.jsx";
+import { inputClass } from "./Field.jsx";
 import { shortCid } from "../lib/ebl.js";
 
 // The clauses no feed can answer, and the person who has to.
@@ -18,9 +19,10 @@ import { shortCid } from "../lib/ebl.js";
 // not submit the milestone it governs — the same refusal it makes for a wrong
 // e-BL. Nothing here verifies anything; it records who decided and why.
 
-// The gateway's own labels are Indonesian (backend/oracle-gateway/clauseService.js).
-// The workspace is English, so the verdicts are named here rather than
-// rendering a mixed-language row.
+// Named here rather than taken from the gateway's response. The gateway's own
+// labels are Indonesian only (backend/oracle-gateway/clauseService.js), and the
+// workspace is bilingual — rendering its label would pin these rows to one
+// language while every other row followed the toggle.
 const VERDICTS = [
   {
     key: "met",
@@ -334,7 +336,7 @@ function VerdictForm({ busy, revising, onCancel, onSubmit }) {
         value={reasoning}
         onChange={(event) => setReasoning(event.target.value)}
         placeholder={t("What you examined, and what you found.")}
-        className="mt-1 w-full rounded-panel border border-sky bg-beige/40 px-3 py-2 font-serif text-sm text-navy outline-none transition-colors duration-150 focus:border-teal/60"
+        className={`${inputClass(false)} mt-1 font-serif`}
       />
       {/* Not a formality. A verdict with no argument behind it would look like a
           judgement and carry none, and this is the one place in the product
