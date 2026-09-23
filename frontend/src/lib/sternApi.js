@@ -259,6 +259,17 @@ export const reviewClause = (escrowId, clauseId, { verdict, reasoning, token }) 
     body: { verdict, reasoning }
   });
 
+/** Short-lived proof a separate Ops session must sign before recording a verdict. */
+export const getOpsClauseReviewChallenge = (escrowId, clauseId) =>
+  request(`/ops/clauses/${escrowId}/${clauseId}/challenge`, { method: "POST" });
+
+/** Records an institutional-arbiter verdict after the gateway verifies both signatures. */
+export const reviewOpsClause = (escrowId, clauseId, { verdict, reasoning, challengeId, signature }) =>
+  request(`/ops/clauses/${escrowId}/${clauseId}/review`, {
+    method: "POST",
+    body: { verdict, reasoning, challengeId, signature }
+  });
+
 // --- post-dispute negotiation ------------------------------------------------
 //
 // A raised dispute freezes the escrow and leaves the arbiter one binary choice.

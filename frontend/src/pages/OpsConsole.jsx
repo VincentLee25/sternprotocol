@@ -5,12 +5,22 @@ import {
   getOpsSession,
   openOpsSession,
   arbitratedBy,
+  signOpsMessage,
   resolveDisputeAsArbiter,
   settleByAgreementAsArbiter
 } from "../lib/opsAuth.js";
+import ClausePanel from "../components/ClausePanel.jsx";
 import TxLink from "../components/TxLink.jsx";
 import { loadEscrowRows, sourceIsLive } from "../lib/escrowSource.js";
-import { API_BASE, getNegotiation, getOracleStatus, getVerifiers } from "../lib/sternApi.js";
+import {
+  API_BASE,
+  getNegotiation,
+  getOpsClauseReviewChallenge,
+  getOracleStatus,
+  getVerifiers,
+  reviewOpsClause,
+  verifyDisputeAgreement
+} from "../lib/sternApi.js";
 // Named on screen when nothing matches, because "which chain am I actually
 // looking at" is the question an empty list raises and the one it never
 // answered. VITE_CONTRACT_ADDRESS (this page's signer) and the gateway's own
@@ -135,6 +145,7 @@ function OpsDashboard({ session, onClose, onExit }) {
   const [verifiers, setVerifiers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedEscrow, setSelectedEscrow] = useState(null);
 
   const load = useCallback(async (signal) => {
     setError("");
@@ -162,6 +173,17 @@ function OpsDashboard({ session, onClose, onExit }) {
 
   const mine = arbitratedBy(escrows, session.address);
   const disputed = mine.filter((e) => e.state === "Disputed" || e.disputeOpen);
+
+  if (selectedEscrow) {
+    return (
+      <OpsEscrowDetail
+        escrow={selectedEscrow}
+        session={session}
+        onBack={() => setSelectedEscrow(null)}
+        onReviewRecorded={() => load()}
+      />
+    );
+  }
 
   return (
     <div className="stern-workspace-shell min-h-dvh p-5 sm:p-6 lg:p-10">
@@ -268,19 +290,25 @@ function OpsDashboard({ session, onClose, onExit }) {
           ) : (
             <ul className="mt-3 divide-y divide-sky">
               {mine.map((e) => (
-                <li key={e.id} className="flex items-baseline justify-between gap-4 py-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-navy">{e.commodity}</p>
-                    <p className="font-mono text-2xs text-ink-faint">
-                      &#8470; {String(e.id).padStart(4, "0")} · {e.containerRef}
-                    </p>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className="font-mono text-xs tabular-nums text-navy">
-                      {Number(e.value).toLocaleString("id-ID")} {CURRENCY_LABEL}
-                    </p>
-                    <p className="font-mono text-2xs uppercase text-ink-faint">{t(e.state)}</p>
-                  </div>
+                <li key={e.id}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEscrow(e)}
+                    className="flex w-full cursor-pointer items-baseline justify-between gap-4 py-3 text-left transition-colors duration-150 hover:bg-sky/15"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-navy">{e.commodity}</p>
+                      <p className="font-mono text-2xs text-ink-faint">
+                        &#8470; {String(e.id).padStart(4, "0")} · {e.containerRef}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="font-mono text-xs tabular-nums text-navy">
+                        {Number(e.value).toLocaleString("id-ID")} {CURRENCY_LABEL}
+                      </p>
+                      <p className="font-mono text-2xs uppercase text-ink-faint">{t(e.state)}</p>
+                    </div>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -334,6 +362,97 @@ function OpsDashboard({ session, onClose, onExit }) {
           ) : null}
         </aside>
       </div>
+      </div>
+    </div>
+  );
+}
+
+// Detail stays inside the distinct Ops surface. It intentionally does not use
+// the company workspace's Particle session: this operator has already proved
+// control of the institutional arbiter key when opening the Ops console.
+function OpsEscrowDetail({ escrow, session, onBack, onReviewRecorded }) {
+  const { t } = useLanguage();
+  const [error, setError] = useState("");
+
+  const recordReview = useCallback(async ({ escrowId, clauseId, verdict, reasoning }) => {
+    setError("");
+    try {
+      const challenge = await getOpsClauseReviewChallenge(escrowId, clauseId);
+      const signature = await signOpsMessage(challenge.message);
+      await reviewOpsClause(escrowId, clauseId, {
+        verdict,
+        reasoning,
+        challengeId: challenge.challengeId,
+        signature
+      });
+      onReviewRecorded?.();
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    }
+  }, [onReviewRecorded]);
+
+  return (
+    <div className="stern-workspace-shell min-h-dvh p-5 sm:p-6 lg:p-10">
+      <div className="stern-workspace-page mx-auto max-w-[1120px]">
+        <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex cursor-pointer items-center gap-1.5 text-sm text-ink-dim transition-colors duration-150 hover:text-navy"
+            >
+              <ArrowLeft size={14} aria-hidden="true" />
+              {t("Back to arbiter escrows")}
+            </button>
+            <p className="mt-5 text-2xs uppercase text-ink-faint">{t("Arbiter review")}</p>
+            <h1 className="mt-1.5 text-[28px] font-bold leading-none tracking-display text-navy">
+              {escrow.commodity}
+            </h1>
+            <p className="mt-2 font-mono text-xs text-ink-dim">
+              &#8470; {String(escrow.id).padStart(4, "0")} · {escrow.containerRef}
+            </p>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <LanguageToggle compact />
+            <ThemeToggle />
+          </div>
+        </header>
+
+        {error ? (
+          <p role="alert" className="mb-5 rounded-panel border border-state-disputed/40 bg-state-disputed/10 px-4 py-3 font-serif text-xs leading-relaxed text-state-disputed">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="space-y-5">
+            <section className="stern-workspace-card rounded-doc bg-surface p-5 shadow-card lg:p-6">
+              <p className="text-2xs uppercase text-ink-faint">{t("Trade record")}</p>
+              <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+                <Term label={t("Escrow state")} value={t(escrow.state)} />
+                <Term label={t("Escrow value")} value={`${Number(escrow.value).toLocaleString("id-ID")} ${CURRENCY_LABEL}`} />
+                <Term label={t("Container")} value={escrow.containerRef || t("not stated")} />
+                <Term label={t("Arbiter")} value={shortAddress(escrow.arbiter)} />
+              </dl>
+            </section>
+
+            <ClausePanel
+              escrowId={escrow.id}
+              walletAddress={session.address}
+              onReview={recordReview}
+              onStateChanged={onReviewRecorded}
+            />
+          </div>
+
+          <aside className="stern-workspace-card h-fit rounded-doc bg-surface p-5 shadow-card lg:p-6">
+            <p className="text-2xs uppercase text-ink-faint">{t("Review authority")}</p>
+            <p className="mt-3 font-serif text-sm leading-relaxed text-ink-dim">
+              {t("This Ops session can review only clauses that name this arbiter address. Your verdict and written reason are recorded against the pinned instrument.")}
+            </p>
+            <p className="mt-4 font-mono text-2xs text-ink-faint">{session.address}</p>
+          </aside>
+        </div>
       </div>
     </div>
   );

@@ -38,7 +38,10 @@ const {
 } = require("./ipfsService");
 const manifests = require("./manifestService");
 const clauses = require("./clauseService");
+const { createOpsClauseReviewService } = require("./opsClauseReviewService");
 const negotiation = require("./negotiationService");
+
+const opsClauseReviews = createOpsClauseReviewService({ arbiterPrivateKey: config.arbiterPrivateKey });
 
 const app = express();
 app.set("trust proxy", 1);
@@ -520,6 +523,33 @@ app.post("/clauses/:escrowId/:clauseId/review", requireSession, async (req, res,
     res.json(await clauses.review(req.params.escrowId, req.params.clauseId, req.body || {}, {
       reviewerAddress: req.identity?.user?.eoaOwnerAddress,
       declaredClauses
+    }));
+  } catch (error) { next(error); }
+});
+
+// Ops remains a distinct institutional-key path. The browser proves control of
+// the appointed arbiter key, then this gateway countersigns the verdict using
+// its server-only ARBITER_PRIVATE_KEY before the review is persisted.
+app.post("/ops/clauses/:escrowId/:clauseId/challenge", async (req, res, next) => {
+  try {
+    const declaredClauses = await declaredClausesForEscrow(req.params.escrowId);
+    res.json(opsClauseReviews.createChallenge(req.params.escrowId, req.params.clauseId, declaredClauses));
+  } catch (error) { next(error); }
+});
+
+app.post("/ops/clauses/:escrowId/:clauseId/review", async (req, res, next) => {
+  try {
+    const declaredClauses = await declaredClausesForEscrow(req.params.escrowId);
+    const proof = await opsClauseReviews.verifyAndAttest({
+      escrowId: req.params.escrowId,
+      clauseId: req.params.clauseId,
+      ...(req.body || {}),
+      declaredClauses
+    });
+    res.json(await clauses.review(req.params.escrowId, req.params.clauseId, req.body || {}, {
+      reviewerAddress: proof.reviewerAddress,
+      declaredClauses,
+      attestation: proof.attestation
     }));
   } catch (error) { next(error); }
 });

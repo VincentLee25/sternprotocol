@@ -133,6 +133,14 @@ export const getOpsSession = () => publicSession();
 /** The signer, for the few places that actually send a transaction. */
 export const getOpsWalletClient = () => session?.walletClient || null;
 
+/** Proves the current Ops session controls its institutional arbiter key. */
+export async function signOpsMessage(message) {
+  if (!session?.account) {
+    throw new Error("The ops session is closed. Enter the arbiter key again.");
+  }
+  return session.account.signMessage({ message: String(message) });
+}
+
 export function closeOpsSession() {
   session = null;
 }

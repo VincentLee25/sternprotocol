@@ -162,7 +162,7 @@ function normaliseClauses(list) {
  * disputes — resolveDispute refuses an empty reasoningCid — and this applies
  * the same rule one level earlier.
  */
-async function review(escrowId, clauseId, input = {}, { reviewerAddress, declaredClauses } = {}) {
+async function review(escrowId, clauseId, input = {}, { reviewerAddress, declaredClauses, attestation } = {}) {
   const id = String(escrowId || "").trim();
   if (!/^\d+$/.test(id)) throw appError("An escrow id is required.", 422, "ESCROW_ID_INVALID");
 
@@ -206,6 +206,7 @@ async function review(escrowId, clauseId, input = {}, { reviewerAddress, declare
   // The reasoning is pinned, so the verdict points at an address anyone can
   // fetch rather than at a row in this gateway's own database. That is the
   // same standard the arbiter's reasoning is held to on chain.
+  const reviewedAt = String(attestation?.reviewedAt || new Date().toISOString());
   let reasoningCid = null;
   let pinError = null;
   try {
@@ -218,7 +219,8 @@ async function review(escrowId, clauseId, input = {}, { reviewerAddress, declare
         verdict,
         reasoning,
         reviewedBy,
-        reviewedAt: new Date().toISOString()
+        reviewedAt,
+        ...(attestation ? { attestation } : {})
       }, null, 2)}\n`,
       "utf8"
     );
@@ -242,7 +244,8 @@ async function review(escrowId, clauseId, input = {}, { reviewerAddress, declare
     reasoningCid,
     ...(pinError ? { reasoningNotPinned: pinError } : {}),
     reviewedBy,
-    reviewedAt: new Date().toISOString()
+    reviewedAt,
+    ...(attestation ? { attestation } : {})
   };
 
   // Append-only: a reviewer may revise, and the earlier verdict stays legible.

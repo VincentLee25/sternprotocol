@@ -71,7 +71,7 @@ const MIN_REASONING = 40;
 
 const same = (a, b) => String(a || "").toLowerCase() === String(b || "").toLowerCase();
 
-export default function ClausePanel({ escrowId, walletAddress, accessToken, onStateChanged }) {
+export default function ClausePanel({ escrowId, walletAddress, accessToken, onReview, onStateChanged }) {
   const { t } = useLanguage();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -113,7 +113,8 @@ export default function ClausePanel({ escrowId, walletAddress, accessToken, onSt
     setBusy(clauseId);
     setError("");
     try {
-      await reviewClause(escrowId, clauseId, { verdict, reasoning, token: accessToken });
+      if (onReview) await onReview({ escrowId, clauseId, verdict, reasoning });
+      else await reviewClause(escrowId, clauseId, { verdict, reasoning, token: accessToken });
       setOpen("");
       await load();
       // A verdict can release or hold a milestone, so the page's own view of
@@ -199,7 +200,7 @@ export default function ClausePanel({ escrowId, walletAddress, accessToken, onSt
           <ClauseRow
             key={clause.id}
             clause={clause}
-            isReviewer={Boolean(accessToken) && same(clause.reviewer, walletAddress)}
+            isReviewer={Boolean(accessToken || onReview) && same(clause.reviewer, walletAddress)}
             open={open === clause.id}
             onToggle={() => setOpen(open === clause.id ? "" : clause.id)}
             busy={busy === clause.id}
