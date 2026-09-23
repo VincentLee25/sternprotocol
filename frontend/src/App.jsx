@@ -519,6 +519,8 @@ function SternApp() {
           <EscrowDetail
             escrow={activeEscrow}
             walletAddress={address}
+            particleOwnerAddress={user?.eoaOwnerAddress}
+            companyAccessToken={companySession?.accessToken}
             isOnChainReady={sourceIsLive}
             smartAccountClient={smartAccountClient}
             onRefresh={refresh}

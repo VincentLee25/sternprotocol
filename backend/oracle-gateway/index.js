@@ -488,16 +488,22 @@ app.get("/clauses/schema", (_req, res) => {
   });
 });
 
+async function declaredClausesForEscrow(escrowId) {
+  // Use the immutable, pinned creation instrument for both rendering and
+  // authorization. A browser must not be able to nominate its own reviewer.
+  const { getEscrow } = require("./contractService");
+  const escrow = await getEscrow(escrowId);
+  const verdict = await verifyDocumentCached(escrow.documentCid, { containerRef: escrow.containerRef });
+  return Array.isArray(verdict?.manifest?.clauses) ? verdict.manifest.clauses : [];
+}
+
 app.get("/clauses/:escrowId", async (req, res, next) => {
   try {
     // The declared clauses come from the escrow's own manifest on IPFS, so
     // this reads the document rather than trusting a store.
-    const { getEscrow } = require("./contractService");
     let declared = [];
     try {
-      const escrow = await getEscrow(req.params.escrowId);
-      const verdict = await verifyDocumentCached(escrow.documentCid, { containerRef: escrow.containerRef });
-      declared = verdict?.manifest?.clauses || [];
+      declared = await declaredClausesForEscrow(req.params.escrowId);
     } catch {
       // No chain or no manifest: report no clauses rather than failing the read.
       declared = [];
@@ -506,15 +512,15 @@ app.get("/clauses/:escrowId", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// Not behind requireInternalApiKey: the reviewer is a named human (the arbiter
-// or a nominated surveyor), not this gateway's operator, and that key must
-// never reach a browser. What stands in for authorisation is that the verdict
-// records WHO signed it and refuses to be recorded without a written reason —
-// see the note in clauseService.js. A production deployment would additionally
-// require a signature from the reviewer's own wallet.
-app.post("/clauses/:escrowId/:clauseId/review", async (req, res, next) => {
+// The reviewer is a named person with a STERN company session. The backend
+// derives their verified Particle owner EOA and never accepts it from a body.
+app.post("/clauses/:escrowId/:clauseId/review", requireSession, async (req, res, next) => {
   try {
-    res.json(await clauses.review(req.params.escrowId, req.params.clauseId, req.body || {}));
+    const declaredClauses = await declaredClausesForEscrow(req.params.escrowId);
+    res.json(await clauses.review(req.params.escrowId, req.params.clauseId, req.body || {}, {
+      reviewerAddress: req.identity?.user?.eoaOwnerAddress,
+      declaredClauses
+    }));
   } catch (error) { next(error); }
 });
 

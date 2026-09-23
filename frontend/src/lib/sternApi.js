@@ -249,14 +249,14 @@ export const getClauses = (escrowId, { signal } = {}) => request(`/clauses/${esc
 /**
  * Records a reviewer's verdict.
  *
- * Not behind the internal key, deliberately: the reviewer is a named human
- * using a browser, and that key must never reach one. The reviewer's address is
- * sent, and the panel shows whose address the clause named.
+ * The gateway derives the reviewer from the authenticated STERN session. The
+ * browser provides only the verdict and its written reasoning.
  */
-export const reviewClause = (escrowId, clauseId, { verdict, reasoning, reviewedBy }) =>
-  request(`/clauses/${escrowId}/${clauseId}/review`, {
+export const reviewClause = (escrowId, clauseId, { verdict, reasoning, token }) =>
+  identityRequest(`/clauses/${escrowId}/${clauseId}/review`, {
     method: "POST",
-    body: { verdict, reasoning, reviewedBy }
+    token,
+    body: { verdict, reasoning }
   });
 
 // --- post-dispute negotiation ------------------------------------------------

@@ -56,6 +56,9 @@ function publicUser(user) {
     id: user.id, companyId: user.companyId ?? user.company_id,
     email: user.email, username: user.username,
     walletAddress: user.walletAddress ?? user.smart_account_address ?? null,
+    // The verified Particle owner EOA is distinct from the Safe used for
+    // escrow transactions. Human clause reviewers are identified by this EOA.
+    eoaOwnerAddress: user.eoaOwnerAddress ?? user.eoa_owner_address ?? null,
     particleUserId: user.particleUserId ?? (user.provider === "particle" ? user.provider_subject : null),
     role: user.role, mfaEnabled: Boolean(user.mfaEnabled ?? user.mfa_enabled),
     createdAt: iso(user.createdAt ?? user.created_at)
@@ -196,6 +199,7 @@ function createIdentityService({ pool, tokenSecret }) {
       user: {
         id: row.id, companyId: row.company_id, email: row.email, username: row.username,
         walletAddress: row.smart_account_address,
+        eoaOwnerAddress: row.eoa_owner_address,
         particleUserId: row.provider === "particle" ? row.provider_subject : null,
         role: row.role, mfaEnabled: row.mfa_enabled, createdAt: row.user_created_at
       },

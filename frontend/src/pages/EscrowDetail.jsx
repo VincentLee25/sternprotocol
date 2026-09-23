@@ -70,7 +70,7 @@ const PERMISSIONS = {
   observer: { release: false, refund: false, dispute: false, vote: false, amend: false }
 };
 
-export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, smartAccountClient, onRefresh, onUpdate, onBack }) {
+export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddress, companyAccessToken, isOnChainReady, smartAccountClient, onRefresh, onUpdate, onBack }) {
   const { t } = useLanguage();
   // Which party you are is read off the escrow, not chosen in the sidebar.
   // The same wallet can be the importer here and the exporter on the next one.
@@ -831,7 +831,8 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
             <div className="mt-5">
               <ClausePanel
                 escrowId={escrow.id}
-                walletAddress={walletAddress}
+                reviewerAddress={particleOwnerAddress}
+                accessToken={companyAccessToken}
                 onStateChanged={reload}
               />
             </div>

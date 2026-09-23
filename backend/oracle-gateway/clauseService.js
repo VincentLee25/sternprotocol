@@ -162,7 +162,7 @@ function normaliseClauses(list) {
  * disputes — resolveDispute refuses an empty reasoningCid — and this applies
  * the same rule one level earlier.
  */
-async function review(escrowId, clauseId, input = {}) {
+async function review(escrowId, clauseId, input = {}, { reviewerAddress, declaredClauses } = {}) {
   const id = String(escrowId || "").trim();
   if (!/^\d+$/.test(id)) throw appError("An escrow id is required.", 422, "ESCROW_ID_INVALID");
 
@@ -187,9 +187,20 @@ async function review(escrowId, clauseId, input = {}) {
     );
   }
 
-  const reviewedBy = String(input.reviewedBy || "").trim();
-  if (!ADDRESS.test(reviewedBy)) {
-    throw appError("Alamat penilai diperlukan.", 422, "CLAUSE_REVIEWER_INVALID");
+  // The client does not choose the reviewer. The route supplies the verified
+  // Particle owner EOA from the company's signed session; the Safe account is
+  // reserved for on-chain escrow transactions.
+  const reviewedBy = String(reviewerAddress || "").trim();
+  if (!ADDRESS.test(reviewedBy)) throw appError("Identitas penilai terverifikasi diperlukan.", 401, "CLAUSE_REVIEWER_INVALID");
+
+  const declared = Array.isArray(declaredClauses) ? declaredClauses : [];
+  const designated = declared.find((item) => String(item?.id) === clause);
+  if (!designated) throw appError("Klausul ini tidak ada dalam instrumen escrow yang dipin.", 404, "CLAUSE_NOT_DECLARED");
+  if (designated.kind !== "interpretive") {
+    throw appError("Klausul otomatis tidak menerima putusan manusia.", 409, "CLAUSE_NOT_INTERPRETIVE");
+  }
+  if (!ADDRESS.test(String(designated.reviewer || "")) || designated.reviewer.toLowerCase() !== reviewedBy.toLowerCase()) {
+    throw appError("Hanya penilai yang ditunjuk dalam instrumen escrow yang dapat merekam putusan.", 403, "CLAUSE_REVIEWER_FORBIDDEN");
   }
 
   // The reasoning is pinned, so the verdict points at an address anyone can

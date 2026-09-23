@@ -66,9 +66,12 @@ const PACKAGING = "Kemasan harus layak untuk pengangkutan laut selama minimal 30
 const REASON =
   "Sampel dari tiga karung diperiksa di gudang Belawan; tidak ada bau apek, kadar air 11,8 persen, warna seragam.";
 
+const reviewerContext = (reviewerAddress = REVIEWER) => ({ reviewerAddress, declaredClauses: declared });
+let declared;
+
 async function main() {
   console.log("\n1. declaring clauses, as manifestService will before pinning");
-  const declared = clauses.normaliseClauses([
+  declared = clauses.normaliseClauses([
     { text: LAYAK_JUAL, milestone: "inspected", reviewer: REVIEWER, reviewerRole: "quality-surveyor" },
     { text: PACKAGING, milestone: "shipped", reviewer: REVIEWER },
     { text: "Berat kotor terverifikasi sesuai VGM.", milestone: "shipped", kind: "automated" }
@@ -108,30 +111,35 @@ async function main() {
   console.log("\n4. a verdict needs an argument behind it");
   await refuses(
     "no reasoning",
-    () => clauses.review("7", "cl1", { verdict: "met", reviewedBy: REVIEWER }),
+    () => clauses.review("7", "cl1", { verdict: "met" }, reviewerContext()),
     "CLAUSE_REASONING_REQUIRED"
   );
   await refuses(
     "reasoning too short to be disputed",
-    () => clauses.review("7", "cl1", { verdict: "met", reasoning: "sudah dicek, oke", reviewedBy: REVIEWER }),
+    () => clauses.review("7", "cl1", { verdict: "met", reasoning: "sudah dicek, oke" }, reviewerContext()),
     "CLAUSE_REASONING_REQUIRED"
   );
   await refuses(
     "an invented verdict",
-    () => clauses.review("7", "cl1", { verdict: "probably", reasoning: REASON, reviewedBy: REVIEWER }),
+    () => clauses.review("7", "cl1", { verdict: "probably", reasoning: REASON }, reviewerContext()),
     "CLAUSE_VERDICT_INVALID"
   );
   await refuses(
     "an anonymous reviewer",
-    () => clauses.review("7", "cl1", { verdict: "met", reasoning: REASON, reviewedBy: "nobody" }),
+    () => clauses.review("7", "cl1", { verdict: "met", reasoning: REASON }, reviewerContext("nobody")),
     "CLAUSE_REVIEWER_INVALID"
+  );
+  await refuses(
+    "a different authenticated owner cannot review",
+    () => clauses.review("7", "cl1", { verdict: "met", reasoning: REASON }, reviewerContext(OTHER)),
+    "CLAUSE_REVIEWER_FORBIDDEN"
   );
 
   console.log("\n5. a recorded verdict releases the milestone it governs");
   // With no pinning service: the review still gates, and says it is not pinned
   // rather than implying a citation it does not have.
   pinning = { mode: "unavailable" };
-  const verdict = await clauses.review("7", "cl1", { verdict: "met", reasoning: REASON, reviewedBy: REVIEWER });
+  const verdict = await clauses.review("7", "cl1", { verdict: "met", reasoning: REASON }, reviewerContext());
   check("verdict stored", verdict.verdict, "met");
   check("no pinning service, and it says so instead of implying a CID", verdict.reasoningCid, "null");
   check("the unpinned state is named", Boolean(verdict.reasoningNotPinned), true);
@@ -143,9 +151,8 @@ async function main() {
   console.log("\n6. 'met with reservation' records the reservation without stopping settlement");
   await clauses.review("7", "cl2", {
     verdict: "met_with_reservation",
-    reasoning: "Karung lapis dalam tipis untuk 30 hari; eksportir menambah liner, tercatat sebagai catatan.",
-    reviewedBy: REVIEWER
-  });
+    reasoning: "Karung lapis dalam tipis untuk 30 hari; eksportir menambah liner, tercatat sebagai catatan."
+  }, reviewerContext());
   const reserved = clauses.assess("7", declared);
   check("shipped is released", reserved.milestones.shipped.blocked, false);
   check("the reservation is in the record", reserved.clauses[1].state, "met_with_reservation");
@@ -154,9 +161,8 @@ async function main() {
   pinning = { mode: "available" };
   const pinned = await clauses.review("7", "cl2", {
     verdict: "met",
-    reasoning: "Liner tambahan dipasang dan diperiksa; kemasan layak untuk 30 hari pelayaran.",
-    reviewedBy: REVIEWER
-  });
+    reasoning: "Liner tambahan dipasang dan diperiksa; kemasan layak untuk 30 hari pelayaran."
+  }, reviewerContext());
   check("the CID is recorded", pinned.reasoningCid, "QmTestClauseReviewCid00000000000000000000000000");
   check("and nothing claims it was not pinned", Boolean(pinned.reasoningNotPinned), false);
   check("the pinned document is named for its escrow and clause", pinning.lastFileName, "stern-clause-7-cl2.json");
@@ -168,9 +174,8 @@ async function main() {
   console.log("\n7. not_met blocks, and a revision is appended rather than overwriting");
   await clauses.review("7", "cl1", {
     verdict: "not_met",
-    reasoning: "Pemeriksaan ulang di dermaga menemukan bau apek pada dua karung dari lot yang sama.",
-    reviewedBy: OTHER
-  });
+    reasoning: "Pemeriksaan ulang di dermaga menemukan bau apek pada dua karung dari lot yang sama."
+  }, reviewerContext());
   const revised = clauses.assess("7", declared);
   check("inspected is blocked again", revised.milestones.inspected.blocked, true);
   check("and for the right reason", /tidak terpenuhi/.test(revised.milestones.inspected.reason), true);
