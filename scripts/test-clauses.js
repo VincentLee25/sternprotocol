@@ -11,13 +11,32 @@ const path = require("node:path");
 
 const STORE = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "stern-clause-")), "clauses.json");
 process.env.CLAUSE_STORE_FILE = STORE;
-// No pinning service here on purpose: a gateway without one still has to record
-// and enforce reviews. Section 5 checks that it says so rather than implying a
-// CID it does not have.
-delete process.env.PINATA_JWT;
 
 const clauses = require("../backend/oracle-gateway/clauseService.js");
+const ipfs = require("../backend/oracle-gateway/ipfsService.js");
 const { clauseBlocks } = require("../backend/oracle-gateway/contractService.js");
+
+// Pinning is stubbed, and it has to be.
+//
+// This used to `delete process.env.PINATA_JWT` and assume that left the gateway
+// without a pinning service. It did the opposite: config.js loads .env AFTER
+// this file runs, and dotenv only fills a variable that is absent — so deleting
+// it guaranteed the real token was put back. On a machine with Pinata
+// configured the review pinned for real, `reasoningCid` came back as a genuine
+// CID, and section 5 failed. On a machine without one it passed. A test whose
+// result depends on whose laptop it runs on is worse than no test.
+//
+// So both paths are driven here instead of inferred from the environment, and
+// neither one touches the network.
+let pinning = { mode: "unavailable" };
+ipfs.pinDocument = async (bytes, fileName) => {
+  if (pinning.mode === "unavailable") {
+    throw new Error("IPFS pinning is not configured on this gateway.");
+  }
+  pinning.lastFileName = fileName;
+  pinning.lastBytes = bytes;
+  return { cid: "QmTestClauseReviewCid00000000000000000000000000" };
+};
 
 let pass = 0;
 let fail = 0;
@@ -109,6 +128,9 @@ async function main() {
   );
 
   console.log("\n5. a recorded verdict releases the milestone it governs");
+  // With no pinning service: the review still gates, and says it is not pinned
+  // rather than implying a citation it does not have.
+  pinning = { mode: "unavailable" };
   const verdict = await clauses.review("7", "cl1", { verdict: "met", reasoning: REASON, reviewedBy: REVIEWER });
   check("verdict stored", verdict.verdict, "met");
   check("no pinning service, and it says so instead of implying a CID", verdict.reasoningCid, "null");
@@ -127,6 +149,21 @@ async function main() {
   const reserved = clauses.assess("7", declared);
   check("shipped is released", reserved.milestones.shipped.blocked, false);
   check("the reservation is in the record", reserved.clauses[1].state, "met_with_reservation");
+
+  console.log("\n6b. with a pinning service, the reasoning is cited by address");
+  pinning = { mode: "available" };
+  const pinned = await clauses.review("7", "cl2", {
+    verdict: "met",
+    reasoning: "Liner tambahan dipasang dan diperiksa; kemasan layak untuk 30 hari pelayaran.",
+    reviewedBy: REVIEWER
+  });
+  check("the CID is recorded", pinned.reasoningCid, "QmTestClauseReviewCid00000000000000000000000000");
+  check("and nothing claims it was not pinned", Boolean(pinned.reasoningNotPinned), false);
+  check("the pinned document is named for its escrow and clause", pinning.lastFileName, "stern-clause-7-cl2.json");
+  const body = JSON.parse(pinning.lastBytes.toString("utf8"));
+  check("and carries its own type marker", body.stern, "stern/clause-review@1");
+  check("with the verdict inside the pinned bytes", body.verdict, "met");
+  pinning = { mode: "unavailable" };
 
   console.log("\n7. not_met blocks, and a revision is appended rather than overwriting");
   await clauses.review("7", "cl1", {

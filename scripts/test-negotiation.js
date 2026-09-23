@@ -11,10 +11,28 @@ const path = require("node:path");
 
 const STORE = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "stern-nego-")), "negotiations.json");
 process.env.NEGOTIATION_STORE_FILE = STORE;
-delete process.env.PINATA_JWT;
 
 const contractService = require("../backend/oracle-gateway/contractService.js");
 const negotiation = require("../backend/oracle-gateway/negotiationService.js");
+const ipfs = require("../backend/oracle-gateway/ipfsService.js");
+
+// Pinning is stubbed, and it has to be.
+//
+// This used to `delete process.env.PINATA_JWT` and assume that left the gateway
+// with no pinning service. It did the opposite: config.js loads .env after this
+// file runs, and dotenv fills any variable that is absent — so deleting it
+// guaranteed a configured token came back. The agreement then pinned for real
+// and section 8's AGREEMENT_NOT_PINNED never happened. Both paths are driven
+// from here instead, and neither touches the network.
+let pinning = { mode: "unavailable" };
+ipfs.pinDocument = async (bytes, fileName) => {
+  if (pinning.mode === "unavailable") {
+    throw new Error("IPFS pinning is not configured on this gateway.");
+  }
+  pinning.lastFileName = fileName;
+  pinning.lastBytes = bytes;
+  return { cid: "QmTestAgreementCid000000000000000000000000000000" };
+};
 
 const IMPORTER = "0xfAF7af811FC2D0D2a915D9e2d1ce44463Cb96381";
 const EXPORTER = "0x0997657e121213909bE3E9d7701df0753Fb102ed";
@@ -186,7 +204,7 @@ async function main() {
     () => contractService.resolveDisputeByAgreement("7", { agreementId: "pr1" }),
     "AGREEMENT_MISMATCH"
   );
-  // The accepted agreement was never pinned here (no pinning service), so there
+  // The accepted agreement was never pinned (the stub above refused), so there
   // is no document the payout could be audited against. It refuses rather than
   // paying out against a record only this gateway can see.
   await refuses(
@@ -210,6 +228,9 @@ async function main() {
   );
 
   console.log("\n10. a binary outcome was always executable and still is");
+  // Pinning available from here on, so the agreement is cited by address — the
+  // state the product is actually deployed in.
+  pinning = { mode: "available" };
   const binary = await negotiation.propose("7", {
     by: EXPORTER,
     outcome: "release_to_exporter",
@@ -218,6 +239,22 @@ async function main() {
   const binaryAgreed = await negotiation.accept("7", binary.id, { by: IMPORTER });
   check("executable regardless of the deployment", binaryAgreed.executable, true);
   check("and it is resolveDispute that does it", /resolveDispute\(escrowId, true/.test(binaryAgreed.contractCall), true);
+
+  console.log("\n11. the pinned agreement is the document the payout is checked against");
+  check("the CID is recorded", binaryAgreed.cid, "QmTestAgreementCid000000000000000000000000000000");
+  check("and nothing claims it was not pinned", Boolean(binaryAgreed.notPinned), false);
+  check("named for its escrow", pinning.lastFileName, "stern-agreement-7.json");
+  const document = JSON.parse(pinning.lastBytes.toString("utf8"));
+  check("carries its own type marker", document.stern, "stern/dispute-agreement@1");
+  check("and both signatures", `${document.proposedBy}|${document.acceptedBy}`, `${EXPORTER}|${IMPORTER}`);
+  // Checked before the chain is touched, which is why this runs without one: a
+  // full release carries slashing and frivolous-bond decisions that the split
+  // call has no arguments for, so routing it through here would skip both.
+  await refuses(
+    "a full release is not routed through the split call",
+    () => contractService.resolveDisputeByAgreement("7", { agreementId: binary.id }),
+    "NOT_A_SPLIT"
+  );
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
