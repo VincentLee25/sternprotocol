@@ -2,6 +2,53 @@
 
 This plan records the real measurements needed to estimate the cost and operating effort of one STERN escrow. Do not fill actual values from estimates or mock runs. The current repository does not contain production Polygon receipts, Pimlico invoices, Railway usage exports, provider storage bills, or pilot time-study data.
 
+## Planning Estimates (24 September 2026)
+
+These are budgeting estimates, not measured STERN production costs. Provider prices and the exchange rate below are public references; resource sizes, evidence volume, and pilot rates are explicit planning assumptions. Replace them with invoices, receipts, and pilot observations before making a production unit-economics claim.
+
+### Estimated costs
+
+| Cost item | Planning estimate | Basis and limits |
+| --- | ---: | --- |
+| Polygon happy-path lifecycle | **$0.24 / Rp4,273 per escrow** | Existing action budget in `04_DISPUTE_BOND_COST_STRUCTURE.md`: create $0.05 + three proofs $0.09 + start timelock $0.05 + release $0.05. This models six mined transactions when approval is batched; actual gas varies by bytecode, state, gas price, and token. |
+| Polygon simple transaction reference | **$0.009-$0.022 / tx** | Network-wide historical 2026 reference in the research note, not a quote for a Stern contract call. Contract actions budgeted there at $0.01-$0.10 each. |
+| Dispute path increment | **about $0.08 / Rp1,424** | Planning allowance for a $0.05 dispute raise plus $0.03 resolution, in addition to the applicable lifecycle actions. A real outcome may replace release with refund/split and has different gas. |
+| Pimlico sponsored-action allowance | **$0.15 underlying gas per escrow** | Assumes three sponsored actions at $0.05 each (create, dispute, release); actual sponsorship depends on policy and which path is used. Pimlico says testnets are free and production is pay-as-you-go; reconcile its invoice to UserOperations. Do not add this $0.15 again to the Polygon gas total: it is the payer/provider route for part of that same gas. |
+| Railway, small gateway + Postgres | **about $14.55 / month usage** | Assumption: combined average 1 GB RAM, 0.2 vCPU, 2 GB volume, 5 GB egress. Arithmetic at public rates: $10/GB-month RAM + $20/vCPU-month + $0.15/GB-month volume + $0.05/GB egress. A Hobby plan's $5 minimum is credited toward usage; this envelope is roughly $14.55 total, not $14.55 plus $5. Actual memory/CPU and always-on idle usage can change it materially. |
+| Pinata Picnic storage plan | **$20 / month, includes 1 TB storage and 500 GB bandwidth** | Public plan price. At 20 MB evidence per escrow and 100 new escrows/month, this is **$0.20 fixed storage-plan allocation per new escrow** ($20/100); at 1,000/month it is **$0.02**. These assume the included capacity suffices and use new escrows/month as the allocation denominator. |
+| Pinata storage overage | **$0.07 / GB-month** | Public Picnic overage. A 20 MB evidence bundle costs about **$0.0014 per retained month** only when over the included quota; at 12 months retained that is $0.0168 per escrow if the bundle is entirely over quota. Bandwidth overage is $0.10/GB. |
+| Human review | **5 / 15 / 30 active minutes per reviewed case** | Low/base/high planning assumptions only; not an internet-derived Stern benchmark. Labor cost = minutes / 60 × the company's loaded hourly reviewer cost. Do not count waiting time as active review. |
+| Exception rate | **5% / 10% / 20%** | Low/base/high sensitivity inputs, not observed rates or a claimed industry average. At the base 10% and 15 minutes/case, expected review effort is **1.5 minutes per completed escrow**. |
+| Dispute rate | **1% / 2% / 5%** | Low/base/high sensitivity inputs, not observed rates or a claimed industry average. At 2%, a $0.08 dispute-path increment contributes **$0.0016 expected gas per funded escrow**, excluding bond principal, adjudication labor, and outcome-specific transactions. |
+
+### Example monthly budget
+
+Using the assumptions above, before human labor, audit/security, taxes, support, and payment-provider fees:
+
+| Volume | Railway allocation | Pinata allocation | Polygon gas | Approx. total per new escrow |
+| ---: | ---: | ---: | ---: | ---: |
+| 100 new escrows/month | $0.1455 | $0.20 | $0.24 | **$0.5855 per escrow** |
+| 1,000 new escrows/month | $0.01455 | $0.02 | $0.24 | **$0.27455 per escrow** |
+
+The totals allocate monthly shared Railway and Pinata plan costs across new escrows and add the estimated on-chain lifecycle. They are not invoices or a production quote. At the 2% dispute sensitivity, add about $0.0016 expected gas per funded escrow; add reviewer labor using the formula above. Pimlico is not added as a second copy of Polygon gas. The public Pimlico page describes testnet use as free and production as pay-as-you-go; use the actual account billing/export to price the sponsored share.
+
+For conversion, **$1 = Rp17,803** is Bank Indonesia JISDOR for 23 September 2026, the latest published observation used here. This is a dated reference, not a guaranteed conversion rate. Thus the example totals are about **Rp10,424** and **Rp4,888 per new escrow**, respectively.
+
+### Public price references
+
+- Railway usage pricing and plan credit: <https://docs.railway.com/pricing> and <https://docs.railway.com/pricing/plans>. The illustrative resource envelope above is our assumption, not Railway's recommended production sizing.
+- Pimlico production/testnet billing overview: <https://www.pimlico.io/>. Pricing, supported chains, sponsorship rules, and account terms can change; the dashboard invoice is authoritative for this project.
+- Pinata current plans and overages: <https://pinata.cloud/pricing>.
+- Bank Indonesia JISDOR: <https://www.bi.go.id/en/statistik/informasi-kurs/transaksi-bi/jisdor/default.aspx>.
+- Polygon network fee reference and methodology noted in `04_DISPUTE_BOND_COST_STRUCTURE.md`; use explorer receipts and `gasUsed × effectiveGasPrice` for Stern measurements, not a network average: <https://poltrack.tech/report> and <https://polygonscan.com/gastracker>.
+
+### Assumptions to replace first
+
+1. Record actual transaction receipts for at least 20 complete happy paths and each available dispute/refund path; report median and p90 per action.
+2. Export one full Railway billing period and Pimlico UserOperation/billing data. The infrastructure envelope is only a starting scenario, not a capacity forecast.
+3. Measure evidence bundle sizes and retention. The 20 MB value is a planning placeholder, and monthly storage accumulates while evidence is retained.
+4. Time 10-20 representative human reviews. Keep the 5%/10%/20% exception and 1%/2%/5% dispute values as sensitivity analysis until pilot denominators are large enough to report observed rates.
+
 ## Measurement Status
 
 | Input | Source of truth | Current availability |
