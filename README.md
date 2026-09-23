@@ -74,6 +74,7 @@ npm run dev
 
 - [Trial demo and Amoy/Railway deployment](docs/TRIAL_DEMO_AND_DEPLOY.md)
 - [Production integration and launch requirements](docs/PRODUCTION_INTEGRATION_REQUIREMENTS.md)
+- [Cost and operations measurement plan](docs/COST_AND_OPERATIONS_MEASUREMENT.md)
 - [Delegated account architecture requirements](docs/DELEGATION_ACCOUNT_REQUIREMENTS.md)
 - [Frontend visual and product specification for Stitch](DESIGN.md)
 - [Phase 0 contract specification](docs/01_CONTRACT_SPEC.md)
