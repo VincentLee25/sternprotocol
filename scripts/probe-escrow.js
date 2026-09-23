@@ -125,12 +125,30 @@ async function main() {
       const failed = run.bad.map((r) => r.label).join(", ");
       console.log(`  ${run.rpcUrl}\n    ${failed ? `problems: ${failed}` : "all reads answered"}`);
     }
-    const everywhere = runs.every((run) => run.bad.length > 0);
-    console.log(
-      everywhere
-        ? "\n  Every endpoint has a problem, so this is not one provider being slow."
-        : "\n  At least one endpoint answered everything, so the failure belongs to the endpoints that did not."
-    );
+    // Three outcomes, not two. The version that only distinguished "some
+    // failed" from "all failed" printed "the failure belongs to the endpoints
+    // that did not" even when every endpoint answered everything — a
+    // conclusion about a failure the run had just shown does not exist.
+    const broken = runs.filter((run) => run.bad.length > 0);
+    if (broken.length === 0) {
+      const slowest = runs
+        .flatMap((run) => run.results.map((r) => ({ ...r, rpc: run.rpcUrl })))
+        .reduce((a, b) => (b.ms > a.ms ? b : a));
+      console.log(
+        `\n  Every endpoint answered every read. Nothing here times out, and the slowest` +
+          ` single call was ${slowest.label} at ${slowest.ms}ms on ${slowest.rpc}.` +
+          `\n  So this escrow and these endpoints are not the cause — look at the route` +
+          ` under real load (GET /escrows/:id and the dashboard's burst) rather than at` +
+          ` one call in isolation.`
+      );
+    } else if (broken.length === runs.length) {
+      console.log("\n  Every endpoint has a problem, so this is not one provider being slow.");
+    } else {
+      console.log(
+        `\n  ${broken.length} of ${runs.length} endpoints had a problem and the rest answered` +
+          " everything, so the failure belongs to those endpoints, not to the escrow."
+      );
+    }
   }
 }
 

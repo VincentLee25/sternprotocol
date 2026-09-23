@@ -36,7 +36,8 @@
     "chain-lag": "node scripts/chain-lag.js",
     "reset-faucet-claim": "node scripts/reset-faucet-claim.js",
     "test:list": "node scripts/test-escrow-list-resilience.mjs",
-    "probe:escrow": "node scripts/probe-escrow.js"
+    "probe:escrow": "node scripts/probe-escrow.js",
+    "probe:routes": "node scripts/probe-routes.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
