@@ -45,6 +45,45 @@ function loadAbi() {
 let testProvider = null;
 let testContract = null;
 
+const CONTRACT_GENERATION = Object.freeze({ LEGACY: "legacy", V2: "v2" });
+
+function contractAddressFor(generation) {
+  const address = generation === CONTRACT_GENERATION.V2
+    ? config.v2ContractAddress
+    : config.legacyContractAddress;
+  if (!ethers.isAddress(address || "")) {
+    const error = new Error(`Missing ${generation === CONTRACT_GENERATION.V2 ? "V2_CONTRACT_ADDRESS" : "LEGACY_CONTRACT_ADDRESS or CONTRACT_ADDRESS"}.`);
+    error.statusCode = 400;
+    error.code = "CONTRACT_ADDRESS_MISSING";
+    throw error;
+  }
+  return ethers.getAddress(address);
+}
+
+// Legacy escrow IDs stay as plain numbers so all existing links and API calls
+// keep working. V2 IDs are namespaced because both deployed contracts start
+// their counters at zero.
+function parseEscrowRef(value) {
+  const raw = String(value ?? "").trim();
+  const v2 = /^v2:(\d+)$/.exec(raw);
+  const legacy = /^(\d+)$/.exec(raw);
+  const match = v2 || legacy;
+  if (!match || !Number.isSafeInteger(Number(match[1]))) {
+    const error = new Error("escrowId must be a legacy numeric id or a V2 id in the form v2:<id>.");
+    error.statusCode = 400;
+    error.code = "INVALID_ESCROW_ID";
+    throw error;
+  }
+  const generation = v2 ? CONTRACT_GENERATION.V2 : CONTRACT_GENERATION.LEGACY;
+  const id = Number(match[1]);
+  return {
+    generation,
+    id,
+    escrowId: generation === CONTRACT_GENERATION.V2 ? `v2:${id}` : String(id),
+    contractAddress: contractAddressFor(generation)
+  };
+}
+
 function __setTestProviders({ provider = null, contract = null } = {}) {
   testProvider = provider;
   testContract = contract;
@@ -52,7 +91,7 @@ function __setTestProviders({ provider = null, contract = null } = {}) {
 }
 function getProvider() {
   if (testProvider) return testProvider;
-  requireConfig(["rpcUrl", "contractAddress"]);
+  requireConfig(["rpcUrl"]);
   // Keep contract reads on the exact provider construction used before the
   // PostgreSQL and RPC-provider changes. This deliberately avoids
   // FetchRequest, FallbackProvider and stall timing while isolating the
@@ -88,9 +127,9 @@ async function chainNow(provider) {
   return Number(block.timestamp);
 }
 
-function getContract(signerOrProvider) {
+function getContract(signerOrProvider, generation = CONTRACT_GENERATION.LEGACY) {
   if (testContract) return testContract;
-  return new ethers.Contract(config.contractAddress, loadAbi(), signerOrProvider);
+  return new ethers.Contract(contractAddressFor(generation), loadAbi(), signerOrProvider);
 }
 
 // Does the contract at the configured address have resolveDisputeByAgreement?
@@ -103,25 +142,11 @@ function getContract(signerOrProvider) {
 // there.
 //
 // Deployed code at an address never changes, so one probe per address is enough.
-let agreementSupport = null;
-
-async function supportsAgreementSettlement() {
-  const address = config.contractAddress;
-  if (agreementSupport && agreementSupport.address === address) return agreementSupport.supported;
-
-  let selector;
-  try {
-    selector = new ethers.Interface(loadAbi()).getFunction("resolveDisputeByAgreement").selector;
-  } catch {
-    // Not even in the compiled artifact — an older build of this repo.
-    agreementSupport = { address, supported: false };
-    return false;
-  }
-
-  const code = await getProvider().getCode(address);
-  const supported = code.length > 2 && code.toLowerCase().includes(selector.slice(2).toLowerCase());
-  agreementSupport = { address, supported };
-  return supported;
+async function supportsAgreementSettlement(contractId) {
+  // The V2 deployment was compiled with viaIR, which does not guarantee that a
+  // selector appears as a raw byte sequence in the dispatcher. Its configured
+  // generation is therefore the reliable contract capability boundary.
+  return parseEscrowRef(contractId).generation === CONTRACT_GENERATION.V2;
 }
 
 function normalizeMilestone(milestone) {
@@ -356,6 +381,11 @@ async function getOracleStatus() {
       latestBlock: block?.number ?? null,
       latestBlockTimestamp: block?.timestamp ?? null,
       contractAddress: config.contractAddress,
+      contracts: {
+        legacy: contractAddressFor(CONTRACT_GENERATION.LEGACY),
+        v2: contractAddressFor(CONTRACT_GENERATION.V2),
+        newEscrowContract: contractAddressFor(CONTRACT_GENERATION.V2)
+      },
       rpcConfigured: Boolean(config.rpcUrl)
     },
     oracles: entries,
@@ -370,12 +400,13 @@ async function getOracleStatus() {
 }
 
 async function getOnchainEvidence(contractId, milestone) {
+  const target = parseEscrowRef(contractId);
   const provider = getProvider();
-  const contract = getContract(provider);
+  const contract = getContract(provider, target.generation);
   const normalized = normalizeMilestone(milestone);
-  const proof = await contract.getMilestoneProof(contractId, normalized);
+  const proof = await contract.getMilestoneProof(target.id, normalized);
   return {
-    contractId: String(contractId),
+    contractId: target.escrowId,
     milestone: milestoneName(normalized),
     milestoneId: normalized,
     submitted: proof[0],
@@ -388,25 +419,20 @@ async function getOnchainEvidence(contractId, milestone) {
 }
 
 async function getEscrow(contractId) {
+  const target = parseEscrowRef(contractId);
   const provider = getProvider();
-  const contract = getContract(provider);
-  const id = Number(contractId);
-  if (!Number.isSafeInteger(id) || id < 0) {
-    const error = new Error("escrowId must be a non-negative integer.");
-    error.statusCode = 400;
-    error.code = "INVALID_ESCROW_ID";
-    throw error;
-  }
+  const contract = getContract(provider, target.generation);
+  const id = target.id;
   // The former serial sequence made one page open wait on seven independent
   // RPC calls. Read-only chain facts have no dependency on one another, so
   // issue them together and let the RPC fallback settle each call.
   const [raw, decimals, inspected, shipped, arrivedCleared, dispute, releaseEligible] = await Promise.all([
     contract.getEscrow(id),
     getIdrtDecimals(contract),
-    getOnchainEvidence(id, "inspected"),
-    getOnchainEvidence(id, "shipped"),
-    getOnchainEvidence(id, "arrived_cleared"),
-    getDispute(id),
+    getOnchainEvidence(target.escrowId, "inspected"),
+    getOnchainEvidence(target.escrowId, "shipped"),
+    getOnchainEvidence(target.escrowId, "arrived_cleared"),
+    getDispute(target.escrowId),
     contract.isReleaseEligible(id)
   ]);
   const escrow = serializeEscrow({
@@ -416,13 +442,29 @@ async function getEscrow(contractId) {
   }, decimals);
 
   const milestones = { inspected, shipped, arrived_cleared: arrivedCleared };
-  return { escrowId: String(id), ...escrow, milestones, dispute, releaseEligible };
+  return { escrowId: target.escrowId, contractGeneration: target.generation, contractAddress: target.contractAddress, ...escrow, milestones, dispute, releaseEligible };
+}
+
+async function getV2Readiness() {
+  const provider = getProvider();
+  const contract = getContract(provider, CONTRACT_GENERATION.V2);
+  const wallets = getVerifierWallets(provider);
+  const minimumBond = await contract.MIN_VERIFIER_BOND();
+  const verifiers = await Promise.all(ORACLE_ROLES.map(async (role) => {
+    const address = wallets[role.index].address;
+    const roleHash = await contract[role.roleName]();
+    const [hasRole, bond] = await Promise.all([
+      contract.hasRole(roleHash, address),
+      contract.verifierBonds(address)
+    ]);
+    return { milestone: milestoneName(role.milestone), ready: hasRole && bond >= minimumBond };
+  }));
+  return { contractAddress: contractAddressFor(CONTRACT_GENERATION.V2),
+    ready: verifiers.every(item => item.ready), verifiers };
 }
 
 async function listEscrows({ address, role, state } = {}) {
   const provider = getProvider();
-  const contract = getContract(provider);
-  const total = Number(await contract.nextEscrowId());
   const normalizedAddress = address ? ethers.getAddress(address) : null;
   const normalizedRole = role ? String(role).toLowerCase() : null;
   if (normalizedRole && !["importer", "exporter", "arbiter"].includes(normalizedRole)) {
@@ -437,43 +479,57 @@ async function listEscrows({ address, role, state } = {}) {
     error.code = "ADDRESS_REQUIRED_FOR_ROLE";
     throw error;
   }
-  const rows = [];
-  const decimals = await getIdrtDecimals(contract);
-
-  for (let id = 0; id < total; id += 1) {
-    const raw = await contract.getEscrow(id);
-    const matchesAddress = !normalizedAddress || [raw[1], raw[2], raw[3]].some((a) => a.toLowerCase() === normalizedAddress.toLowerCase());
-    const matchesRole = !normalizedRole || raw[{ importer: 1, exporter: 2, arbiter: 3 }[normalizedRole]].toLowerCase() === normalizedAddress.toLowerCase();
-    const stateLabel = stateName(raw[9]);
-    if (normalizedAddress && !matchesAddress) continue;
-    if (normalizedRole && !matchesRole) continue;
-    if (state && String(state).toLowerCase() !== stateLabel.toLowerCase()) continue;
-    rows.push({ escrowId: String(id), ...serializeEscrow({
-      contractValue: raw[0], importer: raw[1], exporter: raw[2], arbiter: raw[3],
-      documentCid: raw[4], commodity: raw[5], containerRef: raw[6], globalDeadline: raw[7],
-      createdAt: raw[8], state: raw[9], timelockReleaseAt: raw[10]
-    }, decimals) });
+  async function rowsFor(generation) {
+    const contract = getContract(provider, generation);
+    const total = Number(await contract.nextEscrowId());
+    const decimals = await getIdrtDecimals(contract);
+    const rows = [];
+    for (let id = 0; id < total; id += 1) {
+      const raw = await contract.getEscrow(id);
+      const matchesAddress = !normalizedAddress || [raw[1], raw[2], raw[3]].some((a) => a.toLowerCase() === normalizedAddress.toLowerCase());
+      const matchesRole = !normalizedRole || raw[{ importer: 1, exporter: 2, arbiter: 3 }[normalizedRole]].toLowerCase() === normalizedAddress.toLowerCase();
+      const stateLabel = stateName(raw[9]);
+      if (normalizedAddress && !matchesAddress) continue;
+      if (normalizedRole && !matchesRole) continue;
+      if (state && String(state).toLowerCase() !== stateLabel.toLowerCase()) continue;
+      const target = parseEscrowRef(generation === CONTRACT_GENERATION.V2 ? `v2:${id}` : id);
+      rows.push({ escrowId: target.escrowId, contractGeneration: generation, contractAddress: target.contractAddress, ...serializeEscrow({
+        contractValue: raw[0], importer: raw[1], exporter: raw[2], arbiter: raw[3],
+        documentCid: raw[4], commodity: raw[5], containerRef: raw[6], globalDeadline: raw[7],
+        createdAt: raw[8], state: raw[9], timelockReleaseAt: raw[10]
+      }, decimals) });
+    }
+    return { rows, total };
   }
-  return { escrows: rows, total: rows.length, nextEscrowId: String(total) };
+
+  const [legacy, v2] = await Promise.all([rowsFor(CONTRACT_GENERATION.LEGACY), rowsFor(CONTRACT_GENERATION.V2)]);
+  const rows = [...legacy.rows, ...v2.rows].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  return {
+    escrows: rows,
+    total: rows.length,
+    nextEscrowId: String(legacy.total),
+    nextEscrowIds: { legacy: String(legacy.total), v2: String(v2.total) }
+  };
 }
 
 async function getTimelock(contractId) {
+  const target = parseEscrowRef(contractId);
   const provider = getProvider();
-  const contract = getContract(provider);
-  const raw = await contract.getEscrow(contractId);
+  const contract = getContract(provider, target.generation);
+  const raw = await contract.getEscrow(target.id);
   // Chain clock here too, so the countdown cannot reach zero while
   // isReleaseEligible still says no — which reads as a stuck button.
   const now = await chainNow(provider);
   const releaseAt = Number(raw[10]);
   const challengeWindow = await contract.challengeWindowSeconds();
-  const dispute = await contract.getDispute(contractId);
+  const dispute = await contract.getDispute(target.id);
   const disputeMilestoneId = Math.min(Math.max(Number(raw[9]), 1), 3);
-  const relevantProof = await contract.getMilestoneProof(contractId, disputeMilestoneId);
+  const relevantProof = await contract.getMilestoneProof(target.id, disputeMilestoneId);
   const canDisputeMilestone = relevantProof[0] && BigInt(now) <= relevantProof[4];
   const canDisputeGeneral = Number(raw[9]) === 4 && BigInt(now) < raw[10];
-  const canRelease = await contract.isReleaseEligible(contractId);
+  const canRelease = await contract.isReleaseEligible(target.id);
   return {
-    escrowId: String(contractId),
+    escrowId: target.escrowId,
     state: stateName(raw[9]),
     timelockReleaseAt: toIso(raw[10]),
     timelockReleaseAtUnix: raw[10].toString(),
@@ -485,11 +541,12 @@ async function getTimelock(contractId) {
 }
 
 async function getDispute(contractId) {
+  const target = parseEscrowRef(contractId);
   const provider = getProvider();
-  const contract = getContract(provider);
-  const d = await contract.getDispute(contractId);
+  const contract = getContract(provider, target.generation);
+  const d = await contract.getDispute(target.id);
   return {
-    escrowId: String(contractId),
+    escrowId: target.escrowId,
     open: d[0],
     raisedBy: d[1],
     bondAmount: d[2].toString(),
@@ -508,11 +565,12 @@ async function getDispute(contractId) {
 }
 
 async function prepareDispute(contractId, contestedMilestone = "none") {
+  const target = parseEscrowRef(contractId);
   const provider = getProvider();
-  const contract = getContract(provider);
+  const contract = getContract(provider, target.generation);
   const normalized = normalizeMilestone(contestedMilestone);
-  const raw = await contract.getEscrow(contractId);
-  const dispute = await contract.getDispute(contractId);
+  const raw = await contract.getEscrow(target.id);
+  const dispute = await contract.getDispute(target.id);
   const bondBps = await contract.disputeBondBps();
   const bondAmount = (raw[0] * bondBps) / 10000n;
   const now = BigInt(await chainNow(provider));
@@ -522,16 +580,16 @@ async function prepareDispute(contractId, contestedMilestone = "none") {
     windowStillOpen = Number(raw[9]) === 4 && now < raw[10];
     challengeDeadline = raw[10];
   } else {
-    const proof = await contract.getMilestoneProof(contractId, normalized);
+    const proof = await contract.getMilestoneProof(target.id, normalized);
     challengeDeadline = proof[4];
     windowStillOpen = proof[0] && now <= proof[4];
   }
   const iface = new ethers.Interface(loadAbi());
-  const raiseDisputeData = iface.encodeFunctionData("raiseDispute", [contractId, normalized]);
+  const raiseDisputeData = iface.encodeFunctionData("raiseDispute", [target.id, normalized]);
   const tokenAddress = await contract.idrtToken();
   const tokenIface = new ethers.Interface(["function approve(address,uint256) returns (bool)"]);
   return {
-    escrowId: String(contractId),
+    escrowId: target.escrowId,
     contestedMilestone: milestoneName(normalized),
     contestedMilestoneId: normalized,
     disputeBondAmount: bondAmount.toString(),
@@ -542,15 +600,15 @@ async function prepareDispute(contractId, contestedMilestone = "none") {
     challengeDeadlineUnix: challengeDeadline.toString(),
     disputeAlreadyOpen: dispute.open,
     userTransaction: {
-      contractAddress: config.contractAddress,
+      contractAddress: target.contractAddress,
       function: "raiseDispute(uint256,uint8)",
       calldata: raiseDisputeData
     },
     requiredApproval: {
       tokenAddress,
-      spender: config.contractAddress,
+      spender: target.contractAddress,
       amount: bondAmount.toString(),
-      calldata: tokenIface.encodeFunctionData("approve", [config.contractAddress, bondAmount])
+      calldata: tokenIface.encodeFunctionData("approve", [target.contractAddress, bondAmount])
     },
     note: "Backend only prepares data. The importer/exporter must submit the approval and raiseDispute transactions from their own Particle Smart Account."
   };
@@ -592,15 +650,18 @@ async function latestBlock(provider) {
 // refreshes would look like a different range every time and throw the cache
 // away — which is precisely the full rescan this is all meant to stop. It also
 // saves a getEscrow(0) round trip per call.
-let windowStart = { key: null, from: null };
+const windowStart = new Map();
 
-async function activityWindow(provider, contract) {
+async function activityWindow(provider, contract, target) {
   const latest = await latestBlock(provider);
   const to = latest?.number ?? (await provider.getBlockNumber());
-  if (config.contractDeployBlock != null) return { from: config.contractDeployBlock, to };
+  if (target.generation === CONTRACT_GENERATION.LEGACY && config.contractDeployBlock != null) {
+    return { from: config.contractDeployBlock, to };
+  }
 
-  const key = config.contractAddress || "unknown";
-  if (windowStart.key === key && windowStart.from != null) return { from: windowStart.from, to };
+  const key = target.contractAddress;
+  const cached = windowStart.get(key);
+  if (cached != null) return { from: cached, to };
 
   let from = Math.max(0, to - 500_000);
   try {
@@ -614,7 +675,7 @@ async function activityWindow(provider, contract) {
     // No escrow 0, or the chain is unreachable — keep the wide fallback.
   }
 
-  windowStart = { key, from };
+  windowStart.set(key, from);
   return { from, to };
 }
 
@@ -729,8 +790,7 @@ function resetScanCaches() {
   blockTimeCache.clear();
   decimalsCache.clear();
   headCache = { block: null, at: 0 };
-  windowStart = { key: null, from: null };
-  agreementSupport = null;
+  windowStart.clear();
 }
 
 // Block number -> block. A mined block's timestamp does not change, so this is
@@ -799,9 +859,10 @@ async function contractLogs(provider, contract, filter, from, to) {
 }
 
 async function getActivity(contractId) {
+  const target = parseEscrowRef(contractId);
   const provider = getProvider();
-  const contract = getContract(provider);
-  const id = Number(contractId);
+  const contract = getContract(provider, target.generation);
+  const id = target.id;
   const events = [];
   const specs = [
     ["EscrowCreated", "escrow_created"],
@@ -814,7 +875,7 @@ async function getActivity(contractId) {
     ["DisputeSettledByAgreement", "dispute_settled_by_agreement"],
     ["VerifierSlashed", "verifier_slashed"]
   ];
-  const { from, to } = await activityWindow(provider, contract);
+  const { from, to } = await activityWindow(provider, contract, target);
 
   // ONE filter for all of these events, and no escrow id in it.
   //
@@ -886,7 +947,7 @@ async function getActivity(contractId) {
   // events the node still holds, and anything earlier than this block is gone
   // from it. Without saying so, a short list looks like a complete one.
   return {
-    escrowId: String(id),
+    escrowId: target.escrowId,
     activity: events,
     truncatedBefore: prunedThrough,
     scannedFrom: from
@@ -963,8 +1024,9 @@ function proofCidFor(contractId, milestone, prefix) {
 }
 
 async function verifyAndSubmitAll(contractId, verification, { proofCidPrefix = "bafy-verified" } = {}) {
+  const target = parseEscrowRef(contractId);
   const provider = getProvider();
-  const contract = getContract(provider);
+  const contract = getContract(provider, target.generation);
   const results = {};
   let stop = false;
 
@@ -976,7 +1038,7 @@ async function verifyAndSubmitAll(contractId, verification, { proofCidPrefix = "
       continue;
     }
 
-    const proof = await contract.getMilestoneProof(contractId, id);
+    const proof = await contract.getMilestoneProof(target.id, id);
     if (proof[0]) {
       results[name] = { status: "already_submitted", proofCid: proof[2], verifier: proof[1] };
       continue;
@@ -987,7 +1049,7 @@ async function verifyAndSubmitAll(contractId, verification, { proofCidPrefix = "
     // Positional, matching the rest of this file — EscrowView puts state at 9.
     // Named access depends on the ABI carrying output names, and nothing else
     // here relies on that.
-    const state = Number((await contract.getEscrow(contractId))[9]);
+    const state = Number((await contract.getEscrow(target.id))[9]);
     if (state !== id - 1) {
       results[name] = { status: "blocked", reason: `Escrow is ${stateName(state)}; this milestone needs ${stateName(id - 1)}.` };
       stop = true;
@@ -995,7 +1057,7 @@ async function verifyAndSubmitAll(contractId, verification, { proofCidPrefix = "
     }
 
     if (id > 1) {
-      const prev = await contract.getMilestoneProof(contractId, id - 1);
+      const prev = await contract.getMilestoneProof(target.id, id - 1);
       // The CHAIN's clock, not this machine's. The contract compares against
       // block.timestamp, and on Amoy that trails wall time by seconds. Using
       // Date.now() here meant that right at the edge of a window the guard let
@@ -1039,7 +1101,7 @@ async function verifyAndSubmitAll(contractId, verification, { proofCidPrefix = "
     }
 
     try {
-      const submitted = await submitMilestoneProof(contractId, name, proofCidFor(contractId, name, proofCidPrefix), verification);
+      const submitted = await submitMilestoneProof(target.escrowId, name, proofCidFor(target.escrowId, name, proofCidPrefix), verification);
       results[name] = {
         status: "submitted",
         transactionHash: submitted.transactionHash,
@@ -1105,14 +1167,15 @@ async function verifyAndSubmitAll(contractId, verification, { proofCidPrefix = "
     }
   }
 
-  return { contractId: String(contractId), results };
+  return { contractId: target.escrowId, results };
 }
 
 async function submitMilestoneProof(contractId, milestone, proofCid, verification) {
+  const target = parseEscrowRef(contractId);
   const provider = getProvider();
   const wallets = getVerifierWallets(provider);
   const wallet = pickVerifier(wallets, milestone);
-  const contract = getContract(wallet);
+  const contract = getContract(wallet, target.generation);
   const passed = milestonePassed(milestone, verification);
   if (!passed) {
     const error = new Error("Automated verification failed; milestone was not submitted on-chain.");
@@ -1121,7 +1184,7 @@ async function submitMilestoneProof(contractId, milestone, proofCid, verificatio
     throw error;
   }
   const payload = ethers.AbiCoder.defaultAbiCoder().encode(["bool"], [passed]);
-  const tx = await contract.submitMilestoneProof(contractId, normalizeMilestone(milestone), proofCid, payload);
+  const tx = await contract.submitMilestoneProof(target.id, normalizeMilestone(milestone), proofCid, payload);
   const receipt = await tx.wait();
   return {
     transactionHash: receipt.hash,
@@ -1133,6 +1196,7 @@ async function submitMilestoneProof(contractId, milestone, proofCid, verificatio
 }
 
 async function resolveDispute(contractId, options = {}) {
+  const target = parseEscrowRef(contractId);
   if (typeof options.releaseToExporter !== "boolean" ||
       typeof options.slashVerifier !== "boolean" ||
       typeof options.bondFrivolous !== "boolean" ||
@@ -1151,8 +1215,8 @@ async function resolveDispute(contractId, options = {}) {
   }
   const provider = getProvider();
   const wallet = getArbiterWallet(provider);
-  const tx = await getContract(wallet).resolveDispute(
-    contractId,
+  const tx = await getContract(wallet, target.generation).resolveDispute(
+    target.id,
     options.releaseToExporter,
     options.reasoningCid.trim(),
     options.slashVerifier,
@@ -1169,6 +1233,13 @@ async function resolveDispute(contractId, options = {}) {
 // the amount could name any amount and the pinned document would no longer be
 // what got paid out.
 async function resolveDisputeByAgreement(contractId, options = {}) {
+  const target = parseEscrowRef(contractId);
+  if (target.generation !== CONTRACT_GENERATION.V2) {
+    const error = new Error("Negotiated split settlement is available only for V2 escrows.");
+    error.statusCode = 422;
+    error.code = "AGREEMENT_SETTLEMENT_V2_REQUIRED";
+    throw error;
+  }
   const agreementId = typeof options.agreementId === "string" ? options.agreementId.trim() : "";
   if (!agreementId) {
     const error = new Error("agreementId (the accepted negotiation agreement) is required.");
@@ -1178,7 +1249,7 @@ async function resolveDisputeByAgreement(contractId, options = {}) {
   }
 
   const negotiation = require("./negotiationService");
-  const agreement = negotiation.acceptedAgreement(contractId, agreementId);
+  const agreement = await negotiation.acceptedAgreement(target.escrowId, agreementId);
   if (agreement.outcome !== "split") {
     const error = new Error(
       "Only a negotiated split goes through this call. A full release or full refund is resolveDispute, which also decides slashing and the frivolous bond."
@@ -1198,12 +1269,12 @@ async function resolveDisputeByAgreement(contractId, options = {}) {
 
   const provider = getProvider();
   const wallet = getArbiterWallet(provider);
-  const contract = getContract(wallet);
+  const contract = getContract(wallet, target.generation);
 
   // The chain's current value, not the value recorded when the deal was struck.
   // If they disagree the escrow moved underneath the agreement and the split
   // would pay out a different share than the one both sides signed.
-  const raw = await contract.getEscrow(contractId);
+  const raw = await contract.getEscrow(target.id);
   const onchainValue = raw[0].toString();
   if (onchainValue !== agreement.contractValue) {
     const error = new Error(
@@ -1215,7 +1286,7 @@ async function resolveDisputeByAgreement(contractId, options = {}) {
   }
 
   const tx = await contract.resolveDisputeByAgreement(
-    contractId,
+    target.id,
     BigInt(agreement.amountToExporter),
     agreement.agreementCid
   );
@@ -1251,6 +1322,7 @@ module.exports = {
   getOnchainEvidence,
   chainNow,
   getProvider,
+  parseEscrowRef,
   getEscrow,
   listEscrows,
   getTimelock,
@@ -1258,6 +1330,7 @@ module.exports = {
   prepareDispute,
   getActivity,
   getVerifiers,
+  getV2Readiness,
   stateName,
   milestoneName
 };

@@ -12,7 +12,7 @@
 // the worst failure this app could have, which is why these now share the one
 // signing path with disputeFlow.js.
 import { encodeFunctionData } from "viem";
-import { ESCROW_ADDRESS } from "./sternContract.js";
+import { ESCROW_ADDRESS, escrowTarget } from "./sternContract.js";
 import { publicClient } from "./smartAccount.js";
 
 const ABI = [
@@ -44,12 +44,13 @@ function requireClient(smartAccountClient) {
  */
 async function send(smartAccountClient, functionName, args, revertHint) {
   requireClient(smartAccountClient);
+  const target = escrowTarget(args[0]);
 
   const hash = await smartAccountClient.sendUserOperation({
     calls: [
       {
-        to: ESCROW_ADDRESS,
-        data: encodeFunctionData({ abi: ABI, functionName, args: args.map(BigInt) })
+        to: target.address,
+        data: encodeFunctionData({ abi: ABI, functionName, args: [target.id, ...args.slice(1).map(BigInt)] })
       }
     ]
   });
@@ -128,9 +129,10 @@ const READ_ABI = [
  */
 export async function readPendingExtension(escrowId) {
   if (!ESCROW_ADDRESS) return null;
+  const target = escrowTarget(escrowId);
   const [deadline, proposer] = await Promise.all([
-    publicClient.readContract({ address: ESCROW_ADDRESS, abi: READ_ABI, functionName: "pendingDeadline", args: [BigInt(escrowId)] }),
-    publicClient.readContract({ address: ESCROW_ADDRESS, abi: READ_ABI, functionName: "extensionProposer", args: [BigInt(escrowId)] })
+    publicClient.readContract({ address: target.address, abi: READ_ABI, functionName: "pendingDeadline", args: [target.id] }),
+    publicClient.readContract({ address: target.address, abi: READ_ABI, functionName: "extensionProposer", args: [target.id] })
   ]);
   if (!deadline || deadline === 0n) return null;
   return {

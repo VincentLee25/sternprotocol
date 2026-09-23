@@ -16,6 +16,7 @@ const {
   prepareDispute,
   getActivity,
   getVerifiers,
+  getV2Readiness,
   verifyAndSubmitAll,
   chainNow,
   getProvider
@@ -167,6 +168,11 @@ app.get("/health", async (_req, res, next) => {
       mockMode: true,
       evidenceMode: true,
       contractAddress: config.contractAddress || null,
+      contracts: {
+        legacy: config.legacyContractAddress || null,
+        v2: config.v2ContractAddress || null,
+        newEscrowContract: config.v2ContractAddress || null
+      },
       // Whether the e-BL is being verified for real or falling back to the
       // placeholder check. Worth having on /health: it is the difference
       // between two very different claims about the same screen, and it is
@@ -293,6 +299,9 @@ app.get("/oracle/status", async (_req, res, next) => {
 
 app.get("/verifiers", async (_req, res, next) => {
   try { res.json(await getVerifiers()); } catch (error) { next(error); }
+});
+app.get("/contracts/v2/readiness", async (_req, res, next) => {
+  try { res.json(await getV2Readiness()); } catch (error) { next(error); }
 });
 
 
@@ -563,19 +572,38 @@ app.post("/ops/clauses/:escrowId/:clauseId/review", async (req, res, next) => {
 app.get("/negotiation/:escrowId", async (req, res, next) => {
   try { res.json(await negotiation.forEscrow(req.params.escrowId)); } catch (error) { next(error); }
 });
-
-app.post("/negotiation/:escrowId/propose", async (req, res, next) => {
-  try { res.json(await negotiation.propose(req.params.escrowId, req.body || {})); } catch (error) { next(error); }
-});
-
-app.post("/negotiation/:escrowId/accept/:proposalId", async (req, res, next) => {
+app.get("/negotiation/:escrowId/verify/:proposalId", async (req, res, next) => {
   try {
-    res.json(await negotiation.accept(req.params.escrowId, req.params.proposalId, req.body || {}));
+    const agreement = await negotiation.acceptedAgreement(req.params.escrowId, req.params.proposalId);
+    res.json({ agreementId: agreement.proposalId, outcome: agreement.outcome,
+      amountToExporter: agreement.amountToExporter, agreementCid: agreement.agreementCid });
   } catch (error) { next(error); }
 });
 
-app.post("/negotiation/:escrowId/withdraw", async (req, res, next) => {
-  try { res.json(await negotiation.withdraw(req.params.escrowId, req.body || {})); } catch (error) { next(error); }
+app.post("/negotiation/:escrowId/propose/prepare", requireSession, async (req, res, next) => {
+  try { res.json(await negotiation.prepareProposal(req.params.escrowId, req.body || {}, req.identity)); } catch (error) { next(error); }
+});
+app.post("/negotiation/:escrowId/propose", requireSession, async (req, res, next) => {
+  try { res.json(await negotiation.propose(req.params.escrowId, req.body || {}, req.identity)); } catch (error) { next(error); }
+});
+
+app.post("/negotiation/:escrowId/accept/:proposalId", requireSession, async (req, res, next) => {
+  try {
+    res.json(await negotiation.accept(req.params.escrowId, req.params.proposalId, req.body || {}, req.identity));
+  } catch (error) { next(error); }
+});
+
+app.post("/negotiation/:escrowId/withdraw", requireSession, async (req, res, next) => {
+  try { res.json(await negotiation.withdraw(req.params.escrowId, req.body || {}, req.identity)); } catch (error) { next(error); }
+});
+app.post("/negotiation/:escrowId/messages", requireSession, async (req, res, next) => {
+  try { res.json(await negotiation.postMessage(req.params.escrowId, req.body?.content, req.identity)); } catch (error) { next(error); }
+});
+app.post("/negotiation/:escrowId/inspections", requireSession, async (req, res, next) => {
+  try { res.json(await negotiation.requestInspection(req.params.escrowId, req.body || {}, req.identity)); } catch (error) { next(error); }
+});
+app.post("/negotiation/:escrowId/inspections/:inspectionId/evidence", requireInternalApiKey, async (req, res, next) => {
+  try { res.json(await negotiation.submitInspection(req.params.escrowId, req.params.inspectionId, req.body || {})); } catch (error) { next(error); }
 });
 
 // The verdict on a CID: does it resolve, do the bytes hash back to it, and is
@@ -824,6 +852,8 @@ async function start() {
   try {
     await assertMigrationsCurrent({ pool });
     await assertLegacyImported(pool);
+    negotiation.setPool(pool);
+    await negotiation.importLegacy();
     identities = createIdentityService({ pool, tokenSecret: config.authTokenSecret });
     const server = app.listen(config.port, () => {
       console.log(`STERN oracle gateway listening on http://localhost:${config.port}`);

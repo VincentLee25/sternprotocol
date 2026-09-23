@@ -34,7 +34,12 @@ const config = {
   corsOrigins,
   demoBalanceIdrt: process.env.DEMO_BALANCE_IDRT || "150000000.00",
   demoClaimsFile: process.env.DEMO_CLAIMS_FILE,
+  // CONTRACT_ADDRESS remains the legacy deployment for backwards-compatible
+  // runtime configuration. The V2 address is explicit so the gateway can read
+  // both contracts before production environment variables are changed.
   contractAddress: process.env.CONTRACT_ADDRESS,
+  legacyContractAddress: process.env.LEGACY_CONTRACT_ADDRESS || process.env.CONTRACT_ADDRESS || "0xd281f2B9f9C26144EB7303F0f3F7cdB797E93468",
+  v2ContractAddress: process.env.V2_CONTRACT_ADDRESS || "0x31a1EbDEaA206ef060747550a235E0B45c99980c",
   // The block the contract was deployed at. Optional, but worth setting: the
   // activity scan otherwise has to estimate a start block from each escrow's
   // creation timestamp. Printed by scripts/deploy.js.

@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
+import { useWallets } from "@particle-network/connectkit";
 import { Handshake, Loader2 } from "lucide-react";
 import {
   acceptSettlement,
   apiConfigured,
   eblDocumentUrl,
   getNegotiation,
+  prepareSettlement,
   proposeSettlement,
-  withdrawSettlement
+  withdrawSettlement,
+  sendDisputeMessage,
+  requestDisputeInspection
 } from "../lib/sternApi.js";
 import { AddressLink } from "./TxLink.jsx";
 import { inputClass } from "./Field.jsx";
@@ -59,8 +63,9 @@ function money(units, decimals = 2) {
   }
 }
 
-export default function NegotiationPanel({ escrowId, walletAddress, escrow, onStateChanged }) {
+export default function NegotiationPanel({ escrowId, walletAddress, accessToken, escrow, onStateChanged }) {
   const { t } = useLanguage();
+  const [primaryWallet] = useWallets();
   const decimals = Number(escrow?.decimals ?? 2);
   const [thread, setThread] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -69,12 +74,21 @@ export default function NegotiationPanel({ escrowId, walletAddress, escrow, onSt
   const [unsupported, setUnsupported] = useState(false);
   const [busy, setBusy] = useState("");
   const [composing, setComposing] = useState(false);
+  const [messageText, setMessageText] = useState("");
+  const [inspection, setInspection] = useState({ provider: "", reason: "", requestedEvidence: "" });
+
+  async function sign(message) {
+    const walletClient = primaryWallet?.getWalletClient();
+    if (!walletClient) throw new Error("Reconnect Particle to sign the settlement terms.");
+    const account = walletClient.account || (await walletClient.getAddresses())[0];
+    return walletClient.signMessage({ account, message });
+  }
 
   const load = useCallback(
     async (signal) => {
       setError("");
       try {
-        setThread(await getNegotiation(escrowId, { signal }));
+        setThread(await getNegotiation(escrowId, { signal, token: accessToken }));
       } catch (err) {
         if (err.name === "AbortError") return;
         // A 404 here means this gateway has no such route — an older deployment,
@@ -88,7 +102,7 @@ export default function NegotiationPanel({ escrowId, walletAddress, escrow, onSt
         setLoading(false);
       }
     },
-    [escrowId]
+    [escrowId, accessToken]
   );
 
   useEffect(() => {
@@ -140,9 +154,12 @@ export default function NegotiationPanel({ escrowId, walletAddress, escrow, onSt
   return (
     <Card>
       <Head />
-      <p className="mt-2 font-serif text-sm leading-relaxed text-ink-dim">
-        {t("A dispute leaves the arbiter one binary choice — the whole value to the exporter, or the whole value back to the importer. Most quality claims are not worth either. Agree on the figure here and the arbiter executes your agreement instead of deciding for you.")}
-      </p>
+      <details open className="mt-3">
+        <summary className="cursor-pointer font-serif text-sm font-semibold text-navy">{t("Dispute overview")}</summary>
+        <p className="mt-2 font-serif text-sm leading-relaxed text-ink-dim">
+          {t("The escrow remains frozen while the parties negotiate. The arbiter can resolve it under the capabilities of this escrow's contract.")}
+        </p>
+      </details>
 
       {error ? (
         <p className="mt-3 border-l-2 border-state-disputed pl-3 font-serif text-sm leading-relaxed text-state-disputed">
@@ -153,18 +170,20 @@ export default function NegotiationPanel({ escrowId, walletAddress, escrow, onSt
       {!splitExecutable ? (
         // Said before anyone proposes a split, not after both have signed one.
         <p className="mt-3 border-l-2 border-state-pending pl-3 font-serif text-sm leading-relaxed text-state-pending">
-          {t("The contract at this address can only release or refund in full, so a partial split cannot be executed on chain here. You can still record one — it is a real agreement and it is pinned — but settling it needs a deployment that has")}{" "}
+          {t("This legacy escrow can only release or refund in full. A partial split is available on V2 escrows.")}{" "}
           <code className="font-mono text-xs">resolveDisputeByAgreement()</code>.
         </p>
       ) : null}
 
+      <details open className="mt-5 border-t border-sky/70 pt-3">
+        <summary className="cursor-pointer font-serif text-sm font-semibold text-navy">{t("Settlement proposal")}</summary>
       {agreement ? (
         <Agreement
           agreement={agreement}
           decimals={decimals}
           canWithdraw={isParty && !busy}
           busy={busy === "withdraw"}
-          onWithdraw={() => act("withdraw", () => withdrawSettlement(escrowId, { by: walletAddress }))}
+          onWithdraw={() => act("withdraw", () => withdrawSettlement(escrowId, accessToken))}
         />
       ) : null}
 
@@ -179,7 +198,10 @@ export default function NegotiationPanel({ escrowId, walletAddress, escrow, onSt
               canAccept={isParty && !same(proposal.by, walletAddress) && !proposal.superseded && !agreement}
               busy={busy === proposal.id}
               onAccept={() =>
-                act(proposal.id, () => acceptSettlement(escrowId, proposal.id, { by: walletAddress }))
+                act(proposal.id, async () => {
+                  const signature = await sign(proposal.signingMessage);
+                  return acceptSettlement(escrowId, proposal.id, { signature }, accessToken);
+                })
               }
             />
           ))}
@@ -200,7 +222,11 @@ export default function NegotiationPanel({ escrowId, walletAddress, escrow, onSt
             busy={busy === "propose"}
             onCancel={() => setComposing(false)}
             onSubmit={(body) =>
-              act("propose", () => proposeSettlement(escrowId, { by: walletAddress, ...body }))
+              act("propose", async () => {
+                const prepared = await prepareSettlement(escrowId, body, accessToken);
+                const signature = await sign(prepared.signingMessage);
+                return proposeSettlement(escrowId, { ...body, signature }, accessToken);
+              })
             }
           />
         ) : (
@@ -213,7 +239,75 @@ export default function NegotiationPanel({ escrowId, walletAddress, escrow, onSt
           </button>
         )
       ) : null}
+      </details>
 
+      <details className="mt-5 border-t border-sky/70 pt-3">
+        <summary className="cursor-pointer font-serif text-sm font-semibold text-navy">{t("Evidence")}</summary>
+        <p className="mt-2 font-serif text-sm text-ink-dim">{t("Shipment evidence remains in the evidence section above. Additional inspection results appear below with their document reference.")}</p>
+      </details>
+
+      <details className="mt-5 border-t border-sky/70 pt-3">
+        <summary className="cursor-pointer font-serif text-sm font-semibold text-navy">{t("Negotiation / chat")}</summary>
+        <div className="mt-3 space-y-3">
+          {(thread?.messages || []).map(item => (
+            <div key={item.id} className="bg-sky/25 px-3 py-2">
+              <p className="font-mono text-2xs text-ink-faint">
+                {t(item.role)} · <AddressLink address={item.sender} /> · {new Date(item.createdAt).toLocaleString()}
+              </p>
+              <p className="font-serif text-sm text-navy">{item.content}</p>
+            </div>
+          ))}
+          {!thread?.messages?.length ? <p className="font-serif text-sm text-ink-dim">{t("No messages yet.")}</p> : null}
+          {isParty ? (
+            <form onSubmit={event => {
+              event.preventDefault();
+              act("message", async () => {
+                await sendDisputeMessage(escrowId, messageText, accessToken);
+                setMessageText("");
+              });
+            }}>
+              <textarea value={messageText} onChange={event => setMessageText(event.target.value)}
+                maxLength={4000} rows={2} className={inputClass(false)} aria-label={t("Message")} />
+              <button type="submit" disabled={!messageText.trim() || Boolean(busy)}
+                className="mt-2 rounded-full bg-navy px-4 py-2 text-xs text-white disabled:opacity-50">{t("Send message")}</button>
+            </form>
+          ) : null}
+        </div>
+      </details>
+
+      <details className="mt-5 border-t border-sky/70 pt-3">
+        <summary className="cursor-pointer font-serif text-sm font-semibold text-navy">{t("Additional inspection")}</summary>
+        <div className="mt-3 space-y-3">
+          {(thread?.inspections || []).map(item => (
+            <div key={item.id} className="bg-sky/25 px-3 py-2 font-serif text-sm text-navy">
+              <p>{item.provider} · {t(item.status)}</p>
+              <p>{item.reason}</p>
+              <p className="text-ink-dim">{t("Requested evidence")}: {item.requested_evidence}</p>
+              {item.evidence_cid ? <a href={eblDocumentUrl(item.evidence_cid)} target="_blank" rel="noreferrer" className="text-teal">{shortCid(item.evidence_cid)}</a> : null}
+            </div>
+          ))}
+          {isArbiter ? (
+            <form className="space-y-2" onSubmit={event => {
+              event.preventDefault();
+              act("inspection", async () => {
+                await requestDisputeInspection(escrowId, inspection, accessToken);
+                setInspection({ provider: "", reason: "", requestedEvidence: "" });
+              });
+            }}>
+              {(["provider", "reason", "requestedEvidence"]).map(key => (
+                <input key={key} required maxLength={1000} value={inspection[key]}
+                  onChange={event => setInspection(current => ({ ...current, [key]: event.target.value }))}
+                  placeholder={t(key)} className={inputClass(false)} />
+              ))}
+              <button type="submit" disabled={Boolean(busy)} className="rounded-full bg-navy px-4 py-2 text-xs text-white disabled:opacity-50">{t("Request inspection")}</button>
+            </form>
+          ) : null}
+          <p className="font-serif text-xs text-ink-dim">{t("Provider submissions use the existing manual evidence adapter, not a live external integration.")}</p>
+        </div>
+      </details>
+
+      <details className="mt-5 border-t border-sky/70 pt-3">
+        <summary className="cursor-pointer font-serif text-sm font-semibold text-navy">{t("Resolution")}</summary>
       {isArbiter ? (
         <p className="mt-4 border-t border-sky/70 pt-3 font-serif text-xs leading-relaxed text-ink-dim">
           {t("You are the arbiter on this escrow. If the parties agree, execute their agreement from the ops console, where your own key signs — the gateway never holds a key that can settle a dispute.")}
@@ -225,6 +319,7 @@ export default function NegotiationPanel({ escrowId, walletAddress, escrow, onSt
           {t("Only the importer and the exporter can propose or accept a settlement. You can read the thread in full.")}
         </p>
       ) : null}
+      </details>
     </Card>
   );
 }
@@ -355,7 +450,7 @@ function Proposal({ proposal, decimals, mine, canAccept, busy, onAccept }) {
 
 function ProposalForm({ contractValue, decimals, splitExecutable, counterTo, busy, onCancel, onSubmit }) {
   const { t } = useLanguage();
-  const [outcome, setOutcome] = useState("split");
+  const [outcome, setOutcome] = useState(splitExecutable ? "split" : "release_to_exporter");
   const [percent, setPercent] = useState("85");
   const [note, setNote] = useState("");
 
@@ -405,6 +500,7 @@ function ProposalForm({ contractValue, decimals, splitExecutable, counterTo, bus
               type="radio"
               name="outcome"
               value={key}
+              disabled={key === "split" && !splitExecutable}
               checked={outcome === key}
               onChange={() => setOutcome(key)}
               className="accent-teal"
@@ -412,7 +508,7 @@ function ProposalForm({ contractValue, decimals, splitExecutable, counterTo, bus
             {t(label)}
             {key === "split" && !splitExecutable ? (
               <span className="font-mono text-2xs uppercase text-state-pending">
-                {t("recorded, not executable here")}
+                {t("V2 only")}
               </span>
             ) : null}
           </label>

@@ -847,6 +847,7 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
               <NegotiationPanel
                 escrowId={escrow.id}
                 walletAddress={walletAddress}
+                accessToken={companyAccessToken}
                 escrow={escrow}
                 onStateChanged={reload}
               />

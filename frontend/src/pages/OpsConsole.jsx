@@ -499,18 +499,21 @@ function ResolveCard({ escrow, onResolved }) {
     setBusy(true);
     setError("");
     try {
+      // Recheck both signatures and the live escrow value on the gateway just
+      // before the institutional arbiter signs. Never trust displayed amounts.
+      const verified = await verifyDisputeAgreement(escrow.id, agreement.proposalId);
       const res =
-        agreement.outcome === "split"
+        verified.outcome === "split"
           ? await settleByAgreementAsArbiter(escrow.id, {
-              amountToExporter: agreement.amountToExporter,
-              agreementCid: agreement.cid
+              amountToExporter: verified.amountToExporter,
+              agreementCid: verified.agreementCid
             })
           : await resolveDisputeAsArbiter(escrow.id, {
               // The parties' own document is the reasoning. Nothing the arbiter
               // writes here would be more authoritative than what both of them
               // already signed.
-              releaseToExporter: agreement.outcome === "release_to_exporter",
-              reasoningCid: agreement.cid,
+              releaseToExporter: verified.outcome === "release_to_exporter",
+              reasoningCid: verified.agreementCid,
               slashVerifier: false,
               bondFrivolous: false
             });

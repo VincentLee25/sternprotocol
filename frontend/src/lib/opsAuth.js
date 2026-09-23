@@ -21,7 +21,7 @@ import { createWalletClient, http, isHex, getAddress } from "viem";
 import { polygonAmoy } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
 import { publicClient } from "./smartAccount.js";
-import { ESCROW_ADDRESS } from "./sternContract.js";
+import { ESCROW_ADDRESS, escrowTarget } from "./sternContract.js";
 
 const RPC_URL = import.meta.env.VITE_RPC_URL || "https://polygon-amoy-bor-rpc.publicnode.com";
 
@@ -185,6 +185,7 @@ export async function resolveDisputeAsArbiter(escrowId, decision) {
   if (!ESCROW_ADDRESS) {
     throw new Error("VITE_CONTRACT_ADDRESS is not set, so there is no contract to call.");
   }
+  const target = escrowTarget(escrowId);
 
   const reasoningCid = String(decision.reasoningCid || "").trim();
   if (!reasoningCid) {
@@ -198,11 +199,11 @@ export async function resolveDisputeAsArbiter(escrowId, decision) {
   }
 
   const hash = await session.walletClient.writeContract({
-    address: ESCROW_ADDRESS,
+    address: target.address,
     abi: RESOLVE_ABI,
     functionName: "resolveDispute",
     args: [
-      BigInt(escrowId),
+      target.id,
       Boolean(decision.releaseToExporter),
       reasoningCid,
       Boolean(decision.slashVerifier),
@@ -254,6 +255,8 @@ export async function settleByAgreementAsArbiter(escrowId, { amountToExporter, a
   if (!ESCROW_ADDRESS) {
     throw new Error("VITE_CONTRACT_ADDRESS is not set, so there is no contract to call.");
   }
+  const target = escrowTarget(escrowId);
+  if (target.generation !== "v2") throw new Error("Split settlement is only available on V2 escrows.");
 
   const cid = String(agreementCid || "").trim();
   if (!cid) {
@@ -275,10 +278,10 @@ export async function settleByAgreementAsArbiter(escrowId, { amountToExporter, a
   }
 
   const hash = await session.walletClient.writeContract({
-    address: ESCROW_ADDRESS,
+    address: target.address,
     abi: AGREEMENT_ABI,
     functionName: "resolveDisputeByAgreement",
-    args: [BigInt(escrowId), amount, cid]
+    args: [target.id, amount, cid]
   });
 
   const receipt = await publicClient.waitForTransactionReceipt({ hash });

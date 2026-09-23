@@ -277,27 +277,42 @@ export const reviewOpsClause = (escrowId, clauseId, { verdict, reasoning, challe
 // and, if they agree, hand the arbiter their own settlement to execute.
 
 /** The whole thread: proposals, the agreement if any, and what the chain can execute. */
-export const getNegotiation = (escrowId, { signal } = {}) =>
-  request(`/negotiation/${escrowId}`, { signal });
+export const getNegotiation = (escrowId, { signal, token } = {}) =>
+  identityRequest(`/negotiation/${escrowId}`, { signal, token });
+
+export const verifyDisputeAgreement = (escrowId, proposalId) =>
+  request(`/negotiation/${escrowId}/verify/${proposalId}`);
+
+export const prepareSettlement = (escrowId, body, token) =>
+  identityRequest(`/negotiation/${escrowId}/propose/prepare`, { method: "POST", body, token });
 
 /**
  * Posts a proposal. `splitToExporterBps` only for outcome "split" — 8500 is 85%
  * to the exporter. The gateway checks against the chain that `by` really is a
  * party to this escrow.
  */
-export const proposeSettlement = (escrowId, { by, outcome, splitToExporterBps, note }) =>
-  request(`/negotiation/${escrowId}/propose`, {
+export const proposeSettlement = (escrowId, { outcome, splitToExporterBps, note, signature }, token) =>
+  identityRequest(`/negotiation/${escrowId}/propose`, {
     method: "POST",
-    body: { by, outcome, note, ...(outcome === "split" ? { splitToExporterBps } : {}) }
+    body: { outcome, note, signature, ...(outcome === "split" ? { splitToExporterBps } : {}) },
+    token
   });
 
 /** The counterparty accepts. Returns the pinned agreement and what the arbiter can do with it. */
-export const acceptSettlement = (escrowId, proposalId, { by }) =>
-  request(`/negotiation/${escrowId}/accept/${proposalId}`, { method: "POST", body: { by } });
+export const acceptSettlement = (escrowId, proposalId, { signature }, token) =>
+  identityRequest(`/negotiation/${escrowId}/accept/${proposalId}`, { method: "POST", body: { signature }, token });
 
 /** Either party can withdraw an agreement to renegotiate. The withdrawn one stays in the record. */
-export const withdrawSettlement = (escrowId, { by }) =>
-  request(`/negotiation/${escrowId}/withdraw`, { method: "POST", body: { by } });
+export const withdrawSettlement = (escrowId, token) =>
+  identityRequest(`/negotiation/${escrowId}/withdraw`, { method: "POST", token });
+
+export const sendDisputeMessage = (escrowId, content, token) =>
+  identityRequest(`/negotiation/${escrowId}/messages`, { method: "POST", body: { content }, token });
+
+export const requestDisputeInspection = (escrowId, body, token) =>
+  identityRequest(`/negotiation/${escrowId}/inspections`, { method: "POST", body, token });
+
+export const getV2Readiness = () => request("/contracts/v2/readiness");
 
 /** The verdict on a CID: does it resolve, do the bytes hash back to it, is it this e-BL. */
 export const verifyEblCid = (cid, { containerRef, signal } = {}) =>
