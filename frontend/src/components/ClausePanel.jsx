@@ -76,6 +76,8 @@ export default function ClausePanel({ escrowId, walletAddress, onStateChanged })
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // The gateway answered 404: it is older than this feature.
+  const [unsupported, setUnsupported] = useState(false);
   const [busy, setBusy] = useState("");
   const [open, setOpen] = useState("");
 
@@ -85,7 +87,14 @@ export default function ClausePanel({ escrowId, walletAddress, onStateChanged })
       try {
         setData(await getClauses(escrowId, { signal }));
       } catch (err) {
-        if (err.name !== "AbortError") setError(err.message);
+        if (err.name === "AbortError") return;
+        // A 404 here means this gateway has no such route — an older deployment,
+        // which happens routinely because a push to master redeploys the
+        // frontend on its own while the gateway is updated separately. That is
+        // not a failure to report on every escrow page; the panel simply has
+        // nothing to say, exactly as for an escrow that declared nothing.
+        if (err.status === 404) setUnsupported(true);
+        else setError(err.message);
       } finally {
         setLoading(false);
       }
@@ -117,7 +126,7 @@ export default function ClausePanel({ escrowId, walletAddress, onStateChanged })
     }
   }
 
-  if (!apiConfigured) return null;
+  if (!apiConfigured || unsupported) return null;
 
   if (loading) {
     return (
