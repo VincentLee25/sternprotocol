@@ -7,7 +7,7 @@ This guide is for the current Phase 0 implementation. It supports a credible liv
 - `SternEscrow` locks IDRT-demo, advances through three ordered verifier milestones, holds a challenge window at each milestone, then applies a timelock before release.
 - The Oracle gateway checks VGM/inspection, AIS, CEISA, and CID-shaped evidence before it submits a milestone proof. Those source adapters are deterministic mocks today.
 - An importer or exporter can raise a bonded on-chain dispute. The appointed arbiter resolves it. A deadline amendment requires proposal by one party and approval by the other.
-- Company accounts support email, username, wallet address, password, MFA TOTP, and `owner` / `admin` / `operator` application roles.
+- Particle authenticates users; PostgreSQL stores STERN work email, editable handle, company membership, linked Safe account, TOTP MFA, and `owner` / `admin` / `operator` roles. No second STERN password is collected.
 - Particle/Safe smart accounts sign end-user on-chain actions when Particle and Pimlico are configured.
 
 ## What Is Not Integrated Yet
@@ -15,7 +15,7 @@ This guide is for the current Phase 0 implementation. It supports a credible liv
 - There is no MetaMask-style on-chain delegation contract. One company can have many user accounts, each with one wallet and an application role. That role does not let one wallet sign for another wallet and does not change contract permissions.
 - The deployed token from `scripts/deploy.js` is `IDRTDemo`, not an official real IDRT asset.
 - VGM, AIS, CEISA, inspection, and IPFS adapters are mock sources. Fault simulation intentionally changes their response in memory.
-- The identity store is a JSON file for the MVP. It needs a Railway persistent volume; it is not a multi-instance database.
+- The company identity store is PostgreSQL. Older `identities.json` data must be imported explicitly before the gateway starts.
 - The gateway reads escrows by scanning the contract. Use an event indexer and database before high transaction volume.
 
 ## A. Quick Local Demo
@@ -35,11 +35,13 @@ Set-Location ..
 
 ```text
 AUTH_TOKEN_SECRET=replace-with-a-random-secret-of-at-least-32-characters
-IDENTITY_STORE_FILE=backend/data/identities.json
+DATABASE_URL=postgresql://...
+PARTICLE_PROJECT_ID=your-particle-project-id
+PARTICLE_SERVER_KEY=your-backend-only-particle-server-key
 PORT=4000
 ```
 
-3. Start the gateway.
+3. Run `npm run migrate:identity` and, if an old `backend/data/identities.json` has accounts, run `npm run import:identities -- --file backend/data/identities.json`. Then start the gateway.
 
 ```powershell
 node backend/oracle-gateway/index.js
@@ -54,9 +56,9 @@ npm run dev
 
 5. Open the address printed by Vite. Set `VITE_ORACLE_API=http://localhost:4000` in `frontend/.env` and restart Vite if it is not already set.
 
-6. At the sign-in page, use **Register company**. Enter the company name, email, username, wallet address, and a password of at least 12 characters. The resulting account is the company `owner`.
+6. Choose **Access workspace**, authenticate in Particle, then enter the company name, work email, and STERN handle if this identity is new. The Safe address is linked automatically and the first member becomes `owner`.
 
-7. Press **Enable MFA**, enter the displayed secret manually in Google Authenticator as a time-based code, then press **Confirm MFA** with the six-digit code.
+7. Open **Security** in the workspace to enable authenticator MFA and confirm the six-digit code.
 
 8. Use the existing dashboard to create an escrow. In mock-only mode the browser can show the workflow, but it does not prove an on-chain transaction.
 
@@ -130,12 +132,14 @@ ARBITER_PRIVATE_KEY=0xYourArbiter
 IDRT_MINTER_PRIVATE_KEY=0xYourIdrtMinter
 INTERNAL_API_KEY=a-long-random-internal-key
 AUTH_TOKEN_SECRET=a-random-secret-at-least-32-characters
+DATABASE_URL=postgresql://...
+PARTICLE_PROJECT_ID=your-particle-project-id
+PARTICLE_SERVER_KEY=your-backend-only-particle-server-key
 CORS_ORIGINS=https://your-frontend-domain
-IDENTITY_STORE_FILE=/data/identities.json
 DEMO_CLAIMS_FILE=/data/demo-claims.json
 ```
 
-3. Attach a Railway persistent volume at `/data`. Without it, company accounts and demo faucet claim history disappear whenever Railway redeploys.
+3. Use a persistent PostgreSQL database for company identity. Attach a Railway volume at `/data` if you need demo faucet claim history across redeploys. If `/data/identities.json` exists from an older release, import it before starting the new gateway.
 
 4. Verify the public health route:
 
@@ -187,7 +191,7 @@ Do not move from Amoy to real value until all of these are complete:
 
 - Replace `IDRTDemo` with the approved real token integration and independently validate its decimals, transfer behavior, and issuer controls.
 - Replace all mock adapters with contracted, authenticated data providers and preserve signed source artifacts.
-- Replace JSON identity storage with a transactional database, encrypted backups, account recovery, audit logs, rate limiting, and password-reset controls.
+- Operate PostgreSQL with encrypted backups, account recovery, audit logs, rate limiting, and request tracing before production.
 - Put arbiter and oracle keys in a proper signer/HSM or managed custody system. Never type production private keys into a browser.
 - Build an event indexer, monitoring, alerts, incident response, and reconciliation process.
 - Run static analysis, fuzz/property testing, independent smart-contract audit, application penetration test, and legal/compliance review.

@@ -27,15 +27,17 @@ const config = {
   // more — a paid endpoint usually does, and fewer, wider requests are faster.
   logScanChunk: Number(process.env.LOG_SCAN_CHUNK || 9000),
   nativeGasWarningWei: BigInt(process.env.NATIVE_GAS_WARNING_WEI || "1000000000000000"),
-  identityStoreFile: process.env.IDENTITY_STORE_FILE || path.resolve(__dirname, "../data/identities.json"),
-  // The counterparty address book. Like the identity store, it must sit on a
-  // persistent volume on a host with ephemeral disk, or every redeploy wipes
-  // the handles people registered.
+  databaseUrl: process.env.DATABASE_URL || "",
+  // Read only at boot to ensure every legacy identity was explicitly imported.
+  // PostgreSQL is the sole runtime source for company identity and membership.
+  legacyIdentityStoreFile: process.env.IDENTITY_STORE_FILE || path.resolve(__dirname, "../data/identities.json"),
+  // The separate counterparty address book still uses a JSON file and must
+  // sit on a persistent volume. STERN company identity above uses PostgreSQL.
   directoryStoreFile: process.env.DIRECTORY_STORE_FILE || path.resolve(__dirname, "../data/directory.json"),
   // Customs documents (PEB / PIB / proof of duty paid) recorded per escrow.
   // Only CIDs and file names live here — the documents themselves are on IPFS
   // — but losing the file loses the link between an escrow and its clearance,
-  // so this wants the same persistent volume as the two stores above.
+  // so this also needs a persistent volume.
   customsStoreFile: process.env.CUSTOMS_STORE_FILE || path.resolve(__dirname, "../data/customs.json"),
   authTokenSecret: process.env.AUTH_TOKEN_SECRET,
   particleProjectId: process.env.PARTICLE_PROJECT_ID || process.env.VITE_PARTICLE_PROJECT_ID || "",

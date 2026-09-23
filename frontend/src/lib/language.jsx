@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
+import { translate } from "./translations.js";
 
 const LanguageContext = createContext(null);
 const STORAGE_KEY = "stern-language";
@@ -17,7 +18,7 @@ export function LanguageProvider({ children }) {
     try { localStorage.setItem(STORAGE_KEY, language); } catch { /* optional preference */ }
   }, [language]);
 
-  return <LanguageContext.Provider value={{ language, setLanguage }}>{children}</LanguageContext.Provider>;
+  return <LanguageContext.Provider value={{ language, setLanguage, t: (key, values) => translate(language, key, values) }}>{children}</LanguageContext.Provider>;
 }
 
 export function useLanguage() {

@@ -21,6 +21,7 @@ import { hashShipmentDocument } from "../lib/shipmentHash.js";
 import { createEscrow } from "../lib/mockRegistry.js";
 import { createEscrowOnChain, onChainConfigured } from "../lib/sternContract.js";
 import { validateEscrowForm } from "../lib/validate.js";
+import { useLanguage } from "../lib/language.jsx";
 
 const INITIAL_FORM = {
   exporter: "",
@@ -43,6 +44,7 @@ const INITIAL_FORM = {
 const MANIFEST_INPUTS = ["commodity", "containerRef", "quantity", "quantityUnit"];
 
 export default function NewEscrow({ balance, onCreated, onBack, smartAccountClient, importerAddress }) {
+  const { t } = useLanguage();
   const [form, setForm] = useState(INITIAL_FORM);
   const [touched, setTouched] = useState({});
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
@@ -90,7 +92,7 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
     document_?.mode === "ipfs" && !blocked && verification?.valid === false;
 
   function showError(field) {
-    return (touched[field] || attemptedSubmit) && errors[field] ? errors[field] : undefined;
+    return (touched[field] || attemptedSubmit) && errors[field] ? t(errors[field]) : undefined;
   }
 
   function update(event) {
@@ -146,12 +148,12 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
     try {
       if (!form.containerRef.trim() || !form.commodity.trim()) {
         throw new Error(
-          "Fill in Container reference and Commodity first — the container is what the e-BL is checked against."
+          t("Fill in Container reference and Commodity first — the container is what the e-BL is checked against.")
         );
       }
       if (!form.quantity.trim()) {
         throw new Error(
-          "Fill in the quantity first — it goes into the manifest, and the manifest's address is what the contract stores."
+          t("Fill in the quantity first — it goes into the manifest, and the manifest's address is what the contract stores.")
         );
       }
 
@@ -183,10 +185,10 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
             reason: error.message
           });
         } catch (fallbackError) {
-          setSubmitError(`Could not hash the document: ${fallbackError.message}`);
+          setSubmitError(`${t("Could not hash the document:")} ${t(fallbackError.message)}`);
         }
       } else {
-        setSubmitError(`Could not pin the documents: ${error.message}`);
+        setSubmitError(`${t("Could not pin the documents:")} ${t(error.message)}`);
       }
     } finally {
       setPinning(false);
@@ -201,18 +203,18 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
 
     if (blocked) {
       setSubmitError(
-        "The e-BL could not be verified at its own address, so there is nothing worth anchoring. Attach the document again."
+        t("The e-BL could not be verified at its own address, so there is nothing worth anchoring. Attach the document again.")
       );
       return;
     }
 
     if (needsAcknowledgement && !acknowledged) {
-      setSubmitError("Confirm you want to anchor this document despite the failed checks.");
+      setSubmitError(t("Confirm you want to anchor this document despite the failed checks."));
       return;
     }
 
     if (Number(form.value) > Number(balance || 0)) {
-      setSubmitError(`Insufficient IDRT-demo balance — you have ${Number(balance || 0).toLocaleString("id-ID")}, this escrow needs ${Number(form.value).toLocaleString("id-ID")}.`);
+      setSubmitError(t("Insufficient IDRT-demo balance — you have {balance}, this escrow needs {value}.", { balance: Number(balance || 0).toLocaleString("id-ID"), value: Number(form.value).toLocaleString("id-ID") }));
       return;
     }
 
@@ -245,7 +247,7 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
 
       onCreated(result.escrowId);
     } catch (error) {
-      setSubmitError(error.message || "Transaction failed");
+      setSubmitError(t(error.message || "Transaction failed"));
     } finally {
       setSubmitting(false);
     }
@@ -257,33 +259,33 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
   return (
     <div className="w-full">
       <Button icon={ArrowLeft} tone="ghost" size="sm" onClick={onBack} className="-ml-3.5 mb-4">
-        Back to escrows
+        {t("Back to escrows")}
       </Button>
 
       <header className="mb-6 max-w-2xl">
-        <p className="text-2xs uppercase text-ink-faint">New settlement instruction</p>
-        <h1 className="mt-1.5 text-[30px] font-semibold leading-none tracking-[-0.035em] text-navy">Create an escrow</h1>
-        <p className="mt-2 text-[14px] leading-relaxed text-ink-dim">Set counterparties, shipment terms and the source document in one clear instruction.</p>
+        <p className="text-2xs uppercase text-ink-faint">{t("New settlement instruction")}</p>
+        <h1 className="mt-1.5 text-[30px] font-semibold leading-none tracking-[-0.035em] text-navy">{t("Create an escrow")}</h1>
+        <p className="mt-2 text-[14px] leading-relaxed text-ink-dim">{t("Set counterparties, shipment terms and the source document in one clear instruction.")}</p>
       </header>
 
       <Notice tone="teal" className="mb-5">
-        Creating an escrow makes you its <strong className="font-semibold">importer</strong> &mdash;
-        the party whose funds are locked. The transaction is gasless and sponsored by the paymaster.
+        {t("Creating an escrow makes you its")} <strong className="font-semibold">{t("importer")}</strong> &mdash;
+        {t("the party whose funds are locked. The transaction is gasless and sponsored by the paymaster.")}
       </Notice>
 
       <form onSubmit={onSubmit} noValidate className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-5">
           <Card>
-            <CardTitle hint="Both addresses are checked for format, and for being distinct from each other and from you.">
-              Counterparties
+            <CardTitle hint={t("Both addresses are checked for format, and for being distinct from each other and from you.")}>
+              {t("Counterparties")}
             </CardTitle>
             <div className="space-y-4">
               <Field
-                label="Exporter wallet"
+                label={t("Exporter wallet")}
                 htmlFor="exporter"
                 required
                 error={showError("exporter")}
-                hint="Receives IDRT-demo once all three milestones are verified. Demo exporter: 0xfAF7af811FC2D0D2a915D9e2d1ce44463Cb96381"
+                hint={t("Receives IDRT-demo once all three milestones are verified. Demo exporter: 0xfAF7af811FC2D0D2a915D9e2d1ce44463Cb96381")}
               >
                 <CounterpartyLookup
                   label="exporter"
@@ -306,11 +308,11 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
                 />
               </Field>
               <Field
-                label="Arbiter wallet"
+                label={t("Arbiter wallet")}
                 htmlFor="arbiter"
                 required
                 error={showError("arbiter")}
-                hint="Resolves disputes — independent of importer and exporter. Demo arbiter: 0x0997657e121213909bE3E9d7701df0753Fb102ed"
+                hint={t("Resolves disputes — independent of importer and exporter. Demo arbiter: 0x0997657e121213909bE3E9d7701df0753Fb102ed")}
               >
                 <CounterpartyLookup
                   label="arbiter"
@@ -336,10 +338,10 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
           </Card>
 
           <Card>
-            <CardTitle hint={CURRENCY_CAPTION}>Shipment terms</CardTitle>
+            <CardTitle hint={t(CURRENCY_CAPTION)}>{t("Shipment terms")}</CardTitle>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field
-                label={`Contract value (${CURRENCY_LABEL})`}
+                label={`${t("Contract value")} (${CURRENCY_LABEL})`}
                 htmlFor="value"
                 required
                 error={showError("value")}
@@ -356,11 +358,11 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
                 />
               </Field>
               <Field
-                label="Settlement deadline"
+                label={t("Settlement deadline")}
                 htmlFor="deadline"
                 required
                 error={showError("deadline")}
-                hint="Global safety valve — the importer can refund at any time after this passes."
+                hint={t("Global safety valve — the importer can refund at any time after this passes.")}
               >
                 <input
                   id="deadline"
@@ -372,7 +374,7 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
                   className={inputClass(Boolean(showError("deadline")))}
                 />
               </Field>
-              <Field label="Commodity" htmlFor="commodity" required error={showError("commodity")}>
+              <Field label={t("Commodity")} htmlFor="commodity" required error={showError("commodity")}>
                 <input
                   id="commodity"
                   name="commodity"
@@ -384,7 +386,7 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
                 />
               </Field>
               <Field
-                label="Container reference"
+                label={t("Container reference")}
                 htmlFor="containerRef"
                 required
                 error={showError("containerRef")}
@@ -403,11 +405,11 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
               {/* How much of it. Without this the escrow settled a contract
                   value against a commodity name and no amount. */}
               <Field
-                label="Quantity"
+                label={t("Quantity")}
                 htmlFor="quantity"
                 required
                 error={showError("quantity")}
-                hint="Checked against the invoice and packing list once they are pinned."
+                hint={t("Checked against the invoice and packing list once they are pinned.")}
               >
                 <div className="flex gap-2">
                   <input
@@ -421,7 +423,7 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
                     className={`${inputClass(Boolean(showError("quantity")))} tabular-nums`}
                   />
                   <label className="shrink-0">
-                    <span className="sr-only">Unit</span>
+                    <span className="sr-only">{t("Unit")}</span>
                     <select
                       name="quantityUnit"
                       value={form.quantityUnit}
@@ -442,9 +444,9 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
 
           <Card>
             <CardTitle
-              hint={`Pinned to IPFS, then read back from their own addresses and checked: that the bytes hash to each address, that the bill of lading is one and names container ${containerLabel || "…"}, and that the quantity above agrees with the invoice and packing list. What the contract stores is the address of a manifest naming all three.`}
+              hint={t("Pinned to IPFS, then read back from their own addresses and checked: that the bytes hash to each address, that the bill of lading is one and names container {container}, and that the quantity above agrees with the invoice and packing list. What the contract stores is the address of a manifest naming all three.", { container: containerLabel || "…" })}
             >
-              Shipment documents
+              {t("Shipment documents")}
             </CardTitle>
 
             <div className="space-y-2">
@@ -473,21 +475,21 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
                 onClick={onPin}
               >
                 {pinning
-                  ? "Pinning and reading back…"
+                  ? t("Pinning and reading back…")
                   : document_
-                    ? "Pin again"
-                    : `Pin ${Object.keys(files).length || ""} document${Object.keys(files).length === 1 ? "" : "s"} to IPFS`}
+                    ? t("Pin again")
+                    : t("Pin {count} documents to IPFS", { count: Object.keys(files).length || "" })}
               </Button>
               {!files.billOfLading ? (
-                <span className="text-2xs text-ink-faint">Choose the bill of lading first.</span>
+                <span className="text-2xs text-ink-faint">{t("Choose the bill of lading first.")}</span>
               ) : !document_ && !pinning ? (
-                <span className="text-2xs text-ink-faint">Nothing has left this browser yet.</span>
+                <span className="text-2xs text-ink-faint">{t("Nothing has left this browser yet.")}</span>
               ) : null}
             </div>
 
             {showError("document") ? (
               <p role="alert" className="mt-2 text-[12.5px] text-state-disputed">
-                {errors.document}
+                {t(errors.document)}
               </p>
             ) : null}
 
@@ -504,10 +506,7 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
 
             {document_?.mode === "local" ? (
               <Notice tone="pending" icon={AlertTriangle} className="mt-3">
-                This gateway has no IPFS pinning service configured, so the document was not pinned.
-                What goes on chain is a local content hash — it identifies the file, but nothing
-                resolves at it and no one else can retrieve the document from it. Set{" "}
-                <span className="font-mono">PINATA_JWT</span> on the gateway to pin for real.
+                {t("This gateway has no IPFS pinning service configured, so the document was not pinned. What goes on chain is a local content hash — it identifies the file, but nothing resolves at it and no one else can retrieve the document from it. Set PINATA_JWT on the gateway to pin for real.")}
               </Notice>
             ) : null}
           </Card>
@@ -517,36 +516,36 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
             arbiter, contract value and the action being signed before anything
             is committed. */}
         <Card as="aside" className="h-fit lg:sticky lg:top-0">
-          <CardTitle>Review and lock</CardTitle>
+          <CardTitle>{t("Review and lock")}</CardTitle>
           <div className="divide-y divide-sky/70">
-            <Row label="Deposit" value={`${grossValue.toLocaleString("id-ID")} ${CURRENCY_LABEL}`} />
+            <Row label={t("Deposit")} value={`${grossValue.toLocaleString("id-ID")} ${CURRENCY_LABEL}`} />
             <Row
-              label="Your balance"
+              label={t("Your balance")}
               value={`${Number(balance || 0).toLocaleString("id-ID")} ${CURRENCY_LABEL}`}
             />
-            <Row label="You sign as" value="Importer" />
-            <Row label="Exporter" value={shortAddress(form.exporter) || "not set"} />
-            <Row label="Arbiter" value={shortAddress(form.arbiter) || "not set"} />
-            <Row label="Milestones" value="3 — inspected, shipped, cleared" />
-            <Row label="Challenge window" value="6h per milestone" />
-            <Row label="Timelock" value="24h after final milestone" />
-            <Row label="Dispute path" value="Arbiter decides, 2% buyer bond" />
+            <Row label={t("You sign as")} value={t("Importer")} />
+            <Row label={t("Exporter")} value={shortAddress(form.exporter) || t("not set")} />
+            <Row label={t("Arbiter")} value={shortAddress(form.arbiter) || t("not set")} />
+            <Row label={t("Milestones")} value={t("3 — inspected, shipped, cleared")} />
+            <Row label={t("Challenge window")} value={t("6h per milestone")} />
+            <Row label={t("Timelock")} value={t("24h after final milestone")} />
+            <Row label={t("Dispute path")} value={t("Arbiter decides, 2% buyer bond")} />
             <Row
-              label="Quantity"
+              label={t("Quantity")}
               value={
                 form.quantity.trim()
                   ? `${Number(form.quantity).toLocaleString("id-ID")} ${form.quantityUnit}`
-                  : "not stated"
+                  : t("not stated")
               }
             />
             <Row
-              label="Documents"
+              label={t("Documents")}
               value={
                 document_
                   ? document_.mode === "ipfs"
-                    ? `${Object.keys(document_.documents || {}).length} pinned · ${shortCid(document_.cid)}`
-                    : "Local hash, not pinned"
-                  : `${Object.keys(files).length || "None"} chosen, not pinned`
+                    ? t("{count} pinned · {cid}", { count: Object.keys(document_.documents || {}).length, cid: shortCid(document_.cid) })
+                    : t("Local hash, not pinned")
+                  : t("{count} chosen, not pinned", { count: Object.keys(files).length || t("None") })
               }
             />
           </div>
@@ -569,14 +568,14 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
           >
             {submitting
               ? onChainConfigured
-                ? "Locking funds on chain…"
-                : "Locking funds…"
-              : "Lock funds in escrow"}
+                ? t("Locking funds on chain…")
+                : t("Locking funds…")
+              : t("Lock funds in escrow")}
           </Button>
           <p className="mt-2.5 text-center text-2xs text-ink-faint">
             {onChainConfigured
-              ? "Gasless — sponsored by Pimlico"
-              : "Demo data — nothing is sent on chain"}
+              ? t("Gasless — sponsored by Pimlico")
+              : t("Demo data — nothing is sent on chain")}
           </p>
         </Card>
       </form>
@@ -592,6 +591,7 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
  * and a form that tucks them away teaches the opposite.
  */
 function FilePicker({ slot, file, invalid, onChange }) {
+  const { t } = useLanguage();
   return (
     <label
       className={`flex cursor-pointer items-start gap-3 rounded-panel border border-dashed px-3.5 py-3 transition-colors duration-150 ${
@@ -606,11 +606,11 @@ function FilePicker({ slot, file, invalid, onChange }) {
       )}
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-baseline gap-x-2 text-[13px] font-medium text-navy">
-          {slot.label}
+          {t(slot.label)}
           {slot.required ? (
-            <span className="text-state-disputed" aria-label="required">*</span>
+            <span className="text-state-disputed" aria-label={t("required")}>*</span>
           ) : (
-            <span className="text-2xs font-normal text-ink-faint">optional</span>
+            <span className="text-2xs font-normal text-ink-faint">{t("optional")}</span>
           )}
         </span>
         {file ? (
@@ -618,7 +618,7 @@ function FilePicker({ slot, file, invalid, onChange }) {
             {file.name} <span className="text-ink-faint">({formatBytes(file.size)})</span>
           </span>
         ) : (
-          <span className="mt-0.5 block font-serif text-2xs leading-relaxed text-ink-dim">{slot.hint}</span>
+          <span className="mt-0.5 block font-serif text-2xs leading-relaxed text-ink-dim">{t(slot.hint)}</span>
         )}
       </span>
     </label>
@@ -643,6 +643,7 @@ function Row({ label, value }) {
  * Afterwards the CID is immutable on chain.
  */
 function EblReport({ document_, verification, blocked, needsAcknowledgement, acknowledged, onAcknowledge }) {
+  const { t } = useLanguage();
   const checks = eblCheckRows(verification);
   const fields = eblFieldRows(verification);
   const goods = goodsFieldRows(verification);
@@ -654,10 +655,10 @@ function EblReport({ document_, verification, blocked, needsAcknowledgement, ack
       <div className="rounded-panel border border-sky bg-surface-soft px-3.5 py-3">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <span className="text-[13px] text-ink-dim">
-            {verification?.kind === "manifest" ? "Manifest address — this goes on chain" : "IPFS address"}
+            {t(verification?.kind === "manifest" ? "Manifest address — this goes on chain" : "IPFS address")}
           </span>
           <span className="text-2xs text-ink-faint">
-            {document_.provider === "pinata" ? "Pinata" : "IPFS node"}
+            {document_.provider === "pinata" ? "Pinata" : t("IPFS node")}
           </span>
         </div>
         <p className="mt-1 break-all font-mono text-2xs text-navy">{document_.cid}</p>
@@ -669,7 +670,7 @@ function EblReport({ document_, verification, blocked, needsAcknowledgement, ack
               rel="noreferrer"
               className="inline-flex items-center gap-1 text-2xs font-medium text-teal transition-colors duration-150 hover:text-navy"
             >
-              Open the document
+              {t("Open the document")}
               <ExternalLink size={10} aria-hidden="true" />
             </a>
           ) : null}
@@ -677,8 +678,8 @@ function EblReport({ document_, verification, blocked, needsAcknowledgement, ack
               recomputed here from the bytes, not simply believed. */}
           <Tag tone={document_.cidSelfChecked ? "attested" : "pending"}>
             {document_.cidSelfChecked
-              ? "Address reproduced independently"
-              : "Address not reproduced locally"}
+              ? t("Address reproduced independently")
+              : t("Address not reproduced locally")}
           </Tag>
         </div>
       </div>
@@ -693,7 +694,7 @@ function EblReport({ document_, verification, blocked, needsAcknowledgement, ack
                 tone={check.passed ? "attested" : check.advisory ? "pending" : "disputed"}
                 icon={check.passed ? Check : check.advisory ? AlertTriangle : X}
               >
-                {check.label}
+                {t(check.label)}
               </Tag>
             </li>
           ))}
@@ -704,11 +705,11 @@ function EblReport({ document_, verification, blocked, needsAcknowledgement, ack
           its own CID inside the manifest and can be opened on its own. */}
       {contents.length ? (
         <div className="rounded-panel border border-sky px-3.5 py-3">
-          <p className="mb-2 text-[13px] text-ink-dim">Behind that one address</p>
+          <p className="mb-2 text-[13px] text-ink-dim">{t("Behind that one address")}</p>
           <ul className="divide-y divide-sky/70">
             {contents.map((row) => (
               <li key={row.key} className="flex items-baseline justify-between gap-3 py-1.5">
-                <span className="shrink-0 text-2xs text-ink-faint">{row.label}</span>
+                <span className="shrink-0 text-2xs text-ink-faint">{t(row.label)}</span>
                 <span className="min-w-0 text-right">
                   <span className="block truncate text-2xs text-navy">{row.value}</span>
                   {row.cid ? (
@@ -722,10 +723,10 @@ function EblReport({ document_, verification, blocked, needsAcknowledgement, ack
                         {shortCid(row.cid)}
                       </a>
                       {row.digestMatches === false ? (
-                        <span className="text-2xs text-state-disputed">digest differs</span>
+                        <span className="text-2xs text-state-disputed">{t("digest differs")}</span>
                       ) : null}
                       {row.resolves === false ? (
-                        <span className="text-2xs text-state-disputed">does not resolve</span>
+                        <span className="text-2xs text-state-disputed">{t("does not resolve")}</span>
                       ) : null}
                     </span>
                   ) : null}
@@ -741,17 +742,17 @@ function EblReport({ document_, verification, blocked, needsAcknowledgement, ack
           tone={verification.manifest.quantityCheck.agrees ? "info" : "pending"}
           icon={verification.manifest.quantityCheck.agrees ? Check : AlertTriangle}
         >
-          {verification.manifest.quantityCheck.reason}
+          {t(verification.manifest.quantityCheck.reason)}
         </Notice>
       ) : null}
 
       {fields.length ? (
         <div className="rounded-panel border border-sky px-3.5 py-3">
-          <p className="mb-2 text-[13px] text-ink-dim">Read from the bill of lading</p>
+          <p className="mb-2 text-[13px] text-ink-dim">{t("Read from the bill of lading")}</p>
           <dl className="divide-y divide-sky/70">
             {fields.map((field) => (
               <div key={field.key} className="flex items-baseline justify-between gap-3 py-1.5">
-                <dt className="shrink-0 text-2xs text-ink-faint">{field.label}</dt>
+                <dt className="shrink-0 text-2xs text-ink-faint">{t(field.label)}</dt>
                 <dd className="min-w-0 text-right text-2xs text-navy">{field.value}</dd>
               </div>
             ))}
@@ -761,11 +762,11 @@ function EblReport({ document_, verification, blocked, needsAcknowledgement, ack
 
       {goods.length ? (
         <div className="rounded-panel border border-sky px-3.5 py-3">
-          <p className="mb-2 text-[13px] text-ink-dim">Read from the invoice and packing list</p>
+          <p className="mb-2 text-[13px] text-ink-dim">{t("Read from the invoice and packing list")}</p>
           <dl className="divide-y divide-sky/70">
             {goods.map((field) => (
               <div key={field.key} className="flex items-baseline justify-between gap-3 py-1.5">
-                <dt className="shrink-0 text-2xs text-ink-faint">{field.label}</dt>
+                <dt className="shrink-0 text-2xs text-ink-faint">{t(field.label)}</dt>
                 <dd className="min-w-0 text-right text-2xs text-navy">{field.value}</dd>
               </div>
             ))}
@@ -776,16 +777,15 @@ function EblReport({ document_, verification, blocked, needsAcknowledgement, ack
       {verification?.notes?.length
         ? verification.notes.map((note) => (
             <Notice key={note} tone={blocked ? "disputed" : "pending"} icon={AlertTriangle}>
-              {note}
+              {t(note)}
             </Notice>
           ))
         : null}
 
       {blocked ? (
         <Notice tone="disputed">
-          {verification?.reason || "The document could not be retrieved from its own address."}{" "}
-          Anchoring this address would put a reference on chain that resolves to nothing, so it
-          cannot be used. Attach the document again.
+          {t(verification?.reason || "The document could not be retrieved from its own address.")}{" "}
+          {t("Anchoring this address would put a reference on chain that resolves to nothing, so it cannot be used. Attach the document again.")}
         </Notice>
       ) : null}
 
@@ -798,8 +798,7 @@ function EblReport({ document_, verification, blocked, needsAcknowledgement, ack
             className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-state-pending"
           />
           <span className="text-[13px] leading-relaxed text-state-pending">
-            The document is retrievable and its address checks out, but it did not pass every
-            content check above. Anchor it anyway — the verifiers will see the same result.
+            {t("The document is retrievable and its address checks out, but it did not pass every content check above. Anchor it anyway — the verifiers will see the same result.")}
           </span>
         </label>
       ) : null}

@@ -1,5 +1,6 @@
 import { Check, Scale, Undo2 } from "lucide-react";
 import { lifecycleStep } from "../lib/escrowState.js";
+import { useLanguage } from "../lib/language.jsx";
 
 const MAIN_STEPS = [
   { key: "Pending", label: "Funds locked", detail: "Importer deposit held by the contract" },
@@ -11,6 +12,7 @@ const MAIN_STEPS = [
 ];
 
 export default function Timeline({ state }) {
+  const { t } = useLanguage();
   const isDisputed = state === "Disputed";
   const isRefunded = state === "Refunded";
   const activeIndex = lifecycleStep(state);
@@ -58,9 +60,9 @@ export default function Timeline({ state }) {
                   status === "off" ? "text-ink-faint" : "text-navy"
                 }`}
               >
-                {step.label}
+                {t(step.label)}
               </p>
-              <p className="text-xs text-ink-dim">{step.detail}</p>
+              <p className="text-xs text-ink-dim">{t(step.detail)}</p>
             </div>
           </li>
         );
@@ -69,13 +71,13 @@ export default function Timeline({ state }) {
       {isDisputed ? (
         <li className="mt-1 flex items-center gap-2 rounded-panel bg-state-pending/10 px-3 py-2.5 text-sm text-state-pending">
           <Scale size={13} aria-hidden="true" className="shrink-0" />
-          Disputed: funds frozen until the appointed arbiter resolves it
+          {t("Disputed: funds frozen until the appointed arbiter resolves it")}
         </li>
       ) : null}
       {isRefunded ? (
         <li className="mt-1 flex items-center gap-2 rounded-panel bg-sky px-3 py-2.5 text-sm text-ink-dim">
           <Undo2 size={13} aria-hidden="true" className="shrink-0" />
-          Refunded: escrow value returned to the importer
+          {t("Refunded: escrow value returned to the importer")}
         </li>
       ) : null}
     </ol>

@@ -156,8 +156,8 @@ Batas: 8 MB per dokumen, 12 MB per set, body JSON gateway 20 MB.
 `CUSTOMS_STORE_FILE` (default `backend/data/customs.json`) menyimpan kaitan
 escrow → CID manifest kepabeanan.
 
-> **Di Railway ini harus di volume**, sama seperti `IDENTITY_STORE_FILE` dan
-> `DIRECTORY_STORE_FILE`. Dokumennya sendiri aman di IPFS, tapi tanpa volume
+> **Di Railway ini harus di volume**, sama seperti `DIRECTORY_STORE_FILE`.
+> Identitas perusahaan sudah memakai PostgreSQL. Dokumennya sendiri aman di IPFS, tapi tanpa volume
 > setiap redeploy menghapus kaitan antara escrow dan dokumen kepabeanannya —
 > dan milestone 3 akan kembali memakai `proofCid` sintetis.
 

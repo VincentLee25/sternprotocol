@@ -9,6 +9,9 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "test:identity": "node --test backend/oracle-gateway/identityService.test.js",
+    "check:identity-db": "node backend/oracle-gateway/db/checkConnection.js",
+    "migrate:identity": "node backend/oracle-gateway/db/migrate.js",
+    "import:identities": "node backend/oracle-gateway/db/importLegacyIdentities.js",
     "deploy:local": "hardhat run scripts/deploy.js --network localhost",
     "mine:128": "hardhat run scripts/mine-blocks.js --network localhost",
     "post-bond": "node scripts/post-bond.js",
@@ -38,9 +41,12 @@
     "ipfs-only-hash": "^4.0.0",
     "pdf-parse": "^2.4.5",
     "permissionless": "0.4.0",
+    "pg": "8.23.0",
     "viem": "2.44.4"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@electric-sql/pglite-socket": "^0.2.11",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@openzeppelin/contracts": "^5.2.0",
     "hardhat": "^2.26.0"

@@ -77,12 +77,13 @@ curl https://<domain-railway-anda>/health
 
 Harus mengembalikan JSON, bukan halaman error.
 
-**Yang menjebak di sini:** kalau volume persisten di `/data` belum terpasang, setiap
-deploy ulang akan **menghapus semua akun perusahaan yang sudah terdaftar** beserta riwayat
-klaim faucet. Pastikan dua variabel ini menunjuk ke volume:
+**Yang menjebak di sini:** akun perusahaan sekarang tersimpan di PostgreSQL.
+Pastikan `DATABASE_URL` mengarah ke database yang sama dan impor `identities.json`
+lama sebelum deploy pertama versi ini. Volume `/data` tetap diperlukan untuk
+riwayat klaim faucet dan berkas JSON lain:
 
 ```
-IDENTITY_STORE_FILE=/data/identities.json
+DATABASE_URL=postgresql://...
 DEMO_CLAIMS_FILE=/data/demo-claims.json
 ```
 
@@ -203,7 +204,9 @@ IDRT_MINTER_PRIVATE_KEY=0x<deployer atau minter>
 INTERNAL_API_KEY=<acak, panjang>
 AUTH_TOKEN_SECRET=<acak, minimal 32 karakter>
 CORS_ORIGINS=https://<domain-frontend-anda>
-IDENTITY_STORE_FILE=/data/identities.json
+DATABASE_URL=postgresql://...
+PARTICLE_PROJECT_ID=<project-id>
+PARTICLE_SERVER_KEY=<server-key-rahasia>
 DEMO_CLAIMS_FILE=/data/demo-claims.json
 ```
 

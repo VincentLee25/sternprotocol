@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Menu } from "lucide-react";
 import Sidebar from "./components/Sidebar.jsx";
+import AccountMenu from "./components/AccountMenu.jsx";
+import ThemeToggle from "./components/ThemeToggle.jsx";
 import sternLogo from "./assets/stern-logo.png";
 import SessionBoot from "./components/SessionBoot.jsx";
 import Landing from "./pages/Landing.jsx";
@@ -10,12 +12,14 @@ import NewEscrow from "./pages/NewEscrow.jsx";
 import EscrowDetail from "./pages/EscrowDetail.jsx";
 import OpsConsole from "./pages/OpsConsole.jsx";
 import Security from "./pages/Security.jsx";
+import Account from "./pages/Account.jsx";
+import CompanyTeam from "./pages/CompanyTeam.jsx";
 import { claimDemoBalance as mockClaim, getDemoBalance as mockBalance } from "./lib/mockBackend.js";
 import * as api from "./lib/sternApi.js";
 import { sourceIsLive } from "./lib/escrowSource.js";
 import { AUTH, useSternAuth } from "./lib/useSternAuth.js";
 import { getIdrtBalance, onChainConfigured } from "./lib/sternContract.js";
-import { LanguageProvider } from "./lib/language.jsx";
+import { useLanguage } from "./lib/language.jsx";
 import { clearCompanySession, readCompanySession, writeCompanySession } from "./lib/companySession.js";
 import { getCompanyMe } from "./lib/sternApi.js";
 
@@ -48,24 +52,34 @@ const canClaim = sourceIsLive || !onChainConfigured;
 const VIEW_KEY = "stern-view";
 const KNOWN_VIEWS = new Set([
   "landing", "instrument", "settlement", "oracles",
-  "login", "overview", "create", "escrow", "ops", "security"
+  "login", "overview", "create", "escrow", "ops", "security", "account", "team"
 ]);
 
 function readStoredView() {
-  // The public introduction is the entry point, not a persisted private route.
-  // Previously a stored `login` value made a fresh browser visit look as if the
-  // landing page did not exist. Workspace state is still held while the app is
-  // open; a new visit starts with the product story and asks for sign-in only
-  // after the visitor chooses to enter.
+  if (new URLSearchParams(window.location.search).has("invite")) return { name: "login" };
+  if (readCompanySession()) {
+    try {
+      const stored = JSON.parse(localStorage.getItem(VIEW_KEY));
+      if (stored && KNOWN_VIEWS.has(stored.name) && !MARKETING[stored.name] && stored.name !== "login") {
+        return stored.name === "escrow"
+          ? stored.id == null ? { name: "overview" } : { name: "escrow", id: String(stored.id) }
+          : stored;
+      }
+    } catch {
+      // A missing or malformed preference should not interrupt session restore.
+    }
+    return { name: "overview" };
+  }
   return { name: "landing" };
 }
 
 export default function App() {
-  return <LanguageProvider><SternApp /></LanguageProvider>;
+  return <SternApp />;
 }
 
 function SternApp() {
-  const { status, user, particleIdentity, error, connect, disconnect, setUser, smartAccountClient } = useSternAuth();
+  const { t } = useLanguage();
+  const { status, user, particleIdentity, error, connect, disconnect, refreshParticleIdentity, setUser, smartAccountClient } = useSternAuth();
   const [balance, setBalance] = useState("0.00");
   const [claiming, setClaiming] = useState(false);
   const [claimError, setClaimError] = useState("");
@@ -74,6 +88,10 @@ function SternApp() {
   const [navOpen, setNavOpen] = useState(false);
   const [companySession, setCompanySession] = useState(readCompanySession);
   const [companySessionValidated, setCompanySessionValidated] = useState(false);
+  const [restoreGraceElapsed, setRestoreGraceElapsed] = useState(false);
+  const [sessionRestoreError, setSessionRestoreError] = useState("");
+  const [sessionRestoreRetry, setSessionRestoreRetry] = useState(0);
+  const inviteCode = new URLSearchParams(window.location.search).get("invite");
 
   const address = user?.smartAccountAddress;
   const expectedAddress = companySession?.user?.walletAddress?.toLowerCase();
@@ -81,11 +99,18 @@ function SternApp() {
   const companyIdentityMatches = Boolean(companySession?.user?.particleUserId && particleIdentity?.uuid === companySession.user.particleUserId);
   const workspaceReady = Boolean(companySession && companySessionValidated && companyIdentityMatches && status === AUTH.READY && address && accountMatches);
 
+  useEffect(() => {
+    if (!companySession || status !== AUTH.ANONYMOUS) return undefined;
+    const timer = window.setTimeout(() => setRestoreGraceElapsed(true), 5000);
+    return () => window.clearTimeout(timer);
+  }, [companySession, status]);
+
   const updateCompanySession = useCallback((session) => {
-    setCompanySessionValidated(false);
+    setSessionRestoreError("");
+    setCompanySessionValidated((current) => current && companySession?.accessToken === session?.accessToken);
     setCompanySession(session);
     writeCompanySession(session);
-  }, []);
+  }, [companySession?.accessToken]);
 
   useEffect(() => {
     if (!companySession?.accessToken || status !== AUTH.READY || !address || !particleIdentity?.uuid) {
@@ -95,6 +120,7 @@ function SternApp() {
 
     let cancelled = false;
     setCompanySessionValidated(false);
+    setSessionRestoreError("");
     getCompanyMe(companySession.accessToken)
       .then(({ user: verifiedUser, company }) => {
         if (cancelled) return;
@@ -110,14 +136,20 @@ function SternApp() {
           : current);
         setCompanySessionValidated(true);
       })
-      .catch(() => {
+      .catch((cause) => {
         if (cancelled) return;
-        clearCompanySession();
-        setCompanySession(null);
+        if (cause?.status === 401 || cause?.status === 403) {
+          clearCompanySession();
+          setCompanySession(null);
+        } else {
+          // A temporary gateway outage is not a sign-out. Keep the Particle and
+          // company sessions intact so the operator can retry in place.
+          setSessionRestoreError(cause?.message || "Company access could not be verified");
+        }
       });
 
     return () => { cancelled = true; };
-  }, [companySession?.accessToken, status, address, particleIdentity?.uuid]);
+  }, [companySession?.accessToken, status, address, particleIdentity?.uuid, sessionRestoreRetry]);
 
   useEffect(() => {
     try {
@@ -244,6 +276,7 @@ function SternApp() {
   const handleSignOut = useCallback(async () => {
     clearCompanySession();
     setCompanySession(null);
+    setSessionRestoreError("");
     await disconnect();
     setBalance("0.00");
     setView({ name: "landing" });
@@ -253,13 +286,14 @@ function SternApp() {
     clearCompanySession();
     setCompanySessionValidated(false);
     setCompanySession(null);
+    setSessionRestoreError("");
     await disconnect();
   }, [disconnect]);
 
   // Once authenticated, "login" stops being a destination. Deriving this rather
   // than setting state on sign-in avoids a frame where the workspace is ready
   // but the router still points at the login screen.
-  const activeView = workspaceReady && view.name === "login" ? { name: "overview" } : view;
+  const activeView = workspaceReady && view.name === "login" && !inviteCode ? { name: "overview" } : view;
 
   const activeEscrow = useMemo(
     () => (activeView.name === "escrow" ? escrows.find((escrow) => escrow.id === activeView.id) : null),
@@ -274,7 +308,7 @@ function SternApp() {
 
   // Marketing surface — no login required, shares the dark chrome.
   const MarketingPage = MARKETING[activeView.name];
-  if (MarketingPage) {
+  if (MarketingPage && !inviteCode) {
     return (
       <div className="h-dvh overflow-y-auto">
         <MarketingPage
@@ -291,6 +325,10 @@ function SternApp() {
     return <SessionBoot label="Restoring your workspace" />;
   }
 
+  if (companySession && activeView.name !== "login" && status === AUTH.ANONYMOUS && !restoreGraceElapsed) {
+    return <SessionBoot label="Restoring your workspace" />;
+  }
+
   // Connected, but the smart account address is still being derived. Entering
   // the workspace here would show an empty wallet and a zero balance.
   if (companySession && activeView.name !== "login" && status === AUTH.AUTHENTICATING) {
@@ -298,10 +336,10 @@ function SternApp() {
   }
 
   if (companySession && activeView.name !== "login" && status === AUTH.READY && address && particleIdentity?.uuid && !companySessionValidated) {
-    return <SessionBoot label="Checking company access" detail="Confirming your Particle identity and STERN company membership." />;
+    return <SessionBoot label="Checking company access" detail="Confirming your Particle identity and STERN company membership." error={sessionRestoreError} onRetry={() => setSessionRestoreRetry((count) => count + 1)} />;
   }
 
-  if (!workspaceReady) {
+  if (inviteCode || !workspaceReady) {
     return (
       <Login
         companySession={companySession}
@@ -309,11 +347,18 @@ function SternApp() {
         accountStatus={status}
         accountAddress={address}
         particleIdentity={particleIdentity}
-        particleEmail={user?.email}
         onPrepareAccount={connect}
+        onRefreshParticleIdentity={refreshParticleIdentity}
         onDisconnectAccount={disconnect}
         accountError={error}
-        onBack={() => setView({ name: "landing" })}
+        onBack={() => {
+          if (inviteCode) {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("invite");
+            window.history.replaceState(null, "", url);
+          }
+          setView({ name: "landing" });
+        }}
       />
     );
   }
@@ -336,16 +381,8 @@ function SternApp() {
         onClose={() => setNavOpen(false)}
         view={activeView.name}
         onNavigate={(name) => { setView({ name }); setNavOpen(false); }}
-        user={user}
-        balance={balance}
-        claiming={claiming}
-        claimError={claimError}
-        onClaim={handleClaim}
-        canClaim={canClaim}
         onOpenOps={() => { setView({ name: "ops" }); setNavOpen(false); }}
-        onSignOut={handleSignOut}
         isOnChainReady={sourceIsLive}
-        companySession={companySession}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -353,18 +390,20 @@ function SternApp() {
             most of a 390px screen and the workspace was clipped rather than
             narrowed — the page title itself was cut in half. It becomes a drawer,
             and this bar is what opens it. */}
-        <header className="flex items-center gap-3 border-b border-sky/70 bg-surface/90 px-4 py-3 shadow-card backdrop-blur-xl lg:hidden">
+        <header className="stern-workspace-topbar flex shrink-0 items-center gap-3 border-b border-sky/70 bg-surface/90 px-4 py-3 backdrop-blur-xl sm:px-6 lg:justify-end lg:px-9 xl:px-12">
           <button
             type="button"
             onClick={() => setNavOpen(true)}
-            aria-label="Open navigation"
-            className="grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-panel border border-sky text-navy transition-colors duration-150 hover:border-teal/40"
+            aria-label={t("Open navigation")}
+            className="grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-panel border border-sky text-navy transition-colors duration-150 hover:border-teal/40 lg:hidden"
           >
             <Menu size={18} aria-hidden="true" />
           </button>
           {/* `invert` matches the sidebar: the asset is light-on-transparent, so
               without it the mark is almost invisible on the light chrome. */}
-          <img src={sternLogo} alt="STERN" className="h-4 w-auto invert dark:invert-0" />
+          <img src={sternLogo} alt="STERN" className="h-4 w-auto invert lg:hidden" />
+          <ThemeToggle />
+          <AccountMenu session={companySession} onNavigate={(name) => setView({ name })} onSessionChange={updateCompanySession} onSignOut={handleSignOut} />
         </header>
 
       {/* `relative` is load-bearing, not decoration. Without a positioned
@@ -377,12 +416,16 @@ function SternApp() {
         <div key={`${activeView.name}-${activeView.id ?? ""}`} className="stern-workspace-page mx-auto w-full max-w-[1600px]">
         {activeView.name === "security" ? (
           <Security session={companySession} onSessionChange={updateCompanySession} />
+        ) : activeView.name === "account" ? (
+          <Account session={companySession} onSessionChange={updateCompanySession} />
+        ) : activeView.name === "team" ? (
+          <CompanyTeam session={companySession} />
         ) : activeView.name === "create" ? (
           <NewEscrow
             balance={balance}
             smartAccountClient={smartAccountClient}
             importerAddress={address}
-            onCreated={(escrowId) => { refresh(); setView({ name: "escrow", id: escrowId }); }}
+            onCreated={(escrowId) => { refresh(); setView({ name: "escrow", id: String(escrowId) }); }}
             onBack={() => setView({ name: "overview" })}
           />
         ) : activeView.name === "escrow" && activeEscrow ? (
@@ -398,6 +441,12 @@ function SternApp() {
         ) : (
           <Overview
             walletAddress={address}
+            user={user}
+            balance={balance}
+            claiming={claiming}
+            claimError={claimError}
+            canClaim={canClaim}
+            onClaim={handleClaim}
             refreshKey={refreshKey}
             onOpen={(id) => setView({ name: "escrow", id })}
             onCreate={() => setView({ name: "create" })}

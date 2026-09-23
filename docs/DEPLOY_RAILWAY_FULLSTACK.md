@@ -156,9 +156,9 @@ kontrak gagal dengan `Contract artifact not found. Run npm run compile first.`
 
 **Settings → Volumes → New Volume**, mount path: `/data`
 
-Tanpa ini, setiap deploy ulang **menghapus semua akun perusahaan yang terdaftar** dan
-riwayat klaim faucet. Kalau Anda sudah mendaftarkan akun untuk demo lalu baru memasang
-volume, akun itu sudah hilang dan tidak bisa dikembalikan.
+Volume ini masih diperlukan untuk riwayat klaim faucet dan berkas JSON lain seperti
+direktori serta dokumen kepabeanan. Akun perusahaan sekarang berada di PostgreSQL;
+jalankan migrasi dan impor `identities.json` lama sebelum gateway baru dinyalakan.
 
 ### 2.3 Variabel gateway
 
@@ -172,8 +172,10 @@ ARBITER_PRIVATE_KEY=<kunci stern-arbiter>
 IDRT_MINTER_PRIVATE_KEY=<kunci stern-deployer>
 INTERNAL_API_KEY=<acak panjang, buat sendiri>
 AUTH_TOKEN_SECRET=<acak minimal 32 karakter, buat sendiri>
+DATABASE_URL=postgresql://...
+PARTICLE_PROJECT_ID=<project-id-yang-sama-dengan-frontend>
+PARTICLE_SERVER_KEY=<server-key-rahasia>
 CORS_ORIGINS=*
-IDENTITY_STORE_FILE=/data/identities.json
 DEMO_CLAIMS_FILE=/data/demo-claims.json
 DEMO_BALANCE_IDRT=150000000.00
 ```
@@ -364,7 +366,7 @@ yang salah. Alur gagal tidak.
 ```
 RPC_URL, CONTRACT_ADDRESS, ORACLE_PRIVATE_KEYS, ARBITER_PRIVATE_KEY,
 IDRT_MINTER_PRIVATE_KEY, INTERNAL_API_KEY, AUTH_TOKEN_SECRET, CORS_ORIGINS,
-IDENTITY_STORE_FILE, DEMO_CLAIMS_FILE, DEMO_BALANCE_IDRT
+DATABASE_URL, PARTICLE_PROJECT_ID, PARTICLE_SERVER_KEY, DEMO_CLAIMS_FILE, DEMO_BALANCE_IDRT
 ```
 
 ### `stern-web` — semuanya publik

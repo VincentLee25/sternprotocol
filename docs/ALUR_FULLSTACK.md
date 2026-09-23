@@ -33,7 +33,8 @@ Pengguna menekan "Sign in to continue". Yang terjadi berurutan, di
 2. Particle mengembalikan EOA  → account.address
 3. toSafeSmartAccount()        → menurunkan alamat Safe dari EOA itu
 4. createSmartAccountClient()  → klien yang bisa mengirim UserOperation
-5. postAuthSession()           → mendaftarkan sesi di lapis aplikasi
+5. POST /auth/particle/session → backend memverifikasi Particle dan Safe,
+                                  lalu mencari keanggotaan STERN di PostgreSQL
 ```
 
 Yang paling sering disalahpahami: **alamat yang dipakai di escrow bukan
@@ -283,25 +284,23 @@ ini.
 
 ---
 
-## Identitas perusahaan — jalur yang terpisah
+## Identitas perusahaan — otorisasi sesudah Particle
 
-Berjalan sendiri, tidak menyentuh rantai sama sekali.
+Particle adalah satu-satunya titik masuk autentikasi. Gerbang memverifikasi token
+Particle dan menurunkan alamat Safe secara independen, lalu mencocokkannya dengan
+`auth_identities` di PostgreSQL. Identitas baru mengisi nama perusahaan, email kerja,
+dan handle STERN; alamat Safe tidak diketik. Registrasi membuat membership `owner`.
 
 ```
-POST /auth/register-company → scrypt + salt acak → backend/data/identities.json
-POST /auth/login            → kalau MFA aktif: { mfaRequired, mfaToken }, TANPA accessToken
-POST /auth/mfa/verify       → TOTP 30 detik → accessToken
+POST /auth/particle/session  → anggota lama: MFA jika aktif, lalu sesi STERN
+                            → identitas baru: registrationRequired
+POST /auth/register-company  → profil + perusahaan + owner membership di PostgreSQL
+POST /auth/mfa/verify        → TOTP 30 detik → sesi STERN
 ```
 
-Kata sandi dibandingkan dengan `timingSafeEqual`. Peran `owner` / `admin` / `operator`
-ditegakkan di `addCompanyUser`: owner boleh menambah admin atau operator, admin hanya
-operator, dan tidak ada yang bisa membuat owner kedua.
-
-**Batas yang harus disebut jujur:** sesi ini mengidentifikasi *perusahaan* ke gerbang. Ia
-tidak membuka workspace — itu dijaga Smart Account Particle. Keduanya belum saling
-terhubung: `walletAddress` yang direkam saat registrasi belum pernah dicocokkan dengan
-alamat Safe yang benar-benar masuk. Mencocokkannya adalah yang akan membuat MFA di sini
-punya arti sungguhan.
+Owner mengundang admin/operator; admin hanya boleh mengundang operator. Pengguna
+baru maupun lama menerima undangan setelah Particle Auth, dan MFA pengguna lama
+diselesaikan sebelum membership baru dibuat. Tidak ada kata sandi STERN kedua.
 
 ---
 

@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  ArrowUpDown, ChevronLeft, ChevronRight, Inbox, MoreHorizontal, RefreshCcw, Search
+  ArrowUpDown, ChevronLeft, ChevronRight, Inbox, RefreshCcw, Search
 } from "lucide-react";
 import StatusPill from "../components/StatusPill.jsx";
 import ActivityRail from "../components/ActivityRail.jsx";
 import { loadActivityForRows, loadEscrowRows, sourceIsLive, sourceLabel } from "../lib/escrowSource.js";
 import { CURRENCY_LABEL } from "../lib/currency.js";
 import { formatEscrowId } from "../lib/escrowState.js";
-import { MILESTONES, STATE_ORDER, STATE_LABELS } from "../lib/milestones.js";
+import { MILESTONES, STATE_ORDER } from "../lib/milestones.js";
+import { useLanguage } from "../lib/language.jsx";
 
 const PAGE_SIZE = 6;
 
@@ -18,19 +19,6 @@ function verifiedFromState(state) {
   if (state === "Completed") return MILESTONES.length;
   return i <= 0 ? 0 : Math.min(i, MILESTONES.length);
 }
-
-// Which semantic tone a state's locked value belongs to in the composition bar.
-function bucketOf(state) {
-  if (state === "Disputed") return "disputed";
-  if (state === "ArrivedCleared" || state === "TimelockActive") return "cleared";
-  return "moving";
-}
-
-const BUCKETS = [
-  { key: "moving", label: "In transit", cls: "bg-state-pending", dot: "bg-state-pending" },
-  { key: "cleared", label: "Cleared", cls: "bg-state-attested", dot: "bg-state-attested" },
-  { key: "disputed", label: "Disputed", cls: "bg-state-disputed", dot: "bg-state-disputed" }
-];
 
 const FILTERS = [
   { key: "all", label: "All", match: () => true },
@@ -47,7 +35,8 @@ const SORTS = {
   progress: { label: "Progress", fn: (a, b) => b.verified - a.verified }
 };
 
-export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, onRegistryLoad }) {
+export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, onRegistryLoad, user, balance, canClaim, claiming, claimError, onClaim }) {
+  const { t } = useLanguage();
   const [chainStatus, setChainStatus] = useState("");
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
@@ -55,7 +44,6 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("recent");
   const [page, setPage] = useState(1);
-  const [selected, setSelected] = useState(() => new Set());
 
   // One loader for both sources. escrowSource decides which, and returns the
   // same row shape either way, so nothing below this point knows the difference.
@@ -67,7 +55,7 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
       setRows(full);
       onRegistryLoad?.(full);
       if (sourceIsLive && full.length === 0) {
-        setChainStatus("Connected to the gateway. No escrows have been created yet.");
+        setChainStatus(t("Connected to the gateway. No escrows have been created yet."));
       }
       // The table is on screen by now. Activity is an event scan per escrow, so
       // it arrives afterwards and updates in place rather than holding the page.
@@ -122,11 +110,7 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
 
   const stats = useMemo(() => {
     const active = rows.filter((e) => !["Completed", "Refunded"].includes(e.state));
-    const byBucket = { moving: 0, cleared: 0, disputed: 0 };
-    active.forEach((e) => {
-      byBucket[bucketOf(e.state)] += Number(e.value) || 0;
-    });
-    const locked = Object.values(byBucket).reduce((a, b) => a + b, 0);
+    const locked = active.reduce((sum, escrow) => sum + (Number(escrow.value) || 0), 0);
     const settled = rows.filter((e) => e.state === "Completed");
     const disputes = rows.filter((e) => e.state === "Disputed");
     const now = Date.now();
@@ -143,7 +127,6 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
     }));
     return {
       locked,
-      byBucket,
       activeCount: active.length,
       settledCount: settled.length,
       settledValue: settled.reduce((s, e) => s + (Number(e.value) || 0), 0),
@@ -155,34 +138,25 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
     };
   }, [rows]);
 
-  const allOnPageSelected = pageRows.length > 0 && pageRows.every((r) => selected.has(r.id));
-  function toggleAll() {
-    const next = new Set(selected);
-    if (allOnPageSelected) pageRows.forEach((r) => next.delete(r.id));
-    else pageRows.forEach((r) => next.add(r.id));
-    setSelected(next);
-  }
-  function toggleOne(id) {
-    const next = new Set(selected);
-    next.has(id) ? next.delete(id) : next.add(id);
-    setSelected(next);
-  }
-
   return (
     <div className="w-full">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-2xs uppercase text-ink-faint">{sourceIsLive ? "Settlement registry" : "Mock session"}</p>
-          <h1 className="mt-1.5 text-[28px] font-semibold leading-none tracking-[-0.035em] text-navy sm:text-[30px]">
-            Workspace overview
+          <h1 className="text-[28px] font-semibold leading-none tracking-[-0.035em] text-navy sm:text-[30px]">
+            {t("Escrows")}
           </h1>
           <p className="mt-2 text-[14px] text-ink-dim">
             {sourceIsLive
-              ? sourceLabel
-              : "Monitor escrow value, evidence readiness, and upcoming operational deadlines."}
+              ? t(sourceLabel)
+              : t("Monitor escrow value, evidence readiness, and upcoming operational deadlines.")}
           </p>
         </div>
-        <div className="flex gap-2.5">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="mr-1 text-right">
+            <p className="text-[11px] text-ink-dim">{t("Demo IDRT balance")}</p>
+            <p className="text-sm font-semibold tabular-nums text-navy">{Number(balance || 0).toLocaleString("id-ID")} IDRT</p>
+            {canClaim && !user?.hasClaimedDemoBalance ? <button type="button" onClick={onClaim} disabled={claiming} className="text-xs font-medium text-teal hover:text-navy disabled:opacity-50">{t(claiming ? "Minting…" : "Claim demo balance")}</button> : null}
+          </div>
           {sourceIsLive ? (
             <button
               type="button"
@@ -191,7 +165,7 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
               className="flex cursor-pointer items-center gap-2 rounded-panel border border-sky bg-surface px-5 py-2.5 text-[13px] font-medium text-navy shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:border-teal/40 disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-40"
             >
               <RefreshCcw size={13} aria-hidden="true" />
-              Refresh
+              {t("Refresh")}
             </button>
           ) : null}
           <button
@@ -199,67 +173,68 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
             onClick={onCreate}
             className="cursor-pointer rounded-panel bg-navy px-6 py-2.5 text-[13px] font-medium text-white shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:bg-teal-solid hover:shadow-elevated"
           >
-            New escrow
+            {t("New escrow")}
           </button>
         </div>
       </header>
+      {claimError ? <p role="alert" className="mb-4 text-xs text-state-disputed">{claimError}</p> : null}
 
       <div className="min-w-0">
-          {/* ---------- KPI row ---------- */}
+          {/* The escrow value leads; supporting counts stay compact. */}
           <section className="stern-workspace-summary mb-5">
             <div className="stern-workspace-summary-cell">
-              <p className="text-2xs uppercase text-ink-faint">Active escrow value</p>
-              <p className="mt-2 text-[28px] font-medium leading-none tabular-nums tracking-display text-navy">
+              <p className="text-sm font-medium text-white/80">{t("Active escrow value")}</p>
+              <p className="mt-3 text-[38px] font-semibold leading-none tabular-nums tracking-display text-white sm:text-[44px]">
                 {stats.locked.toLocaleString()}
-                <span className="ml-2 align-middle text-2xs uppercase text-ink-faint">
+                <span className="ml-2 align-middle text-xs font-medium text-white/70">
                   {CURRENCY_LABEL}
                 </span>
               </p>
-              <p className="mt-4 text-[12px] text-ink-dim">Across {stats.activeCount} active escrow{stats.activeCount === 1 ? "" : "s"}</p>
+              <p className="mt-4 text-xs text-white/75">{t("Across {count} active escrows", { count: stats.activeCount })}</p>
             </div>
 
             <div className="stern-workspace-summary-cell">
-              <p className="text-2xs uppercase text-ink-faint">Awaiting evidence</p>
-              <p className="mt-2 text-[28px] font-medium leading-none tabular-nums tracking-display text-state-pending">{stats.awaitingEvidenceCount}</p>
-              <p className="mt-4 text-[12px] text-ink-dim">Escrows still moving through a milestone check</p>
+              <p className="text-sm text-ink-dim">{t("Awaiting evidence")}</p>
+              <p className="mt-3 text-[26px] font-semibold leading-none tabular-nums text-navy">{stats.awaitingEvidenceCount}</p>
+              <p className="mt-3 text-xs text-ink-dim">{t("Milestone checks remaining")}</p>
             </div>
 
             <div className="stern-workspace-summary-cell">
-              <p className="text-2xs uppercase text-ink-faint">Open disputes</p>
+              <p className="text-sm text-ink-dim">{t("Open disputes")}</p>
               <p
-                className={`mt-2 text-[28px] font-medium leading-none tabular-nums tracking-display ${
+                className={`mt-3 text-[26px] font-semibold leading-none tabular-nums ${
                   stats.disputeCount > 0 ? "text-state-disputed" : "text-navy"
                 }`}
               >
                 {stats.disputeCount}
               </p>
-              <p className="mt-4 text-[12px] text-ink-dim">{stats.disputeCount ? `${Math.round(stats.bondAtRisk).toLocaleString()} ${CURRENCY_LABEL} bond at risk` : "No intervention required"}</p>
+              <p className="mt-3 text-xs text-ink-dim">{stats.disputeCount ? t("{value} bond at risk", { value: `${Math.round(stats.bondAtRisk).toLocaleString()} ${CURRENCY_LABEL}` }) : t("No intervention required")}</p>
             </div>
 
             <div className="stern-workspace-summary-cell">
-              <p className="text-2xs uppercase text-ink-faint">Deadline · next 72h</p>
-              <p className={`mt-2 text-[28px] font-medium leading-none tabular-nums tracking-display ${stats.deadlineSoonCount ? "text-state-pending" : "text-navy"}`}>{stats.deadlineSoonCount}</p>
-              <p className="mt-4 text-[12px] text-ink-dim">Time-sensitive escrow window{stats.deadlineSoonCount === 1 ? "" : "s"}</p>
+              <p className="text-sm text-ink-dim">{t("Deadlines within 72h")}</p>
+              <p className={`mt-3 text-[26px] font-semibold leading-none tabular-nums ${stats.deadlineSoonCount ? "text-state-pending" : "text-navy"}`}>{stats.deadlineSoonCount}</p>
+              <p className="mt-3 text-xs text-ink-dim">{t("Time-sensitive windows")}</p>
             </div>
           </section>
 
           {/* ---------- toolbar ---------- */}
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-x-5 gap-y-2 border-b border-sky/70">
               {FILTERS.map((f) => (
                 <button
                   key={f.key}
                   type="button"
                   onClick={() => setFilter(f.key)}
                   aria-pressed={filter === f.key}
-                  className={`cursor-pointer rounded-full px-3.5 py-1.5 text-[13px] transition-colors duration-150 ${
+                  className={`cursor-pointer border-b-2 px-0.5 pb-2 text-[13px] transition-colors duration-150 ${
                     filter === f.key
-                      ? "bg-navy text-beige"
-                      : "bg-surface text-ink-dim hover:text-navy"
+                      ? "border-teal font-semibold text-navy"
+                      : "border-transparent text-ink-dim hover:text-navy"
                   }`}
                 >
-                  {f.label}
-                  <span className={`ml-1.5 tabular-nums ${filter === f.key ? "opacity-70" : "opacity-60"}`}>
+                  {t(f.label)}
+                  <span className="ml-1.5 tabular-nums opacity-60">
                     {counts[f.key] ?? 0}
                   </span>
                 </button>
@@ -271,7 +246,7 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                 the sort control was clipped off the edge. */}
             <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
               <label className="relative min-w-0 flex-1 sm:flex-none">
-                <span className="sr-only">Search escrows</span>
+                <span className="sr-only">{t("Search escrows")}</span>
                 <Search
                   size={14}
                   aria-hidden="true"
@@ -280,13 +255,13 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search commodity or container"
+                  placeholder={t("Search commodity or container")}
                   className="w-full rounded-panel border border-sky bg-surface py-2 pl-8 pr-3.5 text-[13px] text-navy placeholder:text-ink-faint focus:border-teal focus:outline-none sm:w-[240px]"
                 />
               </label>
               <label className="flex shrink-0 items-center gap-1.5 rounded-panel border border-sky bg-surface py-2 pl-3 pr-2 text-[13px] text-ink-dim">
                 <ArrowUpDown size={13} aria-hidden="true" />
-                <span className="sr-only">Sort by</span>
+                <span className="sr-only">{t("Sort by")}</span>
                 <select
                   value={sort}
                   onChange={(e) => setSort(e.target.value)}
@@ -294,26 +269,13 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                 >
                   {Object.entries(SORTS).map(([k, v]) => (
                     <option key={k} value={k}>
-                      {v.label}
+                      {t(v.label)}
                     </option>
                   ))}
                 </select>
               </label>
             </div>
           </div>
-
-          {selected.size > 0 ? (
-            <div className="mb-3 flex items-center justify-between rounded-panel bg-navy px-4 py-2.5 text-[13px] text-beige">
-              <span className="tabular-nums">{selected.size} selected</span>
-              <button
-                type="button"
-                onClick={() => setSelected(new Set())}
-                className="cursor-pointer underline underline-offset-2 opacity-80 hover:opacity-100"
-              >
-                Clear
-              </button>
-            </div>
-          ) : null}
 
           {chainStatus ? (
             <p className="mb-3 font-serif text-sm text-ink-dim">{chainStatus}</p>
@@ -322,24 +284,14 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
           {/* ---------- table ---------- */}
           <div className="stern-workspace-card overflow-hidden rounded-doc bg-surface shadow-card">
             <div className="overflow-x-auto">
-              <table className="stern-operational-table w-full min-w-[860px] border-collapse text-left">
+              <table className="stern-operational-table w-full min-w-[760px] border-collapse text-left">
                 <thead>
                   <tr className="border-b border-sky">
-                    <Th className="w-10 pl-5">
-                      <input
-                        type="checkbox"
-                        checked={allOnPageSelected}
-                        onChange={toggleAll}
-                        aria-label="Select all escrows on this page"
-                        className="h-3.5 w-3.5 cursor-pointer accent-[rgb(var(--rgb-ink))]"
-                      />
-                    </Th>
-                    <Th>Escrow</Th>
-                    <Th className="text-right">Value</Th>
-                    <Th className="w-[190px]">Milestones</Th>
-                    <Th>Deadline</Th>
-                    <Th>Status</Th>
-                    <Th className="w-12 pr-5" />
+                    <Th className="pl-5">{t("Escrow")}</Th>
+                    <Th className="text-right">{t("Value")}</Th>
+                    <Th className="w-[190px]">{t("Milestones")}</Th>
+                    <Th>{t("Deadline")}</Th>
+                    <Th>{t("Status")}</Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -349,18 +301,12 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                         <tr
                           key={`${e.source}-${e.id}`}
                           onClick={() => onOpen(e.id)}
-                          className="cursor-pointer border-b border-sky/60 last:border-b-0"
+                          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(e.id); } }}
+                          tabIndex={0}
+                          aria-label={t("Open escrow {id} for {commodity}", { id: formatEscrowId(e.id), commodity: e.commodity })}
+                          className="cursor-pointer border-b border-sky/50 last:border-b-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-teal"
                         >
-                          <td className="pl-5" onClick={(ev) => ev.stopPropagation()}>
-                            <input
-                              type="checkbox"
-                              checked={selected.has(e.id)}
-                              onChange={() => toggleOne(e.id)}
-                              aria-label={`Select escrow ${e.id}`}
-                              className="h-3.5 w-3.5 cursor-pointer accent-[rgb(var(--rgb-ink))]"
-                            />
-                          </td>
-                          <td className="py-3.5 pr-4">
+                          <td className="py-3.5 pl-5 pr-4">
                             <p className="text-[15px] font-medium tracking-[-0.012em] text-navy">
                               {e.commodity}
                             </p>
@@ -384,20 +330,11 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                               {e.deadline ? new Date(e.deadline).toLocaleDateString() : "—"}
                             </p>
                             <p className="mt-0.5 text-2xs uppercase text-ink-faint">
-                              {relativeDays(e.deadline)}
+                              {relativeDays(e.deadline, t)}
                             </p>
                           </td>
                           <td className="py-3.5 pr-4">
                             <StatusPill state={e.state} />
-                          </td>
-                          <td className="pr-5 text-right" onClick={(ev) => ev.stopPropagation()}>
-                            <button
-                              type="button"
-                              aria-label={`Actions for escrow ${e.id}`}
-                              className="cursor-pointer rounded-full p-1.5 text-ink-faint transition-colors duration-150 hover:bg-sky/40 hover:text-navy"
-                            >
-                              <MoreHorizontal size={15} aria-hidden="true" />
-                            </button>
                           </td>
                         </tr>
                       ))}
@@ -409,12 +346,12 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
               <div className="grid place-items-center px-6 py-14 text-center">
                 <Inbox size={20} className="mb-3 text-ink-faint" aria-hidden="true" />
                 <p className="text-[15px] font-medium text-navy">
-                  {rows.length === 0 ? "No escrows yet" : "Nothing matches that filter"}
+                  {t(rows.length === 0 ? "No escrows yet" : "Nothing matches that filter")}
                 </p>
                 <p className="mt-2 max-w-sm font-serif text-[14.5px] leading-relaxed text-ink-dim">
                   {rows.length === 0
-                    ? "Lock the first shipment. The importer deposits funds, and the contract releases them only once all three milestones are verified."
-                    : "Try a different status or clear the search."}
+                    ? t("Lock the first shipment. The importer deposits funds, and the contract releases them only once all three milestones are verified.")
+                    : t("Try a different status or clear the search.")}
                 </p>
                 {rows.length === 0 ? (
                   <button
@@ -422,7 +359,7 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                     onClick={onCreate}
                     className="mt-5 cursor-pointer rounded-panel bg-teal-solid px-6 py-2.5 text-[13px] font-medium text-white shadow-card transition-colors duration-150 hover:bg-teal"
                   >
-                    Create escrow
+                    {t("Create escrow")}
                   </button>
                 ) : null}
               </div>
@@ -431,14 +368,14 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
             {visible.length > 0 ? (
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-sky px-5 py-3">
                 <p className="text-[12.5px] text-ink-dim">
-                  Showing{" "}
+                  {t("Showing")}{" "}
                   <span className="tabular-nums text-navy">
                     {(current - 1) * PAGE_SIZE + 1}–{Math.min(current * PAGE_SIZE, visible.length)}
                   </span>{" "}
-                  of <span className="tabular-nums text-navy">{visible.length}</span>
+                  {t("of")} <span className="tabular-nums text-navy">{visible.length}</span>
                 </p>
                 <div className="flex items-center gap-1">
-                  <PagerBtn onClick={() => setPage(current - 1)} disabled={current === 1} label="Previous page">
+                  <PagerBtn onClick={() => setPage(current - 1)} disabled={current === 1} label={t("Previous page")}>
                     <ChevronLeft size={14} aria-hidden="true" />
                   </PagerBtn>
                   {Array.from({ length: pageCount }).map((_, i) => (
@@ -456,7 +393,7 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                       {i + 1}
                     </button>
                   ))}
-                  <PagerBtn onClick={() => setPage(current + 1)} disabled={current === pageCount} label="Next page">
+                  <PagerBtn onClick={() => setPage(current + 1)} disabled={current === pageCount} label={t("Next page")}>
                     <ChevronRight size={14} aria-hidden="true" />
                   </PagerBtn>
                 </div>
@@ -477,24 +414,16 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
 
 function Th({ children, className = "" }) {
   return (
-    <th scope="col" className={`py-2.5 pr-4 text-2xs font-medium uppercase text-ink-faint ${className}`}>
+    <th scope="col" className={`py-3 pr-4 text-xs font-semibold text-navy ${className}`}>
       {children}
     </th>
   );
 }
 
-function Row({ label, value }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3 text-[12.5px]">
-      <span className="text-ink-dim">{label}</span>
-      <span className="tabular-nums text-navy">{value}</span>
-    </div>
-  );
-}
-
 function CriticalDeadlines({ escrows, onOpen }) {
+  const { t } = useLanguage();
   const upcoming = [...escrows]
-    .filter((escrow) => escrow.deadline && escrow.state !== "settled" && escrow.state !== "refunded")
+    .filter((escrow) => escrow.deadline && !["Completed", "Refunded"].includes(escrow.state))
     .sort((a, b) => new Date(a.deadline) - new Date(b.deadline))
     .slice(0, 4);
 
@@ -502,10 +431,9 @@ function CriticalDeadlines({ escrows, onOpen }) {
     <section className="stern-workspace-card rounded-doc bg-surface p-5 shadow-card">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-2xs uppercase text-ink-faint">Critical operational deadlines</p>
-          <h2 className="mt-1 text-[17px] font-semibold tracking-[-0.02em] text-navy">Evidence and release windows</h2>
+          <h2 className="text-[17px] font-semibold tracking-[-0.02em] text-navy">{t("Evidence and release windows")}</h2>
         </div>
-        <span className="inline-flex items-center gap-2 text-2xs font-semibold uppercase text-state-pending"><span className="h-1.5 w-1.5 rounded-full bg-state-pending" aria-hidden="true" />{upcoming.length} upcoming</span>
+        <span className="text-xs font-medium text-state-pending">{upcoming.length} {t("upcoming")}</span>
       </div>
 
       {upcoming.length ? (
@@ -519,18 +447,18 @@ function CriticalDeadlines({ escrows, onOpen }) {
               >
                 <span className="min-w-0">
                   <span className="block truncate text-[13.5px] font-medium text-navy">{escrow.commodity}</span>
-                  <span className="mt-0.5 block text-2xs uppercase text-ink-faint">&#8470;&thinsp;{formatEscrowId(escrow.id)} · {escrow.containerRef}</span>
+                  <span className="mt-0.5 block text-xs text-ink-dim">&#8470;&thinsp;{formatEscrowId(escrow.id)} · {escrow.containerRef}</span>
                 </span>
                 <span className="shrink-0 text-right">
                   <span className="block text-[13px] font-medium text-navy">{new Date(escrow.deadline).toLocaleDateString(undefined, { day: "numeric", month: "short" })}</span>
-                  <span className="mt-0.5 block text-2xs uppercase text-state-pending">{relativeDays(escrow.deadline)}</span>
+                  <span className="mt-0.5 block text-xs text-state-pending">{relativeDays(escrow.deadline, t)}</span>
                 </span>
               </button>
             </li>
           ))}
         </ol>
       ) : (
-        <p className="mt-5 font-serif text-sm leading-relaxed text-ink-dim">There are no open escrow deadlines to review.</p>
+        <p className="mt-5 font-serif text-sm leading-relaxed text-ink-dim">{t("There are no open escrow deadlines to review.")}</p>
       )}
     </section>
   );
@@ -569,45 +497,11 @@ function MilestoneMeter({ verified, total }) {
   );
 }
 
-// Stacked composition of locked value. Segments carry a 2px surface gap and
-// the legend direct-labels every series, so identity is never colour-alone.
-function CompositionBar({ total, byBucket }) {
-  const shown = BUCKETS.filter((b) => byBucket[b.key] > 0);
-  return (
-    <div className="mt-4">
-      <div className="flex h-2.5 gap-[2px] overflow-hidden rounded-full bg-sky/40">
-        {total > 0 ? (
-          shown.map((b) => (
-            <span
-              key={b.key}
-              className={`h-full ${b.cls} first:rounded-l-full last:rounded-r-full`}
-              style={{ width: `${(byBucket[b.key] / total) * 100}%` }}
-              title={`${b.label}: ${byBucket[b.key].toLocaleString()} ${CURRENCY_LABEL}`}
-            />
-          ))
-        ) : null}
-      </div>
-      <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5">
-        {BUCKETS.map((b) => (
-          <li key={b.key} className="flex items-center gap-2 text-[12.5px]">
-            <span className={`h-2 w-2 shrink-0 rounded-full ${b.dot}`} aria-hidden="true" />
-            <span className="text-ink-dim">{b.label}</span>
-            <span className="tabular-nums text-navy">{byBucket[b.key].toLocaleString()}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 function SkeletonRow() {
   return (
     <tr className="border-b border-sky/60 last:border-b-0">
-      <td className="pl-5 py-4">
-        <span className="block h-3.5 w-3.5 rounded-[3px] bg-sky/50" />
-      </td>
-      {[3, 1, 1, 1, 1, 0].map((flex, i) => (
-        <td key={i} className="py-4 pr-4">
+      {[3, 1, 1, 1, 1].map((flex, i) => (
+        <td key={i} className={`py-4 pr-4 ${i === 0 ? "pl-5" : ""}`}>
           {flex ? <span className="block h-3 rounded-full bg-sky/50" style={{ width: `${flex * 28}%`, minWidth: 48 }} /> : null}
         </td>
       ))}
@@ -615,10 +509,10 @@ function SkeletonRow() {
   );
 }
 
-function relativeDays(iso) {
+function relativeDays(iso, t) {
   if (!iso) return "";
   const days = Math.round((new Date(iso) - Date.now()) / 86400000);
-  if (days < 0) return `${Math.abs(days)}d overdue`;
-  if (days === 0) return "today";
-  return `in ${days}d`;
+  if (days < 0) return t("{days}d overdue", { days: Math.abs(days) });
+  if (days === 0) return t("today");
+  return t("in {days}d", { days });
 }

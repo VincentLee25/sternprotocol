@@ -3,6 +3,7 @@ import { CircleDot, FileCheck2, Gavel, PlusCircle, ShieldAlert, Timer, Undo2, Wa
 import { listActivity } from "../lib/mockRegistry.js";
 import { sourceIsLive } from "../lib/escrowSource.js";
 import TxLink from "./TxLink.jsx";
+import { useLanguage } from "../lib/language.jsx";
 
 // The gateway and the mock ledger do not use identical type names for the same
 // event — `refunded` against `refund_claimed` — so both spellings are listed
@@ -41,14 +42,14 @@ function actorLabel(actor) {
 
 // "Today" / "Yesterday" / an actual date, so the rail reads as a diary
 // rather than a wall of timestamps.
-function dayLabel(iso) {
+function dayLabel(iso, t, language) {
   const d = new Date(iso);
   const today = new Date();
   const startOf = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const diff = Math.round((startOf(today) - startOf(d)) / 86400000);
-  if (diff <= 0) return "Today";
-  if (diff === 1) return "Yesterday";
-  return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  if (diff <= 0) return t("Today");
+  if (diff === 1) return t("Yesterday");
+  return d.toLocaleDateString(language === "id" ? "id-ID" : "en-US", { day: "numeric", month: "short" });
 }
 
 // Activity comes from the escrows the caller already loaded, because the
@@ -56,6 +57,7 @@ function dayLabel(iso) {
 // mock feed while the list is live showed invented events beside a real (and
 // possibly empty) registry — the worst of both.
 export default function ActivityRail({ onOpen, escrows, compact = false }) {
+  const { t, language } = useLanguage();
   const [rows, setRows] = useState([]);
 
   useEffect(() => {
@@ -92,7 +94,7 @@ export default function ActivityRail({ onOpen, escrows, compact = false }) {
   const pending = (escrows || []).some((e) => e.activityPending);
 
   const groups = rows.reduce((acc, row) => {
-    const key = dayLabel(row.time);
+    const key = dayLabel(row.time, t, language);
     (acc[key] = acc[key] || []).push(row);
     return acc;
   }, {});
@@ -100,7 +102,7 @@ export default function ActivityRail({ onOpen, escrows, compact = false }) {
   return (
     <aside className="stern-workspace-card rounded-doc bg-surface shadow-card">
       <div className="flex items-center justify-between border-b border-sky px-5 py-3.5">
-        <h2 className="text-2xs uppercase text-ink-faint">Activity</h2>
+        <h2 className="text-2xs uppercase text-ink-faint">{t("Activity")}</h2>
         <span className="text-2xs uppercase text-ink-faint">{rows.length}</span>
       </div>
 
@@ -111,15 +113,15 @@ export default function ActivityRail({ onOpen, escrows, compact = false }) {
           // claim, and a wrong one.
           <p className="flex items-center gap-2 py-6 font-serif text-sm text-ink-dim">
             <span className="h-3 w-3 animate-spin rounded-full border-2 border-teal border-t-transparent" aria-hidden="true" />
-            Reading the chain…
+            {t("Reading the chain…")}
           </p>
         ) : readError && rows.length === 0 ? (
           <p role="alert" className="py-6 font-serif text-sm leading-relaxed text-state-disputed">
-            The activity log could not be read from the chain.
+            {t("The activity log could not be read from the chain.")}
             <span className="mt-1 block text-xs text-ink-dim">{readError}</span>
           </p>
         ) : rows.length === 0 ? (
-          <p className="py-6 font-serif text-sm text-ink-dim">Nothing has happened yet.</p>
+          <p className="py-6 font-serif text-sm text-ink-dim">{t("Nothing has happened yet.")}</p>
         ) : (
           Object.entries(groups).map(([day, entries]) => (
             <section key={day}>
@@ -148,13 +150,13 @@ export default function ActivityRail({ onOpen, escrows, compact = false }) {
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block text-[13.5px] leading-snug text-navy">
-                            {entry.text}
+                            {t(entry.text)}
                           </span>
                           <span className="mt-1 flex flex-wrap items-center gap-x-2 text-2xs uppercase text-ink-faint">
-                            <span>{actorLabel(entry.actor)}</span>
+                            <span>{t(actorLabel(entry.actor))}</span>
                             <span aria-hidden="true">·</span>
                             <span>
-                              {new Date(entry.time).toLocaleTimeString([], {
+                              {new Date(entry.time).toLocaleTimeString(language === "id" ? "id-ID" : "en-US", {
                                 hour: "2-digit",
                                 minute: "2-digit"
                               })}

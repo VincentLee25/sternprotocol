@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const fs = require("node:fs");
 const { getMockStatus, setSimulation, clearSimulation } = require("./oracleService");
 const {
   submitMilestoneProof,
@@ -21,6 +22,8 @@ const {
 const { config } = require("./config");
 const { getDemoBalance, claimDemoBalance } = require("./faucetService");
 const { createIdentityService } = require("./identityService");
+const { createIdentityPool, assertMigrationsCurrent } = require("./db/migrate");
+const { parseLegacyStore } = require("./db/importLegacyIdentities");
 const { createParticleAuthService } = require("./particleAuthService");
 const { createParticleSafeService } = require("./particleSafeService");
 const directory = require("./directoryService");
@@ -48,7 +51,7 @@ app.use(express.json({ limit: "20mb" }));
 
 let identities = null;
 function identityService() {
-  if (!identities) identities = createIdentityService({ storeFile: config.identityStoreFile, tokenSecret: config.authTokenSecret });
+  if (!identities) throw new Error("STERN identity database is not ready.");
   return identities;
 }
 
@@ -69,13 +72,13 @@ async function resolveParticleAccount(body, expectedAddress) {
     error.code = "PARTICLE_SAFE_MISMATCH";
     throw error;
   }
-  return { particleUserId: particle.particleUserId, smartAccountAddress };
+  return { particleUserId: particle.particleUserId, ownerAddress: particle.ownerAddress, smartAccountAddress };
 }
 
-function requireSession(req, _res, next) {
+async function requireSession(req, _res, next) {
   try {
     const authorization = req.get("authorization") || "";
-    req.identity = identityService().authenticate(authorization.replace(/^Bearer\s+/i, ""));
+    req.identity = await identityService().authenticate(authorization.replace(/^Bearer\s+/i, ""));
     next();
   } catch (error) { next(error); }
 }
@@ -125,7 +128,7 @@ app.get("/health", async (_req, res, next) => {
 app.post("/auth/particle/session", async (req, res, next) => {
   try {
     const particle = await resolveParticleAccount(req.body, req.body?.smartAccountAddress);
-    res.json(identityService().particleSession(particle));
+    res.json(await identityService().particleSession(particle));
   } catch (error) { next(error); }
 });
 
@@ -133,36 +136,63 @@ app.post("/auth/register-company", async (req, res, next) => {
   try {
     const particle = await resolveParticleAccount(req.body, req.body?.walletAddress);
     const { particleIdentity: _proof, walletAddress: _untrustedWallet, ...input } = req.body || {};
-    res.status(201).json(identityService().registerCompany({ ...input, walletAddress: particle.smartAccountAddress, particleUserId: particle.particleUserId }));
+    res.status(201).json(await identityService().registerCompany({ ...input, ...particle, walletAddress: particle.smartAccountAddress }));
   } catch (error) { next(error); }
 });
 
-app.post("/auth/login", (req, res, next) => {
-  try { res.json(identityService().login(req.body || {})); } catch (error) { next(error); }
+app.post("/auth/accept-invitation", async (req, res, next) => {
+  try {
+    const particle = await resolveParticleAccount(req.body, req.body?.smartAccountAddress);
+    res.json(await identityService().acceptInvitation({ ...req.body, ...particle }));
+  } catch (error) { next(error); }
+});
+
+app.post("/auth/login", (_req, res) => {
+  res.status(410).json({ ok: false, code: "PARTICLE_AUTH_REQUIRED", error: "Use Particle Auth to access the STERN workspace." });
 });
 
 app.get("/auth/me", requireSession, (req, res, next) => {
   try { res.json({ user: identityService().publicUser(req.identity.user), company: identityService().publicCompany(req.identity.company) }); } catch (error) { next(error); }
 });
 
-app.post("/auth/mfa/setup", requireSession, (req, res, next) => {
-  try { res.json(identityService().setupMfa((req.get("authorization") || "").replace(/^Bearer\s+/i, ""))); } catch (error) { next(error); }
+app.patch("/auth/me", requireSession, async (req, res, next) => {
+  try { res.json(await identityService().updateProfile((req.get("authorization") || "").replace(/^Bearer\s+/i, ""), req.body || {})); } catch (error) { next(error); }
 });
 
-app.post("/auth/mfa/confirm", (req, res, next) => {
-  try { res.json(identityService().confirmMfa(req.body || {})); } catch (error) { next(error); }
+app.get("/auth/memberships", requireSession, async (req, res, next) => {
+  try { res.json(await identityService().userMemberships((req.get("authorization") || "").replace(/^Bearer\s+/i, ""))); } catch (error) { next(error); }
 });
 
-app.post("/auth/mfa/verify", (req, res, next) => {
-  try { res.json(identityService().verifyMfa(req.body || {})); } catch (error) { next(error); }
+app.post("/auth/switch-company", requireSession, async (req, res, next) => {
+  try { res.json(await identityService().switchCompany((req.get("authorization") || "").replace(/^Bearer\s+/i, ""), req.body?.companyId)); } catch (error) { next(error); }
 });
 
-app.get("/companies/:companyId/users", requireSession, (req, res, next) => {
-  try { res.json(identityService().companyUsers((req.get("authorization") || "").replace(/^Bearer\s+/i, ""), req.params.companyId)); } catch (error) { next(error); }
+app.post("/auth/mfa/setup", requireSession, async (req, res, next) => {
+  try { res.json(await identityService().setupMfa((req.get("authorization") || "").replace(/^Bearer\s+/i, ""))); } catch (error) { next(error); }
 });
 
-app.post("/companies/:companyId/users", requireSession, (req, res, next) => {
-  try { res.status(201).json(identityService().addCompanyUser((req.get("authorization") || "").replace(/^Bearer\s+/i, ""), req.params.companyId, req.body || {})); } catch (error) { next(error); }
+app.post("/auth/mfa/confirm", async (req, res, next) => {
+  try { res.json(await identityService().confirmMfa(req.body || {})); } catch (error) { next(error); }
+});
+
+app.post("/auth/mfa/verify", async (req, res, next) => {
+  try { res.json(await identityService().verifyMfa(req.body || {})); } catch (error) { next(error); }
+});
+
+app.get("/companies/:companyId/users", requireSession, async (req, res, next) => {
+  try { res.json(await identityService().companyUsers((req.get("authorization") || "").replace(/^Bearer\s+/i, ""), req.params.companyId)); } catch (error) { next(error); }
+});
+
+app.post("/companies/:companyId/users", requireSession, async (req, res, next) => {
+  try { res.status(201).json(await identityService().createInvitation((req.get("authorization") || "").replace(/^Bearer\s+/i, ""), req.params.companyId, req.body || {})); } catch (error) { next(error); }
+});
+
+app.post("/companies/:companyId/invitations", requireSession, async (req, res, next) => {
+  try { res.status(201).json(await identityService().createInvitation((req.get("authorization") || "").replace(/^Bearer\s+/i, ""), req.params.companyId, req.body || {})); } catch (error) { next(error); }
+});
+
+app.get("/companies/:companyId/invitations", requireSession, async (req, res, next) => {
+  try { res.json(await identityService().companyInvitations((req.get("authorization") || "").replace(/^Bearer\s+/i, ""), req.params.companyId)); } catch (error) { next(error); }
 });
 
 app.post("/demo-balance/claim", async (req, res, next) => {
@@ -606,15 +636,50 @@ app.use((error, _req, res, _next) => {
   });
 });
 
-const server = app.listen(config.port, () => {
-  console.log(`STERN oracle gateway listening on http://localhost:${config.port}`);
-});
-
-server.on("error", (error) => {
-  if (error.code === "EADDRINUSE") {
-    console.error(`Port ${config.port} is already in use. Stop the existing backend process or set PORT to another value.`);
-    process.exit(1);
+async function assertLegacyImported(pool) {
+  const filePath = config.legacyIdentityStoreFile;
+  if (!fs.existsSync(filePath)) return;
+  const legacy = parseLegacyStore(filePath);
+  if (!legacy.users.length) return;
+  const ids = legacy.users.map((user) => user.id);
+  const result = await pool.query("SELECT id FROM users WHERE id = ANY($1::text[])", [ids]);
+  const imported = new Set(result.rows.map((row) => row.id));
+  const missing = ids.filter((id) => !imported.has(id));
+  if (missing.length) {
+    throw new Error(`${missing.length} legacy STERN user(s) have not been imported into PostgreSQL. Run npm run import:identities -- --file ${filePath} before starting the gateway. No legacy data was deleted.`);
   }
-  console.error(error);
-  process.exit(1);
-});
+}
+
+async function start() {
+  const pool = createIdentityPool(config.databaseUrl);
+  try {
+    await assertMigrationsCurrent({ pool });
+    await assertLegacyImported(pool);
+    identities = createIdentityService({ pool, tokenSecret: config.authTokenSecret });
+    const server = app.listen(config.port, () => {
+      console.log(`STERN oracle gateway listening on http://localhost:${config.port}`);
+    });
+    server.on("error", async (error) => {
+      if (error.code === "EADDRINUSE") {
+        console.error(`Port ${config.port} is already in use. Stop the existing backend process or set PORT to another value.`);
+      } else {
+        console.error(error);
+      }
+      await pool.end();
+      process.exitCode = 1;
+    });
+    return server;
+  } catch (error) {
+    await pool.end();
+    throw error;
+  }
+}
+
+if (require.main === module) {
+  start().catch((error) => {
+    console.error(`STERN gateway startup failed: ${error.message}`);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { app, start };

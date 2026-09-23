@@ -16,6 +16,17 @@ import { MILESTONES } from "./milestones.js";
 export const sourceIsLive = api.apiConfigured;
 
 export const sourceLabel = sourceIsLive ? "Live — STERN gateway" : "Demo data";
+const activityCache = new Map();
+const ACTIVITY_CACHE_MS = 120000;
+
+async function readActivity(id, { signal } = {}) {
+  const key = String(id);
+  const cached = activityCache.get(key);
+  if (cached && Date.now() - cached.loadedAt < ACTIVITY_CACHE_MS) return cached.value;
+  const value = await api.getActivity(id, { signal });
+  activityCache.set(key, { value, loadedAt: Date.now() });
+  return value;
+}
 
 // Gateway milestones are keyed by name; the mock returns the same keys. Count
 // whichever reports a committed proof.
@@ -161,7 +172,7 @@ export async function loadActivityForRows(rows, { signal } = {}) {
   return Promise.all(
     rows.map(async (row) => {
       try {
-        const log = await api.getActivity(row.id, { signal });
+        const log = await readActivity(row.id, { signal });
         return {
           ...row,
           activity: normaliseActivity(log.activity),
@@ -180,19 +191,24 @@ export async function loadActivityForRows(rows, { signal } = {}) {
 /** One escrow, refreshed after a transaction. */
 export async function loadEscrowDetail(id, { signal } = {}) {
   if (!sourceIsLive) {
-    const [detail, log] = await Promise.all([mockGet(id), mockActivity(id)]);
-    return toRow(detail, log.activity, "mock");
+    const detail = await mockGet(id);
+    return toRow(detail, [], "mock");
   }
-  const [detail, log, timelock] = await Promise.all([
-    api.getEscrow(id, { signal }),
-    // The reason is carried rather than dropped. Swallowing it rendered a failed
-    // log query as "No activity recorded yet" — a sentence that sends people
-    // looking for missing events instead of a broken read.
-    api.getActivity(id, { signal }).catch((error) => ({ activity: [], error })),
-    api.getTimelock(id, { signal }).catch(() => null)
-  ]);
-  const row = toRow({ ...detail, timelock }, log.activity, "gateway");
-  row.activityError = log.error?.message || null;
-  row.activityTruncatedBefore = log.truncatedBefore ?? null;
-  return row;
+  const detail = await api.getEscrow(id, { signal });
+  return toRow(detail, [], "gateway");
+}
+
+/** Activity is a historical scan; callers render the escrow before requesting it. */
+export async function loadEscrowActivity(id, { signal } = {}) {
+  if (!sourceIsLive) {
+    const log = await mockActivity(id);
+    return { activity: normaliseActivity(log.activity), activityError: null, activityTruncatedBefore: null };
+  }
+  try {
+    const log = await readActivity(id, { signal });
+    return { activity: normaliseActivity(log.activity), activityError: null, activityTruncatedBefore: log.truncatedBefore ?? null };
+  } catch (error) {
+    if (error?.name === "AbortError") throw error;
+    return { activity: [], activityError: error.message, activityTruncatedBefore: null };
+  }
 }

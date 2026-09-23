@@ -12,5 +12,19 @@
     "currency": "IDRT-demo",
     "transactionHash": "0x39a5721bcc1fcdff56dc97f32033a920b6c2a65cd37ad0bdfc27bb58d69c326b",
     "claimedAt": "2026-09-03T15:49:29.578Z"
+  },
+  "0x55d789be09F4447f866939d62e731010440F3964": {
+    "role": "importer",
+    "amount": "150000000.0",
+    "currency": "IDRT-demo",
+    "transactionHash": "0x307c419ba37eac274e5db2f9808a4c7e59e91fa0f30a4b2d61d264574a36d844",
+    "claimedAt": "2026-09-08T20:11:04.569Z"
+  },
+  "0x1D8B4CFDb1a792bdcb7198EF089E14EA9e6Bd94a": {
+    "role": "importer",
+    "amount": "150000000.0",
+    "currency": "IDRT-demo",
+    "transactionHash": "0xe2f11ab9a945c3a71cca5df4108a819b3475dfcce4c7967b9f301b378fc3dfff",
+    "claimedAt": "2026-09-08T20:14:19.378Z"
   }
 }

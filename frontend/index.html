@@ -8,20 +8,9 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>STERN Protocol</title>
     <script>
-      // Set the theme class before first paint so there's no flash of the
-      // wrong theme while React hydrates. DESIGN.md v2.0 makes light the
-      // product default, so the OS preference no longer opts anyone into dark;
-      // only an explicit choice does.
-      (function () {
-        try {
-          document.documentElement.classList.toggle(
-            "dark",
-            localStorage.getItem("stern-theme") === "dark"
-          );
-        } catch (err) {
-          /* localStorage unavailable - fall back to the default light theme */
-        }
-      })();
+      try {
+        document.documentElement.classList.toggle("dark", localStorage.getItem("stern-theme") === "dark");
+      } catch { /* Light theme remains the default when storage is unavailable. */ }
     </script>
   </head>
   <body>

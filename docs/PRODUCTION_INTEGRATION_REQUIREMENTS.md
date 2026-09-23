@@ -47,12 +47,14 @@ ARBITER_PRIVATE_KEY
 IDRT_MINTER_PRIVATE_KEY
 INTERNAL_API_KEY
 AUTH_TOKEN_SECRET
-IDENTITY_STORE_FILE=/data/identities.json
+DATABASE_URL=postgresql://...
+PARTICLE_PROJECT_ID
+PARTICLE_SERVER_KEY
 DEMO_CLAIMS_FILE=/data/demo-claims.json
 CORS_ORIGINS=https://frontend.example
 ```
 
-For a multi-instance launch, replace JSON files with Postgres before scaling Railway replicas. Add migrations, encrypted backups, audit trails, rate limiting, request tracing, alerts, and health checks for each provider.
+STERN company identity and membership already use PostgreSQL. Before scaling Railway replicas, run the identity migration and import any legacy `identities.json` records, then add encrypted backups, audit trails, rate limiting, request tracing, alerts, and provider health checks. The separate demo faucet and counterparty directory JSON stores still need a persistent volume or their own database migration.
 
 ## Mainnet Gate
 

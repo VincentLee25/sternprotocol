@@ -96,7 +96,13 @@ function identityRequest(path, { token, ...options } = {}) {
 
 export const registerCompany = (body) => identityRequest("/auth/register-company", { method: "POST", body });
 export const authorizeParticle = (body) => identityRequest("/auth/particle/session", { method: "POST", body });
+export const acceptCompanyInvitation = (body) => identityRequest("/auth/accept-invitation", { method: "POST", body });
 export const getCompanyMe = (token) => identityRequest("/auth/me", { token });
+export const updateCompanyMe = (token, body) => identityRequest("/auth/me", { method: "PATCH", token, body });
+export const getCompanyMemberships = (token) => identityRequest("/auth/memberships", { token });
+export const switchCompany = (token, companyId) => identityRequest("/auth/switch-company", { method: "POST", token, body: { companyId } });
+export const listCompanyUsers = (token, companyId, { signal } = {}) => identityRequest(`/companies/${encodeURIComponent(companyId)}/users`, { token, signal });
+export const createCompanyInvitation = (token, companyId, body) => identityRequest(`/companies/${encodeURIComponent(companyId)}/invitations`, { method: "POST", token, body });
 export const beginMfaSetup = (token) => identityRequest("/auth/mfa/setup", { method: "POST", token });
 export const confirmMfaSetup = (body) => identityRequest("/auth/mfa/confirm", { method: "POST", body });
 export const verifyMfa = (body) => identityRequest("/auth/mfa/verify", { method: "POST", body });

@@ -14,6 +14,9 @@ import {
 } from "../lib/ebl.js";
 import { previewDispute, raiseDisputeAsUser } from "../lib/disputeFlow.js";
 import TxLink, { AddressLink, BlockLink } from "./TxLink.jsx";
+import Disclosure from "./Disclosure.jsx";
+import InlineOperationStatus from "./InlineOperationStatus.jsx";
+import { useLanguage } from "../lib/language.jsx";
 
 // Renders GET /oracle/evidence/:id: the committed on-chain proofs, the current
 // source verdict, and where the two now disagree.
@@ -21,6 +24,7 @@ import TxLink, { AddressLink, BlockLink } from "./TxLink.jsx";
 // No verification logic lives here. The gateway has already done the comparison
 // (docs/FRONTEND_HANDOFF_UPDATED.md closing note); this only renders its answer.
 export default function EvidencePanel({ escrowId, smartAccountClient, onStateChanged, onBusyChange }) {
+  const { t } = useLanguage();
   const [evidence, setEvidence] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -94,6 +98,7 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
   }, [secondsLeft != null && secondsLeft <= 0]);
 
   const rows = milestoneRows(evidence);
+  const activeVerifyKey = rows.find((row) => !row.submitted)?.key;
   const checks = verificationChecks(evidence);
   const failing = sourceEvidence(evidence).filter((s) => !s.passed);
   const faults = faultOptions(evidence);
@@ -162,9 +167,6 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
   // the verifier keys stay on the gateway, and this only triggers the work.
   async function onVerify() {
     setBusy("verify");
-    // Raises the page-wide overlay. A spinner inside this button was the only
-    // signal that anything was happening, through a run that sends up to three
-    // transactions and can take most of a minute.
     onBusyChange?.(true);
     setError("");
     setVerifyRun(null);
@@ -238,9 +240,7 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
       <Panel>
         <Head title="Evidence" />
         <p className="mt-2 font-serif text-sm leading-relaxed text-ink-dim">
-          No gateway configured. Set <code className="font-mono text-xs">VITE_ORACLE_API</code> in
-          <code className="font-mono text-xs"> .env</code> — the backend runs on
-          <code className="font-mono text-xs"> http://localhost:4000</code>.
+          {t("No gateway configured. Set VITE_ORACLE_API in .env — the backend runs on http://localhost:4000.")}
         </p>
       </Panel>
     );
@@ -249,7 +249,7 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
   return (
     <Panel>
       <div className="flex items-start justify-between gap-3">
-        <Head title="Evidence &amp; verification" />
+        <Head title="Evidence & verification" />
         {/* This re-read only its own evidence, so the state, timeline and
             timelock on the page around it stayed stale — pressing it looked
             like nothing happened, because nothing visible did. It now refreshes
@@ -265,7 +265,7 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
             className={busy === "refresh" ? "animate-spin" : ""}
             aria-hidden="true"
           />
-          {busy === "refresh" ? "Refreshing" : "Refresh"}
+          {t(busy === "refresh" ? "Refreshing" : "Refresh")}
         </button>
       </div>
 
@@ -286,19 +286,18 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
           ) : (
             <PenLine size={13} aria-hidden="true" />
           )}
-          {busy === "verify" ? "Submitting to chain…" : "Verify milestones"}
+          {t(busy === "verify" ? "Verifying…" : "Verify milestones")}
         </button>
+        {busy === "verify" ? <InlineOperationStatus className="mt-2">{t("Checking verification status…")}</InlineOperationStatus> : null}
         <p className="mt-2 font-serif text-xs leading-relaxed text-ink-dim">
           {busy === "verify"
-            ? "Each proof is a transaction, and the contract holds a challenge window between them. This can take a while."
-            : "The verifier institutions sign these, on the gateway. This asks them to; it does not sign anything here."}
+            ? t("Each proof is a transaction, and the contract holds a challenge window between them. This can take a while.")
+            : t("The verifier institutions sign these, on the gateway. This asks them to; it does not sign anything here.")}
         </p>
 
         {faultBeforeAnyProof && busy !== "verify" ? (
           <p className="mt-2 rounded-panel border border-state-pending/40 bg-state-pending/[0.08] px-3 py-2.5 font-serif text-xs leading-relaxed text-state-pending">
-            The <span className="font-mono">{currentFault}</span> fault is on and nothing is
-            committed yet, so this will be refused. Reset the fault, verify, then switch it back on
-            — a discrepancy needs a proof to disagree with.
+            {t("The {fault} fault is on and nothing is committed yet, so this will be refused. Reset the fault, verify, then switch it back on — a discrepancy needs a proof to disagree with.", { fault: currentFault })}
           </p>
         ) : null}
 
@@ -307,17 +306,17 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
             {verifyRun.map((r) => (
               <li key={r.key} className="flex items-baseline justify-between gap-3 text-2xs">
                 <span className="min-w-0">
-                  <span className="text-navy">{r.label}</span>
+                  <span className="text-navy">{t(r.label)}</span>
                   <span className="ml-1.5 font-serif text-ink-faint">{r.oracle}</span>
                   {r.detail ? (
-                    <span className="mt-0.5 block font-serif text-ink-dim">{r.detail}</span>
+                    <span className="mt-0.5 block font-serif text-ink-dim">{t(r.detail)}</span>
                   ) : null}
                   {/* "submitted" is this app describing itself. The hash beside
                       it is the part a sceptic can check without us. */}
                   {r.transactionHash ? (
                     <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       <TxLink hash={r.transactionHash} />
-                      {r.verifier ? <AddressLink address={r.verifier} label="signer" /> : null}
+                      {r.verifier ? <AddressLink address={r.verifier} label={t("signer")} /> : null}
                     </span>
                   ) : null}
                 </span>
@@ -331,8 +330,7 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
                     }[r.tone]
                   }`}
                 >
-                  <span className={`h-1.5 w-1.5 rounded-full ${{ ok: "bg-state-attested", wait: "bg-state-pending", fail: "bg-state-disputed", muted: "bg-ink-faint" }[r.tone]}`} aria-hidden="true" />
-                  {r.status}
+                  {t(r.status)}
                 </span>
               </li>
             ))}
@@ -340,61 +338,58 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
         ) : null}
       </div>
 
-      {loading ? (
-        <p className="mt-4 flex items-center gap-2 font-serif text-sm text-ink-dim">
-          <Loader2 size={14} className="animate-spin text-teal" aria-hidden="true" />
-          Reading evidence…
-        </p>
-      ) : null}
+      {loading ? <InlineOperationStatus className="mt-4">{t("Reading latest evidence…")}</InlineOperationStatus> : null}
+      {busy === "refresh" ? <InlineOperationStatus className="mt-3">{t("Checking latest state…")}</InlineOperationStatus> : null}
 
       {error ? (
         <p role="alert" className="mt-3 rounded-panel border border-state-disputed/40 bg-state-disputed/10 px-3.5 py-2.5 font-serif text-xs leading-relaxed text-state-disputed">
-          {error}
+          {t(error)}
         </p>
       ) : null}
 
       {evidence ? (
         <>
           {/* Committed proof vs current source, per milestone. */}
-          <ol className="mt-4 space-y-2">
+          <ol className="mt-4 divide-y divide-sky/70 border-y border-sky/70">
             {rows.map((row) => (
               <li
                 key={row.key}
-                className={`rounded-panel border px-3.5 py-3 ${
-                  row.discrepancy ? "border-state-disputed/45 bg-state-disputed/[0.07]" : "border-sky bg-surface"
+                className={`px-2 py-3 transition-colors duration-200 ${
+                  row.discrepancy ? "bg-state-disputed/[0.07]" : busy === "verify" && row.key === activeVerifyKey ? "bg-sky/25" : "bg-surface"
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-navy">{row.label}</p>
+                    <p className="text-sm font-medium text-navy">{t(row.label)}</p>
                     <p className="font-serif text-xs text-ink-dim">{row.oracle}</p>
                   </div>
-                  <Badge row={row} />
+                  <Badge row={row} verifying={busy === "verify" && row.key === activeVerifyKey} />
                 </div>
 
                 {row.proofCid ? (
-                  <dl className="mt-2.5 space-y-1 border-t border-sky/60 pt-2.5 text-2xs">
-                    <Row label="Proof CID" value={row.proofCid} mono truncate />
+                  <Disclosure title={t("Evidence metadata")} plain className="mt-2.5" contentClassName="text-2xs">
+                  <dl className="space-y-1">
+                    <Row label={t("Proof CID")} value={row.proofCid} mono truncate />
                     {/* The verifier address is the one thing here worth checking
                         elsewhere: it is what proves a real, funded, role-holding
                         wallet signed this proof rather than the app drawing a
                         green tick for itself. */}
                     {row.verifier ? (
                       <div className="flex items-baseline justify-between gap-3">
-                        <dt className="uppercase text-ink-faint">Verifier</dt>
+                        <dt className="uppercase text-ink-faint">{t("Verifier")}</dt>
                         <dd className="min-w-0 text-right"><AddressLink address={row.verifier} /></dd>
                       </div>
                     ) : null}
                     {row.blockNumber != null ? (
                       <div className="flex items-baseline justify-between gap-3">
-                        <dt className="uppercase text-ink-faint">Block</dt>
+                        <dt className="uppercase text-ink-faint">{t("Block")}</dt>
                         <dd className="min-w-0 text-right">
                           <BlockLink blockNumber={row.blockNumber} />
                         </dd>
                       </div>
                     ) : null}
                     {row.challengeDeadline ? (
-                      <Row label="Challenge until" value={new Date(row.challengeDeadline).toLocaleString("id-ID")} />
+                      <Row label={t("Challenge until")} value={new Date(row.challengeDeadline).toLocaleString("id-ID")} />
                     ) : null}
                     {/* The countdown, on every committed proof rather than
                         only on one that is already contestable. On a short
@@ -403,21 +398,22 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
                         appear only once it was too late to use. */}
                     {row.challengeDeadlineUnix ? (
                       <Row
-                        label="Window"
+                        label={t("Window")}
                         value={
                           row.challengeDeadlineUnix - clock.now > 0
-                            ? `${countdown(row.challengeDeadlineUnix - clock.now)} left`
-                            : "closed"
+                            ? t("{time} left", { time: countdown(row.challengeDeadlineUnix - clock.now) })
+                            : t("closed")
                         }
                       />
                     ) : null}
                   </dl>
+                  </Disclosure>
                 ) : null}
 
                 {row.discrepancy ? (
                   <p className="mt-2.5 flex items-start gap-1.5 font-serif text-xs leading-relaxed text-state-disputed">
                     <AlertTriangle size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
-                    This proof is committed on chain, but the source it was based on no longer agrees.
+                    {t("This proof is committed on chain, but the source it was based on no longer agrees.")}
                   </p>
                 ) : null}
               </li>
@@ -438,26 +434,23 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
                   : "border-sky bg-sky/20"
               }`}
             >
-              <p className="font-mono text-2xs uppercase text-ink-faint">Rehearse a dispute — demo only</p>
+              <p className="font-mono text-2xs uppercase text-ink-faint">{t("Rehearse a dispute — demo only")}</p>
 
               {rehearsal.possible ? (
                 <>
                   <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">
                     {rehearsal.alreadyDiscrepant ? (
                       <>
-                        <span className="text-navy">{rehearsal.milestoneLabel}</span> already disagrees with{" "}
-                        {rehearsal.sourceLabel}. Open the dispute below before its window shuts.
+                        {t("{milestone} already disagrees with {source}. Open the dispute below before its window shuts.", { milestone: t(rehearsal.milestoneLabel), source: t(rehearsal.sourceLabel) })}
                       </>
                     ) : (
                       <>
-                        This will make <span className="text-navy">{rehearsal.milestoneLabel}</span> disagree with{" "}
-                        {rehearsal.sourceLabel}, which is what a dispute contests. It does not write anything on
-                        chain.
+                        {t("This will make {milestone} disagree with {source}, which is what a dispute contests. It does not write anything on chain.", { milestone: t(rehearsal.milestoneLabel), source: t(rehearsal.sourceLabel) })}
                       </>
                     )}
                   </p>
                   <p className="mt-1.5 font-mono text-2xs uppercase text-state-pending">
-                    {countdown(rehearsal.secondsLeft)} left on that window
+                    {t("{time} left on that window", { time: countdown(rehearsal.secondsLeft) })}
                   </p>
                   {!rehearsal.alreadyDiscrepant ? (
                     <button
@@ -472,13 +465,13 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
                         <ShieldAlert size={12} aria-hidden="true" />
                       )}
                       {busy === "fault"
-                        ? "Applying…"
-                        : `Make ${rehearsal.milestoneLabel} disagree`}
+                        ? t("Applying…")
+                        : t("Make {milestone} disagree", { milestone: t(rehearsal.milestoneLabel) })}
                     </button>
                   ) : null}
                 </>
               ) : (
-                <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">{rehearsal.reason}</p>
+                <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">{t(rehearsal.reason)}</p>
               )}
             </div>
           ) : null}
@@ -502,10 +495,11 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
             />
           ) : null}
 
+          {(checks.length || failing.length) ? <Disclosure title={t("Source check details")} summary={failing.length ? t("{count} source discrepancies", { count: failing.length }) : t("{count} checks recorded", { count: checks.length })} className="mt-4" contentClassName="!py-3">
           {/* Named checks behind those verdicts. */}
           {checks.length ? (
-            <div className="mt-4">
-              <p className="font-mono text-2xs uppercase text-ink-faint">Current source checks</p>
+            <div>
+              <p className="font-mono text-2xs uppercase text-ink-faint">{t("Current source checks")}</p>
               <ul className="mt-2 flex flex-wrap gap-1.5">
                 {checks.map((c) => (
                   <li
@@ -517,7 +511,7 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
                     }`}
                   >
                     {c.passed ? <Check size={10} aria-hidden="true" /> : <X size={10} aria-hidden="true" />}
-                    {c.label}
+                    {t(c.label)}
                   </li>
                 ))}
               </ul>
@@ -542,19 +536,20 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
                     <p className="mt-1 break-words font-serif text-2xs leading-relaxed text-navy">{s.subject}</p>
                   ) : null}
                   <dl className="mt-1.5 space-y-0.5 text-2xs">
-                    <Row label="Field" value={s.field} mono />
-                    <Row label="Expected" value={s.expected} mono />
-                    <Row label="Actual" value={s.actual} mono />
+                    <Row label={t("Field")} value={s.field} mono />
+                    <Row label={t("Expected")} value={t(s.expected)} mono />
+                    <Row label={t("Actual")} value={t(s.actual)} mono />
                   </dl>
                   {s.basis ? (
                     <p className="mt-1.5 font-serif text-2xs leading-relaxed text-ink-faint">
-                      Expected value taken from the {s.basis}.
+                      {t("Expected value taken from the {basis}.", { basis: t(s.basis) })}
                     </p>
                   ) : null}
                 </li>
               ))}
             </ul>
           ) : null}
+          </Disclosure> : null}
 
           {/* The CTA appears only when the gateway says a dispute is actually
               possible. A discrepancy whose challenge window has closed is shown
@@ -563,26 +558,25 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
             <div className="mt-4 rounded-panel border border-state-pending/45 bg-state-pending/[0.08] p-3.5">
               <p className="flex items-center gap-1.5 font-mono text-2xs uppercase text-state-pending">
                 <ShieldAlert size={12} aria-hidden="true" />
-                Dispute available — {opportunity.milestoneLabel}
+                {t("Dispute available — {milestone}", { milestone: t(opportunity.milestoneLabel) })}
               </p>
-              <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">{opportunity.reason}</p>
+              <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">{t(opportunity.reason)}</p>
               {secondsLeft != null ? (
                 <p className="mt-1.5 font-mono text-2xs uppercase text-state-pending">
                   {secondsLeft > 60
-                    ? `${Math.floor(secondsLeft / 60)}m ${secondsLeft % 60}s left`
-                    : `${secondsLeft}s left`}
+                    ? t("{time} left", { time: `${Math.floor(secondsLeft / 60)}m ${secondsLeft % 60}s` })
+                    : t("{time} left", { time: `${secondsLeft}s` })}
                 </p>
               ) : null}
 
               {preview ? (
                 <div className="mt-3 rounded-panel bg-surface px-3 py-2.5">
                   <dl className="space-y-1 text-2xs">
-                    <Row label="Bond required" value={`${Number(preview.bond).toLocaleString("id-ID")} ${preview.currency}`} />
-                    <Row label="Window closes" value={new Date(preview.challengeDeadline).toLocaleString("id-ID")} />
+                    <Row label={t("Bond required")} value={`${Number(preview.bond).toLocaleString("id-ID")} ${preview.currency}`} />
+                    <Row label={t("Window closes")} value={new Date(preview.challengeDeadline).toLocaleString("id-ID")} />
                   </dl>
                   <p className="mt-2 font-serif text-xs leading-relaxed text-ink-dim">
-                    You sign both the bond approval and the dispute in one confirmation. The backend
-                    never signs this for you.
+                    {t("You sign both the bond approval and the dispute in one confirmation. The backend never signs this for you.")}
                   </p>
                   <button
                     type="button"
@@ -591,7 +585,7 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
                     className="mt-2.5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-navy py-2 text-xs font-medium text-beige transition-colors duration-150 hover:bg-teal-solid disabled:opacity-50"
                   >
                     {busy === "dispute" ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : null}
-                    {busy === "dispute" ? "Signing…" : "Lock bond & raise dispute"}
+                    {t(busy === "dispute" ? "Signing…" : "Lock bond & raise dispute")}
                   </button>
                 </div>
               ) : (
@@ -601,7 +595,7 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
                   disabled={busy === "preview"}
                   className="mt-2.5 w-full cursor-pointer rounded-full border border-state-pending/50 py-2 text-xs font-medium text-state-pending transition-colors duration-150 hover:bg-state-pending/10 disabled:opacity-50"
                 >
-                  {busy === "preview" ? "Checking…" : "Review dispute"}
+                  {t(busy === "preview" ? "Checking…" : "Review dispute")}
                 </button>
               )}
             </div>
@@ -614,18 +608,17 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
             <div className="mt-4 rounded-panel bg-sky/25 px-3.5 py-2.5">
               <p className="flex items-start gap-1.5 font-serif text-xs leading-relaxed text-ink-dim">
                 <Clock size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
-                {opportunity.reason}
+                {t(opportunity.reason)}
               </p>
               <p className="mt-1.5 pl-[18px] font-serif text-xs leading-relaxed text-ink-dim">
-                The proof now stands, and settlement proceeds on it. Nothing here blocks release —
-                a proof is contested inside its window or not at all.
+                {t("The proof now stands, and settlement proceeds on it. Nothing here blocks release — a proof is contested inside its window or not at all.")}
               </p>
             </div>
           ) : null}
 
           {result ? (
             <p className="mt-3 rounded-panel border border-state-attested/40 bg-state-attested/10 px-3.5 py-2.5 font-serif text-xs leading-relaxed text-state-attested">
-              Dispute raised on {result.milestone}, {Number(result.bond).toLocaleString("id-ID")} bond locked.
+              {t("Dispute raised on {milestone}, {bond} bond locked.", { milestone: t(result.milestone), bond: Number(result.bond).toLocaleString("id-ID") })}
               <span className="mt-1 block"><TxLink hash={result.transactionHash} /></span>
             </p>
           ) : null}
@@ -633,9 +626,9 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
           {/* Demo-only. It rewrites the mock source; it does NOT write a bad
               proof on chain (handoff §7, "Critical rule"). */}
           {faults.length ? (
-            <div className="mt-4 border-t border-sky pt-3.5">
+            <Disclosure title={t("Fault simulation")} summary={t("Demo-only source controls")} className="mt-4">
               <label htmlFor="fault" className="font-mono text-2xs uppercase text-ink-faint">
-                Fault simulation — demo only
+                {t("Fault simulation — demo only")}
               </label>
               <select
                 id="fault"
@@ -646,15 +639,14 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
               >
                 {faults.map((f) => (
                   <option key={f.value} value={f.value}>
-                    {f.label}
+                    {t(f.label)}
                   </option>
                 ))}
               </select>
               <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">
-                Changes the mock source data in memory. It never writes a false proof on chain — a
-                discrepancy only appears where a proof was already committed.
+                {t("Changes the mock source data in memory. It never writes a false proof on chain — a discrepancy only appears where a proof was already committed.")}
               </p>
-            </div>
+            </Disclosure>
           ) : null}
         </>
       ) : null}
@@ -672,13 +664,13 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
  * on chain.
  */
 function EblCard({ ebl }) {
+  const { t } = useLanguage();
   if (!ebl.configured) {
     return (
       <div className="mt-4 rounded-panel border border-state-pending/40 bg-state-pending/[0.07] px-3.5 py-2.5">
-        <p className="font-mono text-2xs uppercase text-state-pending">e-BL document</p>
+        <p className="font-mono text-2xs uppercase text-state-pending">{t("e-BL document")}</p>
         <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">
-          {ebl.note ||
-            "This gateway has no IPFS pinning service configured, so the e-BL check is a placeholder rather than a document verification."}
+          {t(ebl.note || "This gateway has no IPFS pinning service configured, so the e-BL check is a placeholder rather than a document verification.")}
         </p>
       </div>
     );
@@ -696,7 +688,7 @@ function EblCard({ ebl }) {
       }`}
     >
       <div className="flex items-start justify-between gap-3">
-        <p className="font-mono text-2xs uppercase text-ink-faint">e-BL document on IPFS</p>
+        <p className="font-mono text-2xs uppercase text-ink-faint">{t("e-BL document on IPFS")}</p>
         <span
           className={`inline-flex shrink-0 items-center gap-1.5 font-mono text-2xs uppercase ${
             tone === "attested"
@@ -704,8 +696,7 @@ function EblCard({ ebl }) {
               : "text-state-disputed"
           }`}
         >
-          <span className={`h-1.5 w-1.5 rounded-full ${tone === "attested" ? "bg-state-attested" : "bg-state-disputed"}`} aria-hidden="true" />
-          {ebl.simulatedFault ? "Simulated fail" : ebl.valid ? "Verified" : "Unverified"}
+          {t(ebl.simulatedFault ? "Simulated fail" : ebl.valid ? "Verified" : "Unverified")}
         </span>
       </div>
 
@@ -721,7 +712,7 @@ function EblCard({ ebl }) {
         </p>
       ) : null}
 
-      <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">{ebl.reason}</p>
+      <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">{t(ebl.reason)}</p>
 
       {checkRows.length ? (
         <ul className="mt-2.5 flex flex-wrap gap-1.5">
@@ -735,7 +726,7 @@ function EblCard({ ebl }) {
               }`}
             >
               {row.passed ? <Check size={10} aria-hidden="true" /> : <X size={10} aria-hidden="true" />}
-              {row.label}
+              {t(row.label)}
             </li>
           ))}
         </ul>
@@ -745,7 +736,7 @@ function EblCard({ ebl }) {
         <dl className="mt-2.5 space-y-1 border-t border-sky/60 pt-2.5 text-2xs">
           {fieldRows.map((row) => (
             <div key={row.key} className="flex items-baseline justify-between gap-3">
-              <dt className="shrink-0 font-mono uppercase text-ink-faint">{row.label}</dt>
+              <dt className="shrink-0 font-mono uppercase text-ink-faint">{t(row.label)}</dt>
               <dd className="min-w-0 text-right font-serif text-navy">{row.value}</dd>
             </div>
           ))}
@@ -754,9 +745,9 @@ function EblCard({ ebl }) {
 
       {ebl.retrievedFrom ? (
         <p className="mt-2 font-serif text-2xs leading-relaxed text-ink-faint">
-          Retrieved from {ebl.retrievedFrom}
-          {ebl.pages ? `, ${ebl.pages} page${ebl.pages === 1 ? "" : "s"}` : ""}
-          {ebl.size ? `, ${ebl.size.toLocaleString("id-ID")} bytes` : ""}.
+          {t("Retrieved from {source}", { source: ebl.retrievedFrom })}
+          {ebl.pages ? t(", {count} pages", { count: ebl.pages }) : ""}
+          {ebl.size ? t(", {count} bytes", { count: ebl.size.toLocaleString("id-ID") }) : ""}.
         </p>
       ) : null}
     </div>
@@ -777,6 +768,7 @@ function EblCard({ ebl }) {
  * calling that a failed clearance would be a lie about a shipment that cleared.
  */
 function CustomsCard({ customs, busy, onAttach }) {
+  const { t } = useLanguage();
   const [files, setFiles] = useState({});
   const [open, setOpen] = useState(false);
 
@@ -816,13 +808,13 @@ function CustomsCard({ customs, busy, onAttach }) {
                 <span className="min-w-0 flex-1">
                   <span className="flex flex-wrap items-baseline gap-x-2 text-2xs font-medium uppercase text-navy">
                     {slot.label}
-                    <span className="font-normal normal-case text-ink-faint">{slot.title}</span>
+                    <span className="font-normal normal-case text-ink-faint">{t(slot.title)}</span>
                     {slot.required ? <span className="text-state-disputed">*</span> : null}
                   </span>
                   <span className="mt-0.5 block font-serif text-2xs leading-relaxed text-ink-dim">
                     {files[slot.key]
                       ? `${files[slot.key].name} (${formatBytes(files[slot.key].size)})`
-                      : slot.hint}
+                      : t(slot.hint)}
                   </span>
                 </span>
               </label>
@@ -843,17 +835,17 @@ function CustomsCard({ customs, busy, onAttach }) {
               className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-teal/50 px-3 py-1.5 font-mono text-2xs uppercase text-teal transition-colors duration-150 hover:bg-teal/10 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {busy ? <Loader2 size={11} className="animate-spin" aria-hidden="true" /> : null}
-              {busy ? "Pinning…" : "Pin to IPFS"}
+              {t(busy ? "Pinning…" : "Pin to IPFS")}
             </button>
             <button
               type="button"
               onClick={() => setOpen(false)}
               className="cursor-pointer font-mono text-2xs uppercase text-ink-faint transition-colors duration-150 hover:text-navy"
             >
-              Cancel
+              {t("Cancel")}
             </button>
             {!files.exportDeclaration ? (
-              <span className="font-serif text-2xs text-ink-faint">The PEB is required.</span>
+              <span className="font-serif text-2xs text-ink-faint">{t("The PEB is required.")}</span>
             ) : null}
           </div>
         </>
@@ -863,7 +855,7 @@ function CustomsCard({ customs, busy, onAttach }) {
           onClick={() => setOpen(true)}
           className="cursor-pointer font-mono text-2xs uppercase text-teal transition-colors duration-150 hover:text-navy"
         >
-          {customs.attached ? "Replace the customs documents" : "Attach PEB, PIB and proof of payment"}
+          {t(customs.attached ? "Replace the customs documents" : "Attach PEB, PIB and proof of payment")}
         </button>
       )}
     </div>
@@ -873,24 +865,19 @@ function CustomsCard({ customs, busy, onAttach }) {
     return (
       <div className="mt-4 rounded-panel border border-state-pending/40 bg-state-pending/[0.07] px-3.5 py-2.5">
         <div className="flex items-start justify-between gap-3">
-          <p className="font-mono text-2xs uppercase text-state-pending">Customs documents</p>
+          <p className="font-mono text-2xs uppercase text-state-pending">{t("Customs documents")}</p>
           {/* Dot and text, not a tinted pill: this rail states every verdict
               that way now, and a pill inside a pill-free column reads as
               something pasted in from another screen. */}
           <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-2xs uppercase text-state-pending">
-            <span className="h-1.5 w-1.5 rounded-full bg-state-pending" aria-hidden="true" />
-            Not attached
+            {t("Not attached")}
           </span>
         </div>
         <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">
-          Milestone 3 claims the goods are legally through both borders. What evidences that is the
-          PEB from the origin, the PIB at the destination, and proof the import duty was paid —
-          none of which exists when the escrow is created, so they are attached here. The CID of
-          the manifest naming them becomes milestone 3&rsquo;s proof on chain.
+          {t("Milestone 3 claims the goods are legally through both borders. What evidences that is the PEB from the origin, the PIB at the destination, and proof the import duty was paid — none of which exists when the escrow is created, so they are attached here. The CID of the manifest naming them becomes milestone 3's proof on chain.")}
         </p>
         <p className="mt-1.5 font-serif text-2xs leading-relaxed text-ink-faint">
-          Nothing is blocked while they are missing: every escrow created before this existed has
-          none. Attached and failing verification is what stops Cleared.
+          {t("Nothing is blocked while they are missing: every escrow created before this existed has none. Attached and failing verification is what stops Cleared.")}
         </p>
         {picker}
       </div>
@@ -910,19 +897,13 @@ function CustomsCard({ customs, busy, onAttach }) {
       }`}
     >
       <div className="flex items-start justify-between gap-3">
-        <p className="font-mono text-2xs uppercase text-ink-faint">Customs documents on IPFS</p>
+        <p className="font-mono text-2xs uppercase text-ink-faint">{t("Customs documents on IPFS")}</p>
         <span
           className={`inline-flex shrink-0 items-center gap-1.5 font-mono text-2xs uppercase ${
             customs.valid ? "text-state-attested" : "text-state-disputed"
           }`}
         >
-          <span
-            className={`h-1.5 w-1.5 rounded-full ${
-              customs.valid ? "bg-state-attested" : "bg-state-disputed"
-            }`}
-            aria-hidden="true"
-          />
-          {customs.valid ? "Verified" : customs.available === false ? "Unavailable" : "Unverified"}
+          {t(customs.valid ? "Verified" : customs.available === false ? "Unavailable" : "Unverified")}
         </span>
       </div>
 
@@ -938,7 +919,7 @@ function CustomsCard({ customs, busy, onAttach }) {
         </p>
       ) : null}
 
-      <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">{customs.reason}</p>
+      <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">{t(customs.reason)}</p>
 
       {checkRows.length ? (
         <ul className="mt-2.5 flex flex-wrap gap-1.5">
@@ -950,7 +931,7 @@ function CustomsCard({ customs, busy, onAttach }) {
               }`}
             >
               {row.passed ? <Check size={10} aria-hidden="true" /> : <X size={10} aria-hidden="true" />}
-              {row.label}
+              {t(row.label)}
             </li>
           ))}
         </ul>
@@ -975,10 +956,10 @@ function CustomsCard({ customs, busy, onAttach }) {
                   {shortCid(document_.cid)}
                 </a>
                 {document_.sha256Matches === false ? (
-                  <span className="ml-2 text-state-disputed">digest differs</span>
+                  <span className="ml-2 text-state-disputed">{t("digest differs")}</span>
                 ) : null}
                 {document_.resolves === false ? (
-                  <span className="ml-2 text-state-disputed">does not resolve</span>
+                  <span className="ml-2 text-state-disputed">{t("does not resolve")}</span>
                 ) : null}
               </span>
             </li>
@@ -990,7 +971,7 @@ function CustomsCard({ customs, busy, onAttach }) {
         <dl className="mt-2.5 space-y-1 border-t border-sky/60 pt-2.5 text-2xs">
           {fieldRows.map((row) => (
             <div key={row.key} className="flex items-baseline justify-between gap-3">
-              <dt className="shrink-0 font-mono uppercase text-ink-faint">{row.label}</dt>
+              <dt className="shrink-0 font-mono uppercase text-ink-faint">{t(row.label)}</dt>
               <dd className="min-w-0 text-right font-serif text-navy">{row.value}</dd>
             </div>
           ))}
@@ -1014,7 +995,8 @@ function Panel({ children }) {
 }
 
 function Head({ title }) {
-  return <h2 className="font-mono text-2xs uppercase text-ink-faint">{title}</h2>;
+  const { t } = useLanguage();
+  return <h2 className="font-mono text-2xs uppercase text-ink-faint">{t(title)}</h2>;
 }
 
 function Row({ label, value, mono, truncate }) {
@@ -1028,14 +1010,18 @@ function Row({ label, value, mono, truncate }) {
   );
 }
 
-function Badge({ row }) {
+function Badge({ row, verifying }) {
+  const { t } = useLanguage();
+  if (verifying) {
+    return <span className="inline-flex min-w-[92px] shrink-0 items-center justify-end gap-1.5 text-xs text-teal"><Loader2 size={12} className="animate-spin" aria-hidden="true" />{t("Verifying…")}</span>;
+  }
   if (row.discrepancy) {
-    return <Chip tone="disputed">Discrepancy</Chip>;
+    return <Chip tone="disputed">{t("Discrepancy")}</Chip>;
   }
   if (row.submitted) {
-    return <Chip tone="attested">Committed</Chip>;
+    return <Chip tone="attested">{t("Committed")}</Chip>;
   }
-  return <Chip tone="muted">{row.sourcePasses ? "Ready" : "Not verified"}</Chip>;
+  return <Chip tone="muted">{t(row.sourcePasses ? "Ready" : "Not verified")}</Chip>;
 }
 
 function Chip({ tone, children }) {
@@ -1044,12 +1030,9 @@ function Chip({ tone, children }) {
     attested: "text-state-attested",
     muted: "text-ink-dim"
   }[tone];
-  const dot = {
-    disputed: "bg-state-disputed",
-    attested: "bg-state-attested",
-    muted: "bg-ink-faint"
-  }[tone];
   return (
-    <span className={`inline-flex shrink-0 items-center gap-1.5 font-mono text-2xs uppercase ${cls}`}><span className={`h-1.5 w-1.5 rounded-full ${dot}`} aria-hidden="true" />{children}</span>
+    <span className={`inline-flex min-w-[92px] shrink-0 items-center justify-end gap-1.5 text-xs ${cls}`}>
+      {children}
+    </span>
   );
 }

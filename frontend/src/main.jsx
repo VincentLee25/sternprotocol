@@ -5,6 +5,7 @@ import App from "./App.jsx";
 import SessionBoot from "./components/SessionBoot.jsx";
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import { particleConfig } from "./lib/particle.js";
+import { LanguageProvider } from "./lib/language.jsx";
 import "./styles.css";
 
 // With no credentials, render a clear setup error instead of fabricating an
@@ -19,13 +20,12 @@ const withProvider = particleConfig ? (
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <ErrorBoundary>
-      {/* ConnectKit lazy-loads parts of its modal. If one of those suspends
-          while React is responding to a click, React 18 throws "A component
-          suspended while responding to synchronous input" and unmounts the
-          whole tree — which looks like a blank page. This boundary turns that
-          into a normal loading state. */}
-      <Suspense fallback={<SessionBoot label="Loading STERN" />}>{withProvider}</Suspense>
-    </ErrorBoundary>
+    <LanguageProvider>
+      <ErrorBoundary>
+        {/* Both the app and this Suspense fallback use the shared language
+            context, so the provider must sit above the boundary. */}
+        <Suspense fallback={<SessionBoot label="Loading STERN" />}>{withProvider}</Suspense>
+      </ErrorBoundary>
+    </LanguageProvider>
   </React.StrictMode>
 );

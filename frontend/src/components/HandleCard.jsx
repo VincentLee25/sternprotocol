@@ -21,30 +21,13 @@ import { useLanguage } from "../lib/language.jsx";
  * proves who you are.
  */
 export default function HandleCard({ address }) {
-  const { language } = useLanguage();
-  const ui = language === "id"
-    ? {
-        title: "Handle Anda",
-        claim: "Daftarkan handle",
-        change: "Ubah handle Anda",
-        namePlaceholder: "Nama perusahaan (opsional)",
-        save: "Simpan",
-        saving: "Menyimpan…",
-        cancel: "Batal",
-        empty: "Daftarkan handle agar mitra dapat menemukan akun ini tanpa mengetik alamatnya.",
-        held: "Mitra dapat menemukan akun ini lewat handle, bukan alamat."
-      }
-    : {
-        title: "Your handle",
-        claim: "Claim a handle",
-        change: "Change your handle",
-        namePlaceholder: "Company name (optional)",
-        save: "Save",
-        saving: "Saving…",
-        cancel: "Cancel",
-        empty: "Claim a handle so counterparties can find this account without typing the address.",
-        held: "Counterparties can find this account by handle instead of the address."
-      };
+  const { t } = useLanguage();
+  const ui = {
+    title: t("Your handle"), claim: t("Claim a handle"), change: t("Change your handle"),
+    namePlaceholder: t("Company name (optional)"), save: t("Save"), saving: t("Saving…"),
+    cancel: t("Cancel"), empty: t("Claim a handle so counterparties can find this account without typing the address."),
+    held: t("Counterparties can find this account by handle instead of the address.")
+  };
 
   const [entry, setEntry] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -155,7 +138,7 @@ export default function HandleCard({ address }) {
 
           {error ? (
             <p role="alert" className="mt-2 border-l-2 border-state-disputed pl-2 text-[10px] leading-relaxed text-state-disputed">
-              {error}
+              {t(error)}
             </p>
           ) : null}
 

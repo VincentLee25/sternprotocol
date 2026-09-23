@@ -58,7 +58,7 @@ Datanya file JSON, lokasinya `DIRECTORY_STORE_FILE` (default
 
 > **Di Railway ini harus di volume.** Disk-nya ephemeral: tanpa volume,
 > setiap redeploy menghapus semua handle yang sudah didaftarkan orang. Sama
-> persis seperti `IDENTITY_STORE_FILE`.
+> Akun perusahaan memakai PostgreSQL; direktori alamat ini masih memakai file JSON.
 
 ## Tes
 

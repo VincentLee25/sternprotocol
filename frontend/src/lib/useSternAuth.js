@@ -99,6 +99,19 @@ function useParticleAuth() {
     setOpen(true);
   }, [setOpen]);
 
+  const refreshParticleIdentity = useCallback(() => {
+    if (!connected || !user?.smartAccountAddress) throw new Error("Connect with Particle before checking company access.");
+    const info = getUserInfoRef.current();
+    if (!info?.uuid || !info?.token) throw new Error("Particle session expired. Reconnect your account to continue.");
+    if (particleIdentity?.uuid && particleIdentity.uuid !== info.uuid) {
+      throw new Error("Particle account changed. Reconnect before accessing a STERN company.");
+    }
+    setParticleIdentity((current) => current?.uuid === info.uuid && current?.token === info.token
+      ? current
+      : { uuid: info.uuid, token: info.token });
+    return { uuid: info.uuid, token: info.token };
+  }, [connected, user?.smartAccountAddress, particleIdentity?.uuid]);
+
   const disconnect = useCallback(async () => {
     try {
       await disconnectAsync();
@@ -127,6 +140,7 @@ function useParticleAuth() {
     particleIdentity,
     error,
     connect,
+    refreshParticleIdentity,
     disconnect,
     setUser,
     smartAccountClient,
@@ -142,6 +156,7 @@ function useUnavailableAuth() {
     particleIdentity: null,
     error: "Particle Auth is not configured. Set the Particle project, client, and app IDs before accessing the workspace.",
     connect: null,
+    refreshParticleIdentity: null,
     disconnect: async () => {},
     setUser: () => {},
     smartAccountClient: null,

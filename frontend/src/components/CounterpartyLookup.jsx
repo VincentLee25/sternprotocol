@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AtSign, Loader2, Search } from "lucide-react";
 import { lookupDirectory, apiConfigured } from "../lib/sternApi.js";
 import { Tag } from "./ui.jsx";
+import { useLanguage } from "../lib/language.jsx";
 
 /**
  * Finds a counterparty's wallet by handle, so nobody has to paste hex.
@@ -16,6 +17,7 @@ import { Tag } from "./ui.jsx";
  * an input that can only fail is worse than no input.
  */
 export default function CounterpartyLookup({ label, onPick }) {
+  const { t } = useLanguage();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -83,11 +85,11 @@ export default function CounterpartyLookup({ label, onPick }) {
         ) : (
           <Search size={13} className="shrink-0 text-ink-faint" aria-hidden="true" />
         )}
-        <span className="sr-only">Find the {label} by handle</span>
+        <span className="sr-only">{t("Find the {party} by handle", { party: t(label) })}</span>
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder={`Find the ${label} by handle, or paste the address below`}
+          placeholder={t("Find the {party} by handle, or paste the address below", { party: t(label) })}
           spellCheck="false"
           autoComplete="off"
           className="w-full bg-transparent text-[13px] text-navy outline-none placeholder:text-ink-faint"
@@ -96,7 +98,7 @@ export default function CounterpartyLookup({ label, onPick }) {
 
       {error ? (
         <p role="alert" className="mt-1 text-2xs text-state-disputed">
-          {error}
+          {t(error)}
         </p>
       ) : null}
 
@@ -129,12 +131,12 @@ export default function CounterpartyLookup({ label, onPick }) {
                 ))}
               </ul>
               {note ? (
-                <p className="border-t border-sky px-3 py-2 text-2xs leading-relaxed text-ink-faint">{note}</p>
+                <p className="border-t border-sky px-3 py-2 text-2xs leading-relaxed text-ink-faint">{t(note)}</p>
               ) : null}
             </>
           ) : (
             <p className="px-3 py-2.5 text-[13px] text-ink-dim">
-              No handle matches that. Paste the address in the field below instead.
+              {t("No handle matches that. Paste the address in the field below instead.")}
             </p>
           )}
         </div>
@@ -148,6 +150,7 @@ export default function CounterpartyLookup({ label, onPick }) {
  * form records where the address came from rather than just holding hex.
  */
 export function PickedFrom({ entry, onClear }) {
+  const { t } = useLanguage();
   if (!entry) return null;
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-2">
@@ -160,9 +163,9 @@ export function PickedFrom({ entry, onClear }) {
         onClick={onClear}
         className="cursor-pointer text-2xs text-ink-faint underline underline-offset-2 transition-colors duration-150 hover:text-navy"
       >
-        clear
+        {t("clear")}
       </button>
-      <span className="text-2xs text-ink-faint">Confirm the address before signing.</span>
+      <span className="text-2xs text-ink-faint">{t("Confirm the address before signing.")}</span>
     </div>
   );
 }

@@ -7,19 +7,13 @@
 /*
  * STERN design tokens — Stitch design system.
  *
- * Every named colour in tailwind.config.js resolves through one of these
- * "R G B" triples, so toggling the `dark` class on <html> re-themes the whole
- * app without touching component classNames. The legacy aliases (navy/beige,
- * alabaster/onyx) survive on purpose: they are the same *roles* under older
- * names, and re-pointing them here is what let the v2 palette land without
- * rewriting several hundred classNames.
+ * Named colours in tailwind.config.js resolve through these light STERN tokens.
  *
  * Three status hues are darkened from the literal DESIGN.md hex. DESIGN.md
  * prints #3D8A68 / #B98235 / #C95D55, which sit at 3.8 / 3.1 / 3.7 : 1 on the
  * #F7F5F0 page ground — status text is small and load-bearing, so each is taken
  * to the darkest value that still reads as the same hue and clears 4.5:1. Same
- * reasoning for ink-faint. The dark ramp needs no such correction and uses the
- * DESIGN.md values verbatim.
+ * reasoning for ink-faint.
  */
 :root {
   --rgb-page: 245 239 235; /* #F5EFEB unbleached paper ground */
@@ -30,9 +24,7 @@
   --rgb-ink-faint: 92 110 126; /* #5C6E7E metadata */
   --rgb-sky: 200 217 230; /* #C8D9E6 STERN sky */
   --rgb-teal: 86 124 141; /* #567C8D STERN teal */
-  /* Teal as a BACKGROUND fill: white type sits on it, so this one is constant
-     across themes. Lightening it for dark mode (as --rgb-teal is) would drop
-     that white to ~3:1. */
+  /* Teal as a background fill needs enough contrast for white text. */
   --rgb-teal-solid: 70 108 125; /* accessible darkened teal for white labels */
   --rgb-ocean: 67 105 122; /* secondary maritime */
   --rgb-cyan: 184 231 251; /* #B8E7FB light supporting blue */
@@ -47,24 +39,24 @@
 }
 
 :root.dark {
-  --rgb-page: 10 10 10; /* #0A0A0A */
-  --rgb-surface: 28 37 55; /* #1C2537 */
-  --rgb-surface-soft: 46 57 76;
-  --rgb-ink: 229 228 226; /* #E5E4E2 */
-  --rgb-ink-dim: 168 182 196; /* #A8B6C4 */
-  --rgb-ink-faint: 133 146 160; /* #8592A0 */
-  --rgb-sky: 64 78 98; /* #404E62 */
-  --rgb-teal: 91 151 174; /* #5B97AE */
-  --rgb-ocean: 159 205 225;
-  --rgb-cyan: 157 212 232;
-  --rgb-lavender: 177 200 232;
-  --rgb-coral: 214 110 100;
-  --rgb-state-attested: 94 176 138;
-  --rgb-state-pending: 214 158 74;
-  --rgb-state-disputed: 214 110 100;
-
-  --shadow-card: 0 8px 30px rgb(0 0 0 / 0.28);
-  --shadow-elevated: 0 14px 40px rgb(0 0 0 / 0.38);
+  --rgb-page: 17 29 43;
+  --rgb-surface: 29 46 63;
+  --rgb-surface-soft: 37 57 73;
+  --rgb-ink: 235 242 246;
+  --rgb-ink-dim: 188 207 217;
+  --rgb-ink-faint: 158 181 194;
+  --rgb-sky: 71 101 122;
+  --rgb-teal: 144 196 208;
+  --rgb-teal-solid: 56 108 124;
+  --rgb-ocean: 111 164 181;
+  --rgb-cyan: 125 179 198;
+  --rgb-lavender: 93 128 160;
+  --rgb-coral: 125 64 65;
+  --rgb-state-attested: 151 209 176;
+  --rgb-state-pending: 238 193 125;
+  --rgb-state-disputed: 235 150 143;
+  --shadow-card: 0 12px 32px -22px rgb(1 8 17 / 0.85);
+  --shadow-elevated: 0 24px 48px -22px rgb(1 8 17 / 0.95);
 }
 
 /* Pins a subtree to the dark chrome regardless of the active theme — for panels
@@ -108,6 +100,65 @@ html {
   background:
     radial-gradient(circle at 78% -18%, rgb(200 217 230 / 0.72), transparent 34%),
     linear-gradient(145deg, #f5efeb 0%, #f8fafb 58%, #eef4f6 100%);
+}
+
+.dark .stern-workspace-shell {
+  background: linear-gradient(145deg, #111d2b, #182c3d 62%, #172637);
+}
+
+.dark .stern-workspace-main::before {
+  background: linear-gradient(180deg, rgb(75 113 139 / 0.2), transparent);
+}
+
+.dark .stern-workspace-sidebar {
+  background: linear-gradient(180deg, #1a3042, #152536);
+  box-shadow: 12px 0 38px -34px rgb(0 0 0 / 0.7);
+}
+
+.dark .stern-workspace-summary,
+.dark .stern-workspace-shell .bg-white,
+.dark .stern-account-popover {
+  background-color: rgb(var(--rgb-surface));
+}
+
+.dark .stern-workspace-summary-cell:first-child {
+  background: linear-gradient(110deg, #28495f, #34667a);
+}
+
+.dark .stern-workspace-shell .bg-navy,
+.dark .stern-auth-shell .bg-navy {
+  background-color: #356a7e;
+}
+
+.dark .stern-workspace-shell .bg-teal,
+.dark .stern-auth-shell .bg-teal {
+  background-color: #3d7286;
+}
+
+.dark .stern-workspace-shell .text-beige {
+  color: #f4f8fa;
+}
+
+.dark .stern-workspace-shell .brightness-0,
+.dark .stern-auth-shell .brightness-0 {
+  filter: brightness(0) invert(1);
+}
+
+.dark .stern-workspace-shell .invert {
+  filter: none;
+}
+
+.dark .stern-account-menu-item {
+  color: rgb(var(--rgb-ink));
+}
+
+.dark .stern-account-menu-item:hover,
+.dark .stern-account-menu-item:focus-visible {
+  background: rgb(var(--rgb-sky) / 0.24);
+}
+
+.dark .stern-operational-table tbody tr:nth-child(even) {
+  background: rgb(var(--rgb-surface-soft));
 }
 
 .stern-workspace-main {
@@ -158,59 +209,89 @@ html {
   animation: workspace-enter 430ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
 
+.stern-workspace-topbar {
+  position: relative;
+  z-index: 20;
+}
+
+.stern-account-menu-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: #2f4156;
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+  transition: background-color 160ms ease;
+}
+
+.stern-account-menu-item:hover,
+.stern-account-menu-item:focus-visible {
+  background: rgb(200 217 230 / 0.34);
+}
+
 .stern-workspace-card {
   border: 1px solid rgb(200 217 230 / 0.42);
-  transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+  transition: border-color 180ms ease;
 }
 
 .stern-workspace-card:hover {
   border-color: rgb(86 124 141 / 0.26);
-  box-shadow: var(--shadow-elevated);
 }
 
 .stern-workspace-summary {
   display: grid;
   overflow: hidden;
-  border: 1px solid rgb(200 217 230 / 0.52);
-  border-radius: 18px;
-  background: linear-gradient(112deg, #ffffff 0%, #f6fafb 62%, #edf4f6 100%);
+  border: 1px solid rgb(200 217 230 / 0.42);
+  border-radius: 16px;
+  background: #fff;
   box-shadow: var(--shadow-card);
 }
 
 .stern-workspace-summary-cell {
-  position: relative;
   min-width: 0;
-  padding: 20px;
+  padding: 24px;
 }
 
-.stern-workspace-summary-cell + .stern-workspace-summary-cell {
-  border-top: 1px solid rgb(200 217 230 / 0.68);
+.stern-workspace-summary-cell:first-child {
+  background: linear-gradient(110deg, #2f4156, #456779);
 }
 
-.stern-workspace-summary-cell::after {
-  position: absolute;
-  right: 20px;
-  bottom: 0;
-  left: 20px;
-  height: 2px;
-  background: linear-gradient(90deg, rgb(86 124 141 / 0.7), transparent);
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 260ms ease;
-  content: "";
-}
-
-.stern-workspace-summary-cell:hover::after {
-  transform: scaleX(1);
+.stern-workspace-summary-cell:not(:first-child) {
+  align-self: center;
 }
 
 .stern-operational-table tbody tr {
   transition: background-color 180ms ease, box-shadow 180ms ease;
 }
 
-.stern-operational-table tbody tr:hover {
-  background: rgb(200 217 230 / 0.2);
-  box-shadow: inset 3px 0 #567c8d;
+.stern-operational-table thead {
+  background: rgb(var(--rgb-sky) / 0.38);
+}
+
+.stern-operational-table tbody tr:nth-child(odd) {
+  background: rgb(var(--rgb-surface));
+}
+
+.stern-operational-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, rgb(var(--rgb-sky)) 20%, rgb(var(--rgb-page)));
+}
+
+.stern-operational-table tbody tr:nth-child(3n) {
+  background: color-mix(in srgb, rgb(var(--rgb-page)) 54%, rgb(var(--rgb-surface)));
+}
+
+.dark .stern-operational-table tbody tr:nth-child(3n) {
+  background: color-mix(in srgb, rgb(var(--rgb-surface-soft)) 38%, rgb(var(--rgb-surface)));
+}
+
+.stern-operational-table tbody tr:hover,
+.stern-operational-table tbody tr:focus-visible {
+  background: rgb(var(--rgb-sky) / 0.38);
+  box-shadow: inset 2px 0 rgb(var(--rgb-teal));
 }
 
 .stern-milestone-segment {
@@ -277,19 +358,11 @@ html {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .stern-workspace-summary-cell:nth-child(even) {
-    border-left: 1px solid rgb(200 217 230 / 0.68);
-  }
 }
 
 @media (min-width: 1280px) {
   .stern-workspace-summary {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .stern-workspace-summary-cell + .stern-workspace-summary-cell {
-    border-top: 0;
-    border-left: 1px solid rgb(200 217 230 / 0.68);
+    grid-template-columns: minmax(0, 1.65fr) repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -321,27 +394,15 @@ textarea {
   white-space: nowrap;
 }
 
-/*
- * Theme swap. Applied to <html> only for the duration of the flip, then
- * removed, so every token-coloured surface fades together instead of the ground
- * fading while the rest snaps. Leaving it on permanently would tax every hover
- * and scroll in the app.
- */
-.theme-transition,
-.theme-transition *,
-.theme-transition *::before,
-.theme-transition *::after {
-  transition: background-color 220ms ease, border-color 220ms ease, color 220ms ease,
-    fill 220ms ease, stroke 220ms ease, box-shadow 220ms ease !important;
-  transition-delay: 0ms !important;
+@keyframes stern-disclosure-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-/*
- * A custom property is not interpolatable until it is registered, which is why
- * the attestation ring sat frozen at its final value. Registering --pct as an
- * angle lets the conic gradient animate. The keyframe declares only `from`, so
- * each seal sweeps to whatever --pct its own inline style sets.
- */
+.stern-disclosure-content {
+  animation: stern-disclosure-in 180ms ease-out both;
+}
+
 @property --pct {
   syntax: "<angle>";
   inherits: false;
@@ -349,9 +410,12 @@ textarea {
 }
 
 @keyframes seal-sweep {
-  from {
-    --pct: 0turn;
-  }
+  from { --pct: 0turn; }
+}
+
+.seal {
+  animation: seal-sweep 900ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  background: conic-gradient(rgb(var(--rgb-state-attested)) 0turn var(--pct), rgb(var(--rgb-sky)) var(--pct) 1turn);
 }
 
 /* One orchestrated load sequence for the hero; delays are set per element. */
@@ -396,6 +460,58 @@ textarea {
 
 .stern-beige-wash {
   background: linear-gradient(135deg, #F5EFEB 0%, #FFFFFF 76%);
+}
+
+.dark .stern-landing {
+  background: #111d2b;
+}
+
+.dark .stern-landing header > div,
+.dark .stern-landing .bg-white,
+.dark .stern-language-toggle {
+  border-color: rgb(var(--rgb-sky) / 0.65);
+  background-color: rgb(var(--rgb-surface));
+}
+
+.dark .stern-language-toggle button[aria-pressed="true"],
+.dark .stern-landing .bg-navy {
+  background-color: #356a7e;
+  color: #fff;
+}
+
+.dark .stern-duotone-mark {
+  background: linear-gradient(102deg, #e7f1f5 0 68%, #90c4d0 68% 100%);
+}
+
+.dark .stern-landing .stern-hero-wash,
+.dark .stern-landing #process,
+.dark .stern-landing #evidence,
+.dark .stern-landing #operations,
+.dark .stern-landing .stern-beige-wash,
+.dark .stern-landing .stern-sky-wash {
+  background: linear-gradient(135deg, #17293a, #20394c 74%, #28485b);
+}
+
+.dark .stern-landing .stern-workflow-step:hover,
+.dark .stern-landing .stern-workflow-step.is-active {
+  background: rgb(var(--rgb-surface));
+}
+
+.dark .stern-landing .stern-workflow-icon {
+  background: #29495d;
+  color: #e7f1f5;
+}
+
+.dark .stern-landing .stern-evidence-document,
+.dark .stern-landing .stern-trade-core {
+  background: #233e51;
+  color: #e7f1f5;
+}
+
+.dark .stern-landing .stern-evidence-document strong,
+.dark .stern-landing .stern-evidence-caption,
+.dark .stern-landing .stern-trade-core p {
+  color: #e7f1f5;
 }
 
 .stern-navy-teal {
@@ -748,6 +864,44 @@ textarea {
     linear-gradient(180deg, #F5EFEB, #e9f1f4);
 }
 
+.dark .stern-auth-shell {
+  background: linear-gradient(115deg, #111d2b, #1a3446 58%, #223c4c);
+}
+
+.dark .stern-auth-card {
+  border-color: rgb(var(--rgb-sky) / 0.65);
+  background: rgb(var(--rgb-surface));
+  box-shadow: 0 28px 65px rgb(0 8 18 / 0.36);
+}
+
+.dark .stern-auth-shell .bg-white,
+.dark .stern-auth-shell .stern-mfa-input {
+  background: rgb(var(--rgb-surface-soft));
+  color: rgb(var(--rgb-ink));
+}
+
+.dark .stern-auth-icon {
+  background: #29495d;
+  color: #e6f3f7;
+}
+
+.dark .stern-boot {
+  background: #111d2b;
+}
+
+.dark .stern-boot-mark::before {
+  background: #49677b;
+}
+
+.dark .stern-boot-mark::after {
+  background: linear-gradient(100deg, #e7f1f5 0 66%, #90c4d0 66% 100%);
+}
+
+.theme-transition,
+.theme-transition * {
+  transition: background-color 220ms ease, border-color 220ms ease, color 220ms ease !important;
+}
+
 .stern-auth-shell::before {
   position: fixed;
   inset: 58% 0 auto;
@@ -862,15 +1016,6 @@ textarea {
   background-size: 6px 4px;
   background-repeat: repeat-x;
   background-position: left bottom;
-}
-
-/* Attestation seal: conic ring driven by --pct (0-1) */
-.seal {
-  animation: seal-sweep 900ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
-  background: conic-gradient(
-    rgb(var(--rgb-state-attested)) 0turn var(--pct),
-    rgb(var(--rgb-sky)) var(--pct) 1turn
-  );
 }
 
 ::-webkit-scrollbar {

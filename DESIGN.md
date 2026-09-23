@@ -1,6 +1,6 @@
 ---
 design_system: STERN Protocol
-version: 2.0
+version: 3.0
 product_type: enterprise trade-finance escrow workspace
 principles:
   - evidence before assertion
@@ -12,57 +12,57 @@ principles:
 tokens:
   color:
     light:
-      page: "#F7F5F0"
+      page: "#F5EFEB"
       surface: "#FFFFFF"
-      surface_soft: "#F2F6F7"
-      ink: "#132B45"
-      ink_dim: "#50647A"
-      ink_faint: "#7B8A9A"
-      border: "#DCE4E8"
-      accent: "#287C83"
-      accent_solid: "#176B73"
-      ocean: "#3F78B5"
-      cyan: "#65BFC4"
-      lavender: "#A99BEA"
-      coral: "#E68A7A"
-      success: "#3D8A68"
-      warning: "#B98235"
-      danger: "#C95D55"
+      surface_soft: "#F3EDE9"
+      ink: "#2A415B"
+      ink_dim: "#4E5E6D"
+      ink_faint: "#5C6E7E"
+      border: "#C0D0E0"
+      accent: "#3E6C7D"
+      accent_solid: "#3E6C7D"
+      ocean: "#366475"
+      cyan: "#B8E7FB"
+      lavender: "#D1E4FF"
+      coral: "#FFDAD6"
+      success: "#3C755F"
+      warning: "#8C6123"
+      danger: "#A8443C"
       gradient_primary: "linear-gradient(135deg, #EAF7F5 0%, #E9F1FB 52%, #F0ECFA 100%)"
       gradient_ocean: "linear-gradient(135deg, #E8F4F8 0%, #DDECF8 55%, #EDE9F8 100%)"
       gradient_soft: "linear-gradient(135deg, #F1FAF8 0%, #F4F1FB 100%)"
     dark:
-      page: "#10151B"
-      surface: "#18212B"
-      surface_soft: "#202B37"
-      ink: "#F1F4F5"
-      ink_dim: "#B6C3CE"
-      ink_faint: "#8796A4"
-      border: "#344451"
-      accent: "#65BFC4"
-      accent_solid: "#4AA8AE"
-      ocean: "#6A9BD0"
-      cyan: "#78C9CE"
-      lavender: "#B7AEEF"
-      coral: "#E79A8C"
-      success: "#68B995"
-      warning: "#D5A357"
-      danger: "#DF776D"
+      page: "#0A0A0A"
+      surface: "#1C2537"
+      surface_soft: "#2E394C"
+      ink: "#E5E4E2"
+      ink_dim: "#A8B6C4"
+      ink_faint: "#8592A0"
+      border: "#404E62"
+      accent: "#5B97AE"
+      accent_solid: "#3E6C7D"
+      ocean: "#9FCDE1"
+      cyan: "#9DD4E8"
+      lavender: "#B1C8E8"
+      coral: "#D66E64"
+      success: "#5EB08A"
+      warning: "#D69E4A"
+      danger: "#D66E64"
   typography:
     primary: "Poppins, system-ui, sans-serif"
     display: "Poppins, system-ui, sans-serif"
-    display_weight: 800
+    display_weight: 700
     heading_weight: 700
     body_weight: 400
     medium_weight: 500
     semibold_weight: 600
   spacing: [4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 80]
   radius:
-    control: 12
-    card: 18
-    panel: 22
-    hero: 30
-    document: 16
+    control: 6
+    card: 10
+    panel: 10
+    hero: 14
+    document: 14
   shadow:
     card: "0 8px 30px rgba(19,43,69,0.07)"
     elevated: "0 14px 40px rgba(19,43,69,0.10)"
@@ -116,12 +116,10 @@ Do not use saturated rainbow palettes or neon purple/blue crypto gradients.
 
 ## Typography
 
-- **Poppins** is the primary and only UI typeface for this version of STERN.
-- Poppins 800: hero/display headlines.
-- Poppins 700: page and section headings.
-- Poppins 600: navigation emphasis, card headings, important labels.
-- Poppins 500: buttons, tabs, metadata that needs emphasis.
-- Poppins 400: body copy and supporting descriptions.
+- **Poppins** is the product typeface: controls, tables, navigation, narrative and headings.
+- **JetBrains Mono** is reserved for CIDs, addresses, hashes, and transaction references.
+- Poppins 700: page and section headings. Poppins 600: navigation and card headings.
+- Poppins 500: buttons, tabs, metadata that needs emphasis. Poppins 400: supporting copy.
 - Hero heading: 48-72px on desktop depending on composition; never use excessive tracking.
 - Page title: 28-36px.
 - Section title: 22-32px.
@@ -141,7 +139,7 @@ Do not use saturated rainbow palettes or neon purple/blue crypto gradients.
 - Cards are for repeated records, evidence artifacts, focused operational tools, and highlighted content.
 - Prefer one strong composition over many identical cards.
 - Use asymmetric grids where appropriate instead of repetitive three-column layouts.
-- Panels and cards use 18-22px radius. Hero containers use 28-30px radius. Controls use approximately 12px radius.
+- Operational panels use 10px radius; evidence previews and hero containers use 14px. Controls use 6px.
 - Buttons are rounded but not capsule-shaped unless used for a compact status/filter.
 - Tables use clear row separators, comfortable row height, fixed headers when useful, right-aligned numeric columns, and mobile card transformation.
 - At 375px, stack columns, preserve the primary action, and avoid horizontal scrolling except for intentionally scrollable evidence tables.
@@ -303,5 +301,5 @@ Examples:
 Always treat this DESIGN.md as the primary design and product source of truth. Generate one page at a time while preserving the same STERN visual language across every page.
 
 ```text
-Read DESIGN.md before generating the page. Follow its product requirements and visual system exactly. Generate ONLY the requested STERN Protocol page, not the entire website. Maintain the premium light-theme maritime fintech identity: warm off-white background, white surfaces, deep navy Poppins typography, maritime teal with soft ocean blue/cyan/lavender accents, tasteful low-saturation gradients, 18–24px rounded surfaces, subtle shadows, and realistic maritime/trade imagery where appropriate. Do not revert to the old compact banking-portal style, dark canvas, dotted background, generic dashboard cards, crypto/Web3 visuals, neon gradients, or AI-template layouts.
+Read DESIGN.md before generating the page. Follow its product requirements and visual system exactly. Generate ONLY the requested STERN Protocol page, not the entire website. Maintain the premium light-theme maritime fintech identity: warm off-white background, white surfaces, deep navy Poppins typography, restrained maritime teal, crisp borders, 6–14px rounding, subdued shadows, and realistic maritime/trade imagery where appropriate. Do not revert to the old compact banking-portal style, dark canvas, dotted background, generic dashboard cards, crypto/Web3 visuals, neon gradients, or AI-template layouts.
 ```
