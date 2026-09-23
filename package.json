@@ -23,7 +23,7 @@
     "dispute-status": "node scripts/dispute-status.js",
     "test:ebl-coherence": "node scripts/test-ebl-coherence.mjs",
     "test:dispute-rehearsal": "node scripts/test-dispute-rehearsal.mjs",
-    "test:all": "node scripts/test-ebl-ipfs.js && node scripts/test-ebl-gate.js && node scripts/test-ebl-coherence.mjs && node scripts/test-dispute-rehearsal.mjs && node scripts/test-evidence-subject.mjs && node scripts/test-directory.js && node scripts/test-manifest.js && node scripts/test-activity-scan.js && node scripts/test-clauses.js && node scripts/test-negotiation.js && node --test backend/oracle-gateway/identityService.test.js",
+    "test:all": "node scripts/test-ebl-ipfs.js && node scripts/test-ebl-gate.js && node scripts/test-ebl-coherence.mjs && node scripts/test-dispute-rehearsal.mjs && node scripts/test-evidence-subject.mjs && node scripts/test-directory.js && node scripts/test-manifest.js && node scripts/test-activity-scan.js && node scripts/test-clauses.js && node scripts/test-negotiation.js && node scripts/test-escrow-list-resilience.mjs && node --test backend/oracle-gateway/identityService.test.js",
     "test:evidence-subject": "node scripts/test-evidence-subject.mjs",
     "test:directory": "node scripts/test-directory.js",
     "test:manifest": "node scripts/test-manifest.js",
@@ -34,7 +34,9 @@
     "documents-stub": "node scripts/test-support/documents-gateway-stub.js",
     "directory-stub": "node scripts/test-support/directory-gateway-stub.js",
     "chain-lag": "node scripts/chain-lag.js",
-    "reset-faucet-claim": "node scripts/reset-faucet-claim.js"
+    "reset-faucet-claim": "node scripts/reset-faucet-claim.js",
+    "test:list": "node scripts/test-escrow-list-resilience.mjs",
+    "probe:escrow": "node scripts/probe-escrow.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

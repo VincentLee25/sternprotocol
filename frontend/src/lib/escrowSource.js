@@ -139,7 +139,56 @@ function toRow(detail, activity, source) {
  * `address` filters to escrows the signed-in wallet is party to. Passing none
  * returns everything, which is what the demo wants before any escrow exists.
  */
-export async function loadEscrowRows({ address, signal } = {}) {
+// Two clocks, because they answer different questions. The list is one call and
+// should be quick; a per-escrow detail is seven chain reads and is allowed to be
+// slower before it is given up on.
+const LIST_TIMEOUT_MS = 15000;
+const ROW_TIMEOUT_MS = 12000;
+
+/**
+ * Runs one request under its own deadline, still cancelled by the caller's.
+ *
+ * The deadline has to belong to the request, not to the page. A single
+ * controller aborted on a timer cancels every request sharing it, so the slowest
+ * escrow was taking the fastest nine down with it.
+ */
+async function withTimeout(run, { signal, ms, code }) {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal?.aborted) controller.abort();
+  else signal?.addEventListener("abort", abort, { once: true });
+
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, ms);
+
+  try {
+    return await run(controller.signal);
+  } catch (error) {
+    // An abort means one of two very different things, and the caller has to be
+    // able to tell them apart: this request ran out of time, or the page moved
+    // on and cancelled it.
+    if (timedOut) {
+      const timeout = new Error(`Timed out after ${Math.round(ms / 1000)}s.`);
+      timeout.code = code;
+      timeout.name = "TimeoutError";
+      throw timeout;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
+  }
+}
+
+export async function loadEscrowRows({
+  address,
+  signal,
+  listTimeoutMs = LIST_TIMEOUT_MS,
+  rowTimeoutMs = ROW_TIMEOUT_MS
+} = {}) {
   if (!sourceIsLive) {
     const res = await mockList();
     return Promise.all(
@@ -150,21 +199,109 @@ export async function loadEscrowRows({ address, signal } = {}) {
     );
   }
 
-  const res = await api.listEscrows({ address, signal });
-  const rows = res.escrows || res || [];
-  // Activity is NOT fetched here any more. It is an event scan per escrow, and
-  // making the list wait for every one of them left the whole dashboard on
-  // skeleton rows until the slowest finished — for data that appears in a single
-  // side panel. The table needs only the escrow detail; loadActivityForRows
-  // below fills the rest in once the page is already useful.
-  return Promise.all(
-    rows.map(async (row) => {
-      const detail = await api.getEscrow(row.escrowId, { signal });
-      const full = toRow(detail, [], "gateway");
-      full.activityPending = true;
-      return full;
-    })
+  // The list itself. This one IS allowed to fail the page: if it does not
+  // answer there is nothing to show, and the caller should say why.
+  const res = await withTimeout(
+    (listSignal) => api.listEscrows({ address, signal: listSignal }),
+    { signal, ms: listTimeoutMs, code: "LIST_TIMEOUT" }
   );
+  const rows = res.escrows || res || [];
+
+  // Activity is NOT fetched here. It is an event scan per escrow, and making the
+  // list wait for every one of them left the whole dashboard on skeleton rows
+  // until the slowest finished — for data that appears in a single side panel.
+  // loadActivityForRows fills it in once the page is already useful.
+  //
+  // Nor does one escrow's detail decide the fate of the rest. Promise.all
+  // rejects on the first failure and abandons the others, so a single escrow
+  // whose reads time out took the entire dashboard down with it — nine rows
+  // that had already come back were thrown away to report one that had not.
+  return settleRowDetails(rows, (row) => fetchRowDetail(row, { signal, rowTimeoutMs }));
+}
+
+/**
+ * Reads every row's detail and lets each one fail on its own.
+ *
+ * Separated from the fetching so it can be tested without a browser or a
+ * gateway: the caller supplies how a detail is read, and this decides what
+ * happens when one of them does not come back.
+ */
+export async function settleRowDetails(rows, fetchDetail) {
+  const settled = await Promise.allSettled(rows.map((row) => fetchDetail(row)));
+  return settled.map((outcome, index) =>
+    outcome.status === "fulfilled" ? outcome.value : failedRow(rows[index], outcome.reason)
+  );
+}
+
+/**
+ * One escrow's detail, on its own clock.
+ *
+ * Its own timeout as well as its own request: a row that hangs must fail by
+ * itself, and a shared deadline aborts the controller every other row is using
+ * too — which turns one slow escrow into an empty dashboard.
+ */
+async function fetchRowDetail(row, { signal, rowTimeoutMs }) {
+  const detail = await withTimeout(
+    (rowSignal) => api.getEscrow(row.escrowId, { signal: rowSignal }),
+    { signal, ms: rowTimeoutMs, code: "ESCROW_DETAIL_TIMEOUT" }
+  );
+  const full = toRow(detail, [], "gateway");
+  full.activityPending = true;
+  return full;
+}
+
+/**
+ * The row that could not be completed, still rendered.
+ *
+ * GET /escrows already returned this escrow's parties, value, commodity,
+ * deadline and state — the detail call adds milestones, the dispute record and
+ * release eligibility. So a failed detail is a row with less in it, not a row
+ * that has to disappear. Dropping it would be the worse answer: the escrow
+ * exists, and a dashboard that silently omits one is harder to trust than one
+ * that admits a gap.
+ */
+function failedRow(listRow, error) {
+  const row = toRow(listRow, [], "gateway");
+  row.detailError = error?.message || "Could not read this escrow's detail.";
+  row.detailErrorCode = error?.code || null;
+  row.activityPending = false;
+  // Nothing was read, so nothing may be claimed. Left explicitly null rather
+  // than zero: "no milestones" and "milestones unknown" are different, and a
+  // progress bar reading 0/3 on an escrow that is actually complete is a lie
+  // the page would be telling on its own.
+  row.milestones = null;
+  row.verified = null;
+  row.releaseEligible = null;
+  if (typeof console !== "undefined") {
+    console.warn(`[stern] escrow ${listRow?.escrowId} detail failed:`, error);
+  }
+  return row;
+}
+
+/**
+ * Re-reads only the rows that failed, keeping everything already on screen.
+ *
+ * Refresh used to re-fetch all of them, so a dashboard with one bad escrow paid
+ * for every other escrow again to retry the one.
+ */
+export async function retryFailedRows(rows, { signal, rowTimeoutMs = ROW_TIMEOUT_MS, fetchDetail } = {}) {
+  if (!sourceIsLive && !fetchDetail) return rows;
+  const failed = rows.filter((row) => row.detailError);
+  if (failed.length === 0) return rows;
+
+  const read =
+    fetchDetail ||
+    ((row) => fetchRowDetail(row, { signal, rowTimeoutMs }));
+  const settled = await Promise.allSettled(
+    failed.map((row) => read({ escrowId: row.id }))
+  );
+  const repaired = new Map();
+  failed.forEach((row, index) => {
+    const outcome = settled[index];
+    if (outcome.status === "fulfilled") repaired.set(row.id, outcome.value);
+    else repaired.set(row.id, { ...row, detailError: outcome.reason?.message || row.detailError });
+  });
+  return rows.map((row) => repaired.get(row.id) || row);
 }
 
 /**

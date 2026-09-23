@@ -4,7 +4,7 @@ import {
 } from "lucide-react";
 import StatusPill from "../components/StatusPill.jsx";
 import ActivityRail from "../components/ActivityRail.jsx";
-import { loadActivityForRows, loadEscrowRows, sourceIsLive, sourceLabel } from "../lib/escrowSource.js";
+import { loadActivityForRows, loadEscrowRows, retryFailedRows, sourceIsLive, sourceLabel } from "../lib/escrowSource.js";
 import { CURRENCY_LABEL } from "../lib/currency.js";
 import { formatEscrowId } from "../lib/escrowState.js";
 import { MILESTONES, STATE_ORDER } from "../lib/milestones.js";
@@ -50,17 +50,13 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
   async function load(signal) {
     setLoading(true);
     setChainStatus("");
-    const requestController = new AbortController();
-    let timedOut = false;
-    const cancelWithPage = () => requestController.abort();
-    if (signal?.aborted) requestController.abort();
-    else signal?.addEventListener("abort", cancelWithPage, { once: true });
-    const timeoutId = window.setTimeout(() => {
-      timedOut = true;
-      requestController.abort();
-    }, 15000);
     try {
-      const full = await loadEscrowRows({ address: walletAddress, signal: requestController.signal });
+      // The deadline moved into loadEscrowRows, where it can be per request.
+      // Here it was one controller aborted on a 15s timer, shared by the list
+      // AND every per-escrow read — so one escrow that hung cancelled all the
+      // others and the page reported a dead gateway while nine escrows had
+      // already answered.
+      const full = await loadEscrowRows({ address: walletAddress, signal });
       setRows(full);
       onRegistryLoad?.(full);
       if (sourceIsLive && full.length === 0) {
@@ -78,15 +74,38 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
           .catch(() => {});
       }
     } catch (error) {
-      if (timedOut) {
+      // Only the LIST failing gets here now. A single escrow's detail failing is
+      // carried on its own row instead, which is the whole point.
+      if (error.code === "LIST_TIMEOUT") {
         setChainStatus(t("The local gateway did not respond. Please try again."));
         return;
       }
       if (error.name === "AbortError") return;
       setChainStatus(error.message);
     } finally {
-      window.clearTimeout(timeoutId);
-      signal?.removeEventListener("abort", cancelWithPage);
+      setLoading(false);
+    }
+  }
+
+  /**
+   * Refresh.
+   *
+   * When some rows failed to load, this retries only those — a dashboard with
+   * one bad escrow should not pay for every other escrow again to re-read the
+   * one. With nothing broken it is an ordinary reload.
+   */
+  async function refresh() {
+    const broken = rows.some((row) => row.detailError);
+    if (!broken) return load();
+    setLoading(true);
+    setChainStatus("");
+    try {
+      const repaired = await retryFailedRows(rows);
+      setRows(repaired);
+      onRegistryLoad?.(repaired);
+    } catch (error) {
+      if (error.name !== "AbortError") setChainStatus(error.message);
+    } finally {
       setLoading(false);
     }
   }
@@ -175,7 +194,7 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
           {sourceIsLive ? (
             <button
               type="button"
-              onClick={() => load()}
+              onClick={() => refresh()}
               disabled={loading}
               className="flex cursor-pointer items-center gap-2 rounded-panel border border-sky bg-surface px-5 py-2.5 text-[13px] font-medium text-navy shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:border-teal/40 disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-40"
             >
@@ -327,6 +346,13 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                             </p>
                             <p className="mt-0.5 text-[12.5px] text-ink-dim">
                               &#8470;&thinsp;{formatEscrowId(e.id)} · {e.containerRef}
+                              {/* Stated on the row, not as a page banner: the
+                                  other escrows on this screen loaded fine. */}
+                              {e.detailError ? (
+                                <span className="ml-1.5 text-state-pending" title={e.detailError}>
+                                  {t("· unable to load details")}
+                                </span>
+                              ) : null}
                             </p>
                           </td>
                           <td className="py-3.5 pr-4 text-right">

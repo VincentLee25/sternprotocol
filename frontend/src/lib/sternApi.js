@@ -12,7 +12,11 @@
 // sit behind INTERNAL_API_KEY and are deliberately absent from this client. The
 // browser must never hold that key.
 
-const RAW_BASE = import.meta.env.VITE_ORACLE_API || "";
+// `import.meta.env` is Vite's, and it does not exist when this module is
+// imported outside a build — a node test, for one. Reaching through it
+// unguarded made the whole module throw on import there, which is why the
+// resilience of the escrow list could not be tested without a browser.
+const RAW_BASE = (import.meta.env && import.meta.env.VITE_ORACLE_API) || "";
 
 // Trailing slashes would produce //escrows, which Express treats as a different
 // route and answers with a 404 that reads like a missing endpoint.
