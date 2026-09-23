@@ -10,7 +10,13 @@ import {
 } from "../lib/opsAuth.js";
 import TxLink from "../components/TxLink.jsx";
 import { loadEscrowRows, sourceIsLive } from "../lib/escrowSource.js";
-import { getNegotiation, getOracleStatus, getVerifiers } from "../lib/sternApi.js";
+import { API_BASE, getNegotiation, getOracleStatus, getVerifiers } from "../lib/sternApi.js";
+// Named on screen when nothing matches, because "which chain am I actually
+// looking at" is the question an empty list raises and the one it never
+// answered. VITE_CONTRACT_ADDRESS (this page's signer) and the gateway's own
+// CONTRACT_ADDRESS can disagree, and that disagreement looks exactly like a
+// permissions problem.
+import { ESCROW_ADDRESS as OPS_CONTRACT } from "../lib/sternContract.js";
 import { shortAddress } from "../lib/actors.js";
 import { CURRENCY_LABEL } from "../lib/currency.js";
 import { useLanguage } from "../lib/language.jsx";
@@ -219,9 +225,46 @@ function OpsDashboard({ session, onClose, onExit }) {
               {t("Reading the registry…")}
             </p>
           ) : mine.length === 0 ? (
-            <p className="mt-3 font-serif text-sm leading-relaxed text-ink-dim">
-              {t("This address is not the appointed arbiter on any escrow yet. The arbiter is named when an escrow is created, so it can only appear here after the fact.")}
-            </p>
+            /* Two very different situations used to print the same sentence —
+               "not the arbiter on any escrow" — and the panel had not checked
+               that. It only knew the filter came back empty, which is equally
+               true when the registry itself is empty or is a different
+               deployment than the one the escrow was created on. Saying which
+               is what makes this answerable. */
+            escrows.length === 0 ? (
+              <div className="mt-3">
+                <p className="font-serif text-sm leading-relaxed text-ink-dim">
+                  {t("The registry read back no escrows at all, so there is nothing here to be the arbiter of — this is not a statement about your address.")}
+                </p>
+                <p className="mt-2 font-serif text-sm leading-relaxed text-ink-dim">
+                  {t("Either no escrow has been created on the contract this gateway points at, or that is a different deployment from the one you created yours on.")}
+                </p>
+                <dl className="mt-3 grid gap-1 border-t border-sky pt-3 text-2xs">
+                  <Term label={t("Gateway")} value={API_BASE || t("not configured")} />
+                  <Term label={t("Contract this page signs against")} value={OPS_CONTRACT || t("not set")} />
+                </dl>
+              </div>
+            ) : (
+              <div className="mt-3">
+                <p className="font-serif text-sm leading-relaxed text-ink-dim">
+                  {t("Read {count} escrows from the registry, and none of them names this address as arbiter. The arbiter is fixed when an escrow is created and cannot be changed afterwards.", { count: escrows.length })}
+                </p>
+                <p className="mt-2 font-serif text-sm leading-relaxed text-ink-dim">
+                  {t("The arbiters named on those escrows are:")}
+                </p>
+                <ul className="mt-1.5 space-y-0.5">
+                  {[...new Set(escrows.map((e) => e.arbiter).filter(Boolean))].map((arbiter) => (
+                    <li key={arbiter} className="truncate font-mono text-2xs text-ink-faint">
+                      {arbiter}
+                    </li>
+                  ))}
+                </ul>
+                <dl className="mt-3 grid gap-1 border-t border-sky pt-3 text-2xs">
+                  <Term label={t("Gateway")} value={API_BASE || t("not configured")} />
+                  <Term label={t("You signed in as")} value={session.address} />
+                </dl>
+              </div>
+            )
           ) : (
             <ul className="mt-3 divide-y divide-sky">
               {mine.map((e) => (
