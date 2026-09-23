@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AtSign, Check, Loader2, Pencil } from "lucide-react";
 import { apiConfigured, claimHandle, directoryForAddress } from "../lib/sternApi.js";
+import { useLanguage } from "../lib/language.jsx";
 
 /**
  * Registers the handle that points at this wallet, so a counterparty can find
@@ -11,11 +12,40 @@ import { apiConfigured, claimHandle, directoryForAddress } from "../lib/sternApi
  * than a settings page — it is a one-time action, and it belongs next to the
  * address it names.
  *
+ * Styled as a sidebar SECTION, not a card: the rest of this rail is flat
+ * sections divided by a hairline, with 9px tracked labels and plain-text
+ * actions. A tinted rounded panel here read as something bolted on.
+ *
  * It claims nothing about identity. A handle is self-chosen and free, so the
  * copy says only that this is how others find your wallet, never that it
  * proves who you are.
  */
 export default function HandleCard({ address }) {
+  const { language } = useLanguage();
+  const ui = language === "id"
+    ? {
+        title: "Handle Anda",
+        claim: "Daftarkan handle",
+        change: "Ubah handle Anda",
+        namePlaceholder: "Nama perusahaan (opsional)",
+        save: "Simpan",
+        saving: "Menyimpan…",
+        cancel: "Batal",
+        empty: "Daftarkan handle agar mitra dapat menemukan akun ini tanpa mengetik alamatnya.",
+        held: "Mitra dapat menemukan akun ini lewat handle, bukan alamat."
+      }
+    : {
+        title: "Your handle",
+        claim: "Claim a handle",
+        change: "Change your handle",
+        namePlaceholder: "Company name (optional)",
+        save: "Save",
+        saving: "Saving…",
+        cancel: "Cancel",
+        empty: "Claim a handle so counterparties can find this account without typing the address.",
+        held: "Counterparties can find this account by handle instead of the address."
+      };
+
   const [entry, setEntry] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -83,21 +113,24 @@ export default function HandleCard({ address }) {
     }
   }
 
+  const field =
+    "w-full border-b border-sky/70 bg-transparent py-1 text-[10px] text-navy outline-none transition-colors placeholder:text-ink-faint focus:border-teal";
+
   return (
-    <div className="mb-3 rounded-panel border border-sky bg-beige/60 px-3.5 py-3">
-      <div className="flex items-center justify-between gap-2 text-2xs uppercase text-ink-faint">
-        <span className="flex items-center gap-1.5">
+    <section aria-label={ui.title} className="border-b border-sky/70 py-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-ink-faint">
           <AtSign size={11} aria-hidden="true" />
-          Your handle
-        </span>
+          {ui.title}
+        </div>
         {loading ? <Loader2 size={11} className="animate-spin text-teal" aria-hidden="true" /> : null}
-        {saved ? <Check size={11} className="text-state-attested" aria-hidden="true" /> : null}
+        {saved ? <Check size={11} className="text-teal" aria-hidden="true" /> : null}
       </div>
 
       {editing ? (
         <form onSubmit={submit} className="mt-2">
-          <label className="flex items-center gap-1 rounded-panel border border-sky bg-surface px-2 py-1.5 focus-within:border-teal/50">
-            <span className="text-2xs text-ink-faint">@</span>
+          <label className="flex items-center gap-1">
+            <span className="text-[10px] text-ink-faint">@</span>
             <span className="sr-only">Handle</span>
             <input
               value={handle}
@@ -106,77 +139,73 @@ export default function HandleCard({ address }) {
               spellCheck="false"
               autoComplete="off"
               autoFocus
-              className="w-full bg-transparent font-mono text-2xs text-navy outline-none placeholder:text-ink-faint"
+              className={`${field} font-mono`}
             />
           </label>
-          <label className="mt-1.5 block rounded-panel border border-sky bg-surface px-2 py-1.5 focus-within:border-teal/50">
-            <span className="sr-only">Company name</span>
+          <label className="mt-1.5 block">
+            <span className="sr-only">{ui.namePlaceholder}</span>
             <input
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
-              placeholder="Company name (optional)"
+              placeholder={ui.namePlaceholder}
               autoComplete="off"
-              className="w-full bg-transparent text-2xs text-navy outline-none placeholder:text-ink-faint"
+              className={field}
             />
           </label>
 
           {error ? (
-            <p role="alert" className="mt-1.5 font-serif text-2xs leading-relaxed text-state-disputed">
+            <p role="alert" className="mt-2 border-l-2 border-state-disputed pl-2 text-[10px] leading-relaxed text-state-disputed">
               {error}
             </p>
           ) : null}
 
-          <div className="mt-2 flex gap-1.5">
+          <div className="mt-2.5 flex items-center gap-3">
             <button
               type="submit"
               disabled={saving}
-              className="flex-1 cursor-pointer rounded-full border border-teal/50 bg-teal/10 py-1.5 text-2xs font-medium uppercase text-teal transition-colors duration-150 hover:bg-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
+              className="cursor-pointer text-[10px] font-semibold text-teal transition-colors hover:text-navy disabled:opacity-50"
             >
-              {saving ? "Saving…" : "Save"}
+              {saving ? ui.saving : ui.save}
             </button>
             <button
               type="button"
               onClick={() => setEditing(false)}
-              className="flex-1 cursor-pointer rounded-full border border-sky py-1.5 text-2xs uppercase text-ink-dim transition-colors duration-150 hover:border-teal/50 hover:text-navy"
+              className="cursor-pointer text-[10px] font-semibold text-ink-dim transition-colors hover:text-navy"
             >
-              Cancel
+              {ui.cancel}
             </button>
           </div>
         </form>
       ) : entry ? (
         <>
-          <p className="mt-1 flex items-center gap-1.5 font-mono text-sm font-semibold text-navy">
+          <p className="mt-1.5 flex items-center gap-1.5 font-mono text-base font-semibold text-navy">
             @{entry.handle}
             <button
               type="button"
               onClick={startEditing}
-              aria-label="Change your handle"
-              className="cursor-pointer text-ink-faint transition-colors duration-150 hover:text-navy"
+              aria-label={ui.change}
+              className="cursor-pointer text-ink-faint transition-colors hover:text-navy"
             >
               <Pencil size={11} aria-hidden="true" />
             </button>
           </p>
           {entry.displayName ? (
-            <p className="truncate text-2xs text-ink-dim">{entry.displayName}</p>
+            <p className="truncate text-[10px] text-ink-dim">{entry.displayName}</p>
           ) : null}
-          <p className="mt-1.5 font-serif text-2xs leading-relaxed text-ink-dim">
-            Counterparties can find this wallet by handle instead of typing the address.
-          </p>
+          <p className="mt-1.5 text-[10px] leading-relaxed text-ink-faint">{ui.held}</p>
         </>
       ) : loading ? null : (
         <>
-          <p className="mt-1 font-serif text-2xs leading-relaxed text-ink-dim">
-            Claim a handle so counterparties can find this wallet without typing the address.
-          </p>
+          <p className="mt-1.5 text-[10px] leading-relaxed text-ink-faint">{ui.empty}</p>
           <button
             type="button"
             onClick={startEditing}
-            className="mt-2 w-full cursor-pointer rounded-full border border-teal/50 bg-teal/10 py-1.5 text-2xs font-medium uppercase text-teal transition-colors duration-150 hover:bg-teal/20"
+            className="mt-2 cursor-pointer text-[10px] font-semibold text-teal transition-colors hover:text-navy"
           >
-            Claim a handle
+            {ui.claim}
           </button>
         </>
       )}
-    </div>
+    </section>
   );
 }

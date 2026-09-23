@@ -36,13 +36,38 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 const errors = [];
 page.on("pageerror", (err) => errors.push(String(err)));
 
-await page.goto(BASE, { waitUntil: "networkidle" });
+// The workspace is reached through company sign-in, and the workspace step
+// refuses unless the company user's registered wallet matches the one the
+// session derives. mockBackend hashes "smart-buyer@example.com", so that
+// address is deterministic — this is it.
+const API = process.env.API_URL || "http://127.0.0.1:4111";
+const CREDENTIALS = { email: "dir@stern.test", password: "Rahasia12345!" };
+const registration = await fetch(`${API}/auth/register-company`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({
+    companyName: "PT Demo Importir",
+    username: "dirimportir",
+    walletAddress: "0x736d6172742d6275796572406578616d706c652e",
+    ...CREDENTIALS
+  })
+});
+if (!registration.ok && registration.status !== 409) {
+  console.log(`  note  registration returned ${registration.status}: ${(await registration.text()).slice(0, 200)}`);
+}
 
-// Mock auth: no Particle credentials in this build, so "Sign in to continue"
-// produces a session without a wallet popup.
+await page.goto(BASE, { waitUntil: "networkidle" });
 await page.getByRole("button", { name: "Access workspace" }).first().click();
-await page.getByRole("button", { name: /sign in to continue/i }).click();
-await page.waitForTimeout(1500);
+await page.waitForTimeout(2500);
+await page.locator('input[name="email"]').fill(CREDENTIALS.email);
+await page.locator('input[name="password"]').fill(CREDENTIALS.password);
+await page.getByRole("button", { name: /^continue$/i }).click();
+await page.waitForTimeout(2000);
+await page
+  .getByRole("button", { name: /continue to workspace|continue with google, apple/i })
+  .first()
+  .click();
+await page.waitForTimeout(2500);
 
 // --- the claim card in the sidebar ----------------------------------------
 //

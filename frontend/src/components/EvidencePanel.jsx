@@ -838,7 +838,9 @@ function CustomsCard({ customs, busy, onAttach }) {
                   setFiles({});
                 }
               }}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-teal/50 bg-teal/10 px-3 py-1.5 font-mono text-2xs uppercase text-teal transition-colors duration-150 hover:bg-teal/20 disabled:cursor-not-allowed disabled:opacity-50"
+              /* Same shape as the rehearse button above it: outlined at rest,
+                 filling only on hover. */
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-teal/50 px-3 py-1.5 font-mono text-2xs uppercase text-teal transition-colors duration-150 hover:bg-teal/10 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {busy ? <Loader2 size={11} className="animate-spin" aria-hidden="true" /> : null}
               {busy ? "Pinning…" : "Pin to IPFS"}
@@ -872,7 +874,11 @@ function CustomsCard({ customs, busy, onAttach }) {
       <div className="mt-4 rounded-panel border border-state-pending/40 bg-state-pending/[0.07] px-3.5 py-2.5">
         <div className="flex items-start justify-between gap-3">
           <p className="font-mono text-2xs uppercase text-state-pending">Customs documents</p>
-          <span className="shrink-0 rounded-full bg-state-pending/10 px-2.5 py-1 font-mono text-2xs uppercase text-state-pending">
+          {/* Dot and text, not a tinted pill: this rail states every verdict
+              that way now, and a pill inside a pill-free column reads as
+              something pasted in from another screen. */}
+          <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-2xs uppercase text-state-pending">
+            <span className="h-1.5 w-1.5 rounded-full bg-state-pending" aria-hidden="true" />
             Not attached
           </span>
         </div>
@@ -906,12 +912,16 @@ function CustomsCard({ customs, busy, onAttach }) {
       <div className="flex items-start justify-between gap-3">
         <p className="font-mono text-2xs uppercase text-ink-faint">Customs documents on IPFS</p>
         <span
-          className={`shrink-0 rounded-full px-2.5 py-1 font-mono text-2xs uppercase ${
-            customs.valid
-              ? "bg-state-attested/10 text-state-attested"
-              : "bg-state-disputed/10 text-state-disputed"
+          className={`inline-flex shrink-0 items-center gap-1.5 font-mono text-2xs uppercase ${
+            customs.valid ? "text-state-attested" : "text-state-disputed"
           }`}
         >
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${
+              customs.valid ? "bg-state-attested" : "bg-state-disputed"
+            }`}
+            aria-hidden="true"
+          />
           {customs.valid ? "Verified" : customs.available === false ? "Unavailable" : "Unverified"}
         </span>
       </div>
@@ -935,10 +945,8 @@ function CustomsCard({ customs, busy, onAttach }) {
           {checkRows.map((row) => (
             <li
               key={row.key}
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-2xs uppercase ${
-                row.passed
-                  ? "bg-state-attested/10 text-state-attested"
-                  : "bg-state-disputed/10 text-state-disputed"
+              className={`inline-flex items-center gap-1.5 text-2xs uppercase ${
+                row.passed ? "text-state-attested" : "text-state-disputed"
               }`}
             >
               {row.passed ? <Check size={10} aria-hidden="true" /> : <X size={10} aria-hidden="true" />}
