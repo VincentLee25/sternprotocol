@@ -10,6 +10,19 @@ import { particleEnabled } from "./particle.js";
 import { createSternSmartAccount, gaslessConfigured } from "./smartAccount.js";
 import { signOut as mockSignOut } from "./mockBackend.js";
 
+const PARTICLE_RESTORE_RETRY_MS = 300;
+const PARTICLE_NOT_READY = /current wallet is not a particle wallet|particle is not initialized/i;
+
+function readParticleUserInfo(fallback) {
+  // ConnectKit's hook captures `window.particle` at render time. During a
+  // browser restore its first render can happen before that runtime attaches,
+  // leaving the captured method permanently stale even after Particle is ready.
+  // Read the live runtime first, then retain the hook as the normal fallback.
+  const internal = typeof window === "undefined" ? null : window.particle?._internal;
+  if (typeof internal?.getUserInfo === "function") return internal.getUserInfo();
+  return fallback();
+}
+
 // Status the UI switches on. Deliberately not the same vocabulary as Particle's:
 // "loading" folds together two different waits that look identical to a user
 // (restoring a session, and deriving the smart account address).
@@ -31,6 +44,7 @@ function useParticleAuth() {
   const [user, setUser] = useState(null);
   const [particleIdentity, setParticleIdentity] = useState(null);
   const [error, setError] = useState("");
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
   // permissionless SmartAccountClient. Null until the Safe is built, and stays
   // null when no Pimlico key is configured — the address still resolves.
   const [smartAccountClient, setSmartAccountClient] = useState(null);
@@ -49,15 +63,19 @@ function useParticleAuth() {
 
     (async () => {
       try {
+        // Check Particle first. Safe derivation touches the RPC, so it must not
+        // run repeatedly while ConnectKit is still restoring its own session.
+        const info = readParticleUserInfo(getUserInfoRef.current);
+        if (!info?.uuid || !info?.token) {
+          throw new Error("Particle is still restoring your sign-in session.");
+        }
+
         // The Safe address is derived asynchronously and is NOT account.address
         // — that one is the social-login EOA that owns the Safe.
         const walletClient = primaryWallet.getWalletClient();
         const { address: smartAccountAddress, client } = await createSternSmartAccount(walletClient);
         if (cancelled) return;
         setSmartAccountClient(client);
-
-        const info = getUserInfoRef.current();
-        if (!info?.uuid || !info?.token) throw new Error("Particle could not provide a verified sign-in session. Please reconnect.");
 
         const identityKey = `${info.uuid}:${smartAccountAddress.toLowerCase()}`;
         if (registeredFor.current === identityKey) return;
@@ -74,6 +92,15 @@ function useParticleAuth() {
         setError("");
       } catch (err) {
         if (cancelled) return;
+        // Particle can report a connected wallet before its browser runtime is
+        // attached. Keep the saved STERN session in place and retry that brief
+        // initialization window instead of forcing an unnecessary sign-in.
+        if (PARTICLE_NOT_READY.test(String(err?.message)) || /still restoring your sign-in session/i.test(String(err?.message))) {
+          window.setTimeout(() => {
+            if (!cancelled) setRestoreAttempt((attempt) => attempt + 1);
+          }, PARTICLE_RESTORE_RETRY_MS);
+          return;
+        }
         registeredFor.current = null;
         setError(err?.message || "Could not finish signing you in.");
       }
@@ -82,7 +109,7 @@ function useParticleAuth() {
     return () => {
       cancelled = true;
     };
-  }, [connected, primaryWallet, account.address, account.connector]);
+  }, [connected, primaryWallet, account.address, account.connector, restoreAttempt]);
 
   useEffect(() => {
     if (account.status === "disconnected") {
@@ -90,6 +117,7 @@ function useParticleAuth() {
       setUser(null);
       setParticleIdentity(null);
       setSmartAccountClient(null);
+      setRestoreAttempt(0);
     }
   }, [account.status]);
 
@@ -101,7 +129,7 @@ function useParticleAuth() {
 
   const refreshParticleIdentity = useCallback(() => {
     if (!connected || !user?.smartAccountAddress) throw new Error("Connect with Particle before checking company access.");
-    const info = getUserInfoRef.current();
+    const info = readParticleUserInfo(getUserInfoRef.current);
     if (!info?.uuid || !info?.token) throw new Error("Particle session expired. Reconnect your account to continue.");
     if (particleIdentity?.uuid && particleIdentity.uuid !== info.uuid) {
       throw new Error("Particle account changed. Reconnect before accessing a STERN company.");
