@@ -201,8 +201,14 @@ export const pinEblDocument = ({ fileName, contentBase64, containerRef }) =>
  * The gateway builds the manifest from the bytes it pinned. This sends files
  * and a declared quantity, never a manifest.
  */
-export const pinManifest = ({ containerRef, commodity, quantity, documents }) =>
-  request("/ipfs/manifest", { method: "POST", body: { containerRef, commodity, quantity, documents } });
+export const pinManifest = ({ containerRef, commodity, quantity, documents, clauses }) =>
+  request("/ipfs/manifest", {
+    method: "POST",
+    // Clauses ride along with the documents for the same reason: the manifest is
+    // the only thing whose address reaches the chain, so a clause that is not in
+    // it is a clause someone could have added after the goods shipped.
+    body: { containerRef, commodity, quantity, documents, ...(clauses?.length ? { clauses } : {}) }
+  });
 
 /** The units and document slots the gateway accepts, so the form need not guess. */
 export const getManifestSchema = ({ signal } = {}) => request("/ipfs/manifest/schema", { signal });
@@ -221,6 +227,62 @@ export const getCustomsDocuments = (escrowId, { containerRef, signal } = {}) =>
     `/customs/${escrowId}${containerRef ? `?containerRef=${encodeURIComponent(containerRef)}` : ""}`,
     { signal }
   );
+
+// --- interpretive clauses ----------------------------------------------------
+//
+// The clauses a feed cannot judge: "layak jual", "fit for ocean carriage". They
+// are declared when the escrow is created, so their text is inside the pinned
+// manifest and cannot be edited afterwards; the verdicts are written later by
+// the named reviewer. Until a required clause has a verdict with a written
+// reason behind it, the gateway refuses to submit the milestone it governs.
+
+/** The verdicts, the milestones a clause may hang on, and the minimum reasoning length. */
+export const getClauseSchema = ({ signal } = {}) => request("/clauses/schema", { signal });
+
+/** Declared clauses joined to their reviews, and what that means per milestone. */
+export const getClauses = (escrowId, { signal } = {}) => request(`/clauses/${escrowId}`, { signal });
+
+/**
+ * Records a reviewer's verdict.
+ *
+ * Not behind the internal key, deliberately: the reviewer is a named human
+ * using a browser, and that key must never reach one. The reviewer's address is
+ * sent, and the panel shows whose address the clause named.
+ */
+export const reviewClause = (escrowId, clauseId, { verdict, reasoning, reviewedBy }) =>
+  request(`/clauses/${escrowId}/${clauseId}/review`, {
+    method: "POST",
+    body: { verdict, reasoning, reviewedBy }
+  });
+
+// --- post-dispute negotiation ------------------------------------------------
+//
+// A raised dispute freezes the escrow and leaves the arbiter one binary choice.
+// This is what the two parties can do before that: exchange concrete proposals
+// and, if they agree, hand the arbiter their own settlement to execute.
+
+/** The whole thread: proposals, the agreement if any, and what the chain can execute. */
+export const getNegotiation = (escrowId, { signal } = {}) =>
+  request(`/negotiation/${escrowId}`, { signal });
+
+/**
+ * Posts a proposal. `splitToExporterBps` only for outcome "split" — 8500 is 85%
+ * to the exporter. The gateway checks against the chain that `by` really is a
+ * party to this escrow.
+ */
+export const proposeSettlement = (escrowId, { by, outcome, splitToExporterBps, note }) =>
+  request(`/negotiation/${escrowId}/propose`, {
+    method: "POST",
+    body: { by, outcome, note, ...(outcome === "split" ? { splitToExporterBps } : {}) }
+  });
+
+/** The counterparty accepts. Returns the pinned agreement and what the arbiter can do with it. */
+export const acceptSettlement = (escrowId, proposalId, { by }) =>
+  request(`/negotiation/${escrowId}/accept/${proposalId}`, { method: "POST", body: { by } });
+
+/** Either party can withdraw an agreement to renegotiate. The withdrawn one stays in the record. */
+export const withdrawSettlement = (escrowId, { by }) =>
+  request(`/negotiation/${escrowId}/withdraw`, { method: "POST", body: { by } });
 
 /** The verdict on a CID: does it resolve, do the bytes hash back to it, is it this e-BL. */
 export const verifyEblCid = (cid, { containerRef, signal } = {}) =>

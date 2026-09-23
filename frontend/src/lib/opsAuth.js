@@ -212,6 +212,78 @@ export async function resolveDisputeAsArbiter(escrowId, decision) {
   return { transactionHash: hash };
 }
 
+const AGREEMENT_ABI = [
+  {
+    type: "function",
+    name: "resolveDisputeByAgreement",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "escrowId", type: "uint256" },
+      { name: "amountToExporter", type: "uint256" },
+      { name: "agreementCid", type: "string" }
+    ],
+    outputs: []
+  }
+];
+
+/**
+ * Executes the split the two parties negotiated themselves.
+ *
+ * The arbiter signs, but the arbiter did not pick the number: it comes from the
+ * agreement both parties accepted and which the gateway pinned. That is why the
+ * CID is required here as well — the payout has to be auditable against a
+ * document rather than against the arbiter's word.
+ *
+ * `resolveDispute` cannot do this: it takes a bool, so it can only release
+ * everything or refund everything. A deployment made before
+ * `resolveDisputeByAgreement` existed will revert, which is reported as what it
+ * is rather than as an unexplained failure.
+ */
+export async function settleByAgreementAsArbiter(escrowId, { amountToExporter, agreementCid }) {
+  if (!session?.walletClient) {
+    throw new Error("The ops session is closed. Enter the arbiter key again.");
+  }
+  if (!ESCROW_ADDRESS) {
+    throw new Error("VITE_CONTRACT_ADDRESS is not set, so there is no contract to call.");
+  }
+
+  const cid = String(agreementCid || "").trim();
+  if (!cid) {
+    throw new Error(
+      "The agreement has no CID, so there is no document the payout could be checked against."
+    );
+  }
+
+  let amount;
+  try {
+    amount = BigInt(amountToExporter);
+  } catch {
+    throw new Error("The agreed amount is not a whole number of token units.");
+  }
+  if (amount <= 0n) {
+    throw new Error(
+      "A zero share is not a split. Use Refund importer, which also decides the bond and any slashing."
+    );
+  }
+
+  const hash = await session.walletClient.writeContract({
+    address: ESCROW_ADDRESS,
+    abi: AGREEMENT_ABI,
+    functionName: "resolveDisputeByAgreement",
+    args: [BigInt(escrowId), amount, cid]
+  });
+
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") {
+    throw new Error(
+      "The transaction was included but reverted. Either this address is not the appointed " +
+        "arbiter, the dispute is no longer open, or the deployed contract predates " +
+        "resolveDisputeByAgreement and cannot settle a split at all."
+    );
+  }
+  return { transactionHash: hash };
+}
+
 /** Escrows where this ops address is the appointed arbiter. */
 export function arbitratedBy(escrows = [], address) {
   if (!address) return [];

@@ -1021,6 +1021,9 @@ async function verifyManifestDocument({ manifest, trimmed, bytes, gateway, url, 
         commodity: manifest.commodity || null,
         quantity,
         quantityCheck,
+        // Read back out of the pinned bytes, not from any store: the clauses a
+        // person is judged against have to be the ones the CID commits to.
+        clauses: Array.isArray(manifest.clauses) ? manifest.clauses : [],
         createdAt: manifest.createdAt || null,
         // `text` is dropped: it is the whole PDF, and this payload is served to
         // a browser on every evidence read.

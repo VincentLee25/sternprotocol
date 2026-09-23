@@ -116,7 +116,7 @@ function checkFile(file, label) {
  * lading names the container this escrow is about — a valid bill of lading for
  * somebody else's shipment is not evidence for this one.
  */
-export async function pinDocumentSet(files, { containerRef, commodity, quantity } = {}) {
+export async function pinDocumentSet(files, { containerRef, commodity, quantity, clauses } = {}) {
   const { pinManifest, apiConfigured } = await import("./sternApi.js");
   if (!apiConfigured) apiNotConfigured();
 
@@ -145,10 +145,15 @@ export async function pinDocumentSet(files, { containerRef, commodity, quantity 
   );
   const localDigests = Object.fromEntries(encoded.map(([key, value]) => [key, value.sha256]));
 
-  const pinned = await pinManifest({ containerRef, commodity, quantity, documents });
+  // Clauses go in here rather than being attached to the escrow afterwards.
+  // `documentCid` is written once in _createEscrow and has no setter, so the
+  // manifest is the only thing whose address reaches the chain — and a clause
+  // outside it would be a term someone could add after the goods shipped.
+  const pinned = await pinManifest({ containerRef, commodity, quantity, documents, clauses });
 
   return {
     cid: pinned.cid,
+    clauses: pinned.clauses || [],
     // True when the gateway recomputed the same CID from the bytes it
     // uploaded. It is the difference between "the pinning service told us this
     // address" and "we checked the address ourselves".

@@ -5,6 +5,7 @@ const { getMockStatus, setSimulation, clearSimulation } = require("./oracleServi
 const {
   submitMilestoneProof,
   resolveDispute,
+  resolveDisputeByAgreement,
   getOracleIdentity,
   getOracleStatus,
   getOnchainEvidence,
@@ -36,6 +37,8 @@ const {
   MAX_DOCUMENT_BYTES
 } = require("./ipfsService");
 const manifests = require("./manifestService");
+const clauses = require("./clauseService");
+const negotiation = require("./negotiationService");
 
 const app = express();
 app.set("trust proxy", 1);
@@ -391,7 +394,12 @@ app.post("/ipfs/manifest", async (req, res, next) => {
         containerRef: body.containerRef,
         commodity: body.commodity,
         quantity: body.quantity,
-        documents: body.documents
+        documents: body.documents,
+        // The interpretive clauses, if this escrow declares any. They belong in
+        // the manifest rather than in a store beside it: the manifest's CID is
+        // the only thing that reaches the chain, so a clause outside it could be
+        // introduced after the goods shipped.
+        clauses: body.clauses
       }))
     });
   } catch (error) { next(error); }
@@ -463,6 +471,75 @@ app.get("/customs/:escrowId", async (req, res, next) => {
 
     res.json({ attached: true, ...record, verification, history: manifests.customsHistory(req.params.escrowId).slice(1) });
   } catch (error) { next(error); }
+});
+
+// --- interpretive clauses ----------------------------------------------------
+//
+// Terms a feed cannot settle. The clause TEXT is in the pinned creation
+// manifest and is not writable here; only the reviews are. See
+// clauseService.js for why the two are stored apart.
+
+app.get("/clauses/schema", (_req, res) => {
+  res.json({
+    verdicts: clauses.VERDICTS,
+    milestones: clauses.MILESTONES,
+    minReasoning: clauses.MIN_REASONING,
+    note: "Klausul dideklarasikan saat escrow dibuat, lewat POST /ipfs/manifest, dan ikut ter-pin di manifest. Tidak bisa diubah setelah itu."
+  });
+});
+
+app.get("/clauses/:escrowId", async (req, res, next) => {
+  try {
+    // The declared clauses come from the escrow's own manifest on IPFS, so
+    // this reads the document rather than trusting a store.
+    const { getEscrow } = require("./contractService");
+    let declared = [];
+    try {
+      const escrow = await getEscrow(req.params.escrowId);
+      const verdict = await verifyDocumentCached(escrow.documentCid, { containerRef: escrow.containerRef });
+      declared = verdict?.manifest?.clauses || [];
+    } catch {
+      // No chain or no manifest: report no clauses rather than failing the read.
+      declared = [];
+    }
+    res.json(clauses.assess(req.params.escrowId, declared));
+  } catch (error) { next(error); }
+});
+
+// Not behind requireInternalApiKey: the reviewer is a named human (the arbiter
+// or a nominated surveyor), not this gateway's operator, and that key must
+// never reach a browser. What stands in for authorisation is that the verdict
+// records WHO signed it and refuses to be recorded without a written reason —
+// see the note in clauseService.js. A production deployment would additionally
+// require a signature from the reviewer's own wallet.
+app.post("/clauses/:escrowId/:clauseId/review", async (req, res, next) => {
+  try {
+    res.json(await clauses.review(req.params.escrowId, req.params.clauseId, req.body || {}));
+  } catch (error) { next(error); }
+});
+
+// --- post-dispute negotiation ------------------------------------------------
+//
+// The contract freezes a disputed escrow and gives the arbiter one binary
+// choice. This lets the two parties agree on something more precise first, and
+// says plainly when the deployed contract cannot execute what they agreed.
+
+app.get("/negotiation/:escrowId", async (req, res, next) => {
+  try { res.json(await negotiation.forEscrow(req.params.escrowId)); } catch (error) { next(error); }
+});
+
+app.post("/negotiation/:escrowId/propose", async (req, res, next) => {
+  try { res.json(await negotiation.propose(req.params.escrowId, req.body || {})); } catch (error) { next(error); }
+});
+
+app.post("/negotiation/:escrowId/accept/:proposalId", async (req, res, next) => {
+  try {
+    res.json(await negotiation.accept(req.params.escrowId, req.params.proposalId, req.body || {}));
+  } catch (error) { next(error); }
+});
+
+app.post("/negotiation/:escrowId/withdraw", async (req, res, next) => {
+  try { res.json(await negotiation.withdraw(req.params.escrowId, req.body || {})); } catch (error) { next(error); }
 });
 
 // The verdict on a CID: does it resolve, do the bytes hash back to it, and is
@@ -668,6 +745,16 @@ app.post("/milestones/:contractId/submit", requireInternalApiKey, async (req, re
 app.post("/resolve-dispute/:contractId", requireInternalApiKey, async (req, res, next) => {
   try {
     const result = await resolveDispute(req.params.contractId, req.body || {});
+    res.json({ contractId: req.params.contractId, result });
+  } catch (error) { next(error); }
+});
+
+// Executes the split the parties negotiated. Behind the internal key like every
+// other arbiter action: the parties agree, the arbiter signs, and the amount is
+// read from the pinned agreement rather than from this request body.
+app.post("/resolve-dispute/:contractId/by-agreement", requireInternalApiKey, async (req, res, next) => {
+  try {
+    const result = await resolveDisputeByAgreement(req.params.contractId, req.body || {});
     res.json({ contractId: req.params.contractId, result });
   } catch (error) { next(error); }
 });

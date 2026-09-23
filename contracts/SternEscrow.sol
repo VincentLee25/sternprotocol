@@ -84,6 +84,10 @@ contract SternEscrow is AccessControl, Pausable, ReentrancyGuard {
         address resolvedVerifier;
         string reasoningCid;
         bool releaseToExporter;
+        // Zero unless the dispute ended in a negotiated split. `releaseToExporter`
+        // is a bool and cannot say "85% of it", so a split records the amount here
+        // and leaves the bool false. Read this field before trusting the bool.
+        uint256 settledToExporter;
     }
 
     IERC20 public immutable idrtToken;
@@ -132,6 +136,12 @@ contract SternEscrow is AccessControl, Pausable, ReentrancyGuard {
         bool releasedToExporter,
         string reasoningCid,
         bool verifierSlashed
+    );
+    event DisputeSettledByAgreement(
+        uint256 indexed escrowId,
+        uint256 amountToExporter,
+        uint256 amountToImporter,
+        string agreementCid
     );
     event VerifierSlashed(
         uint256 indexed escrowId,
@@ -379,7 +389,8 @@ contract SternEscrow is AccessControl, Pausable, ReentrancyGuard {
             disputedMilestone: contestedMilestone,
             resolvedVerifier: address(0),
             reasoningCid: "",
-            releaseToExporter: false
+            releaseToExporter: false,
+            settledToExporter: 0
         });
         escrow.state = State.Disputed;
 
@@ -460,6 +471,69 @@ contract SternEscrow is AccessControl, Pausable, ReentrancyGuard {
         }
 
         emit DisputeResolved(escrowId, releaseToExporter, reasoningCid, slashVerifier);
+    }
+
+    /// @notice Settle a dispute on the split the two parties negotiated themselves.
+    /// @dev `resolveDispute` is binary: it either releases everything or refunds
+    /// everything. Real trade disputes are rarely binary — a cargo that arrived
+    /// three days late with 4% moisture damage is worth less than the contract
+    /// value and more than nothing. Without this function the parties can agree
+    /// on 85/15 and the chain still cannot express it, so the arbiter has to pick
+    /// the nearest whole outcome and one side eats the difference. That is the
+    /// gap this closes.
+    ///
+    /// The arbiter still sends the transaction. Not because the arbiter decides
+    /// the number — the parties did that — but because the agreement itself lives
+    /// off chain, and letting either party alone execute "the agreement" would let
+    /// them execute one that was never agreed. `agreementCid` pins the signed
+    /// terms both sides accepted, so the split is auditable against a document
+    /// rather than against the arbiter's word.
+    ///
+    /// No verifier is slashed here. A negotiated settlement is not a finding that
+    /// a verifier lied, and the dispute bond goes back to whoever raised the
+    /// dispute: they did not act frivolously, they got an outcome.
+    function resolveDisputeByAgreement(
+        uint256 escrowId,
+        uint256 amountToExporter,
+        string calldata agreementCid
+    ) external whenNotPaused nonReentrant escrowExists(escrowId) {
+        Escrow storage escrow = escrows[escrowId];
+        DisputeRecord storage dispute = disputes[escrowId];
+        require(msg.sender == escrow.arbiter, "only arbiter");
+        require(escrow.state == State.Disputed && dispute.open, "escrow not disputed");
+        require(bytes(agreementCid).length > 0, "agreement CID required");
+
+        uint256 total = escrow.contractValue;
+        // Strictly a split. The two ends are `resolveDispute`, which also carries
+        // the slashing and frivolous-bond decisions; routing a whole release
+        // through here would silently skip both.
+        require(amountToExporter > 0 && amountToExporter < total, "not a split");
+
+        uint256 amountToImporter = total - amountToExporter;
+        uint256 disputeBond = dispute.bondAmount;
+
+        escrow.contractValue = 0;
+        escrow.state = State.Completed;
+        _clearPendingExtension(escrowId);
+
+        dispute.bondAmount = 0;
+        dispute.open = false;
+        dispute.reasoningCid = agreementCid;
+        dispute.releaseToExporter = false;
+        dispute.settledToExporter = amountToExporter;
+
+        idrtToken.safeTransfer(escrow.exporter, amountToExporter);
+        idrtToken.safeTransfer(escrow.importer, amountToImporter);
+        if (disputeBond > 0) {
+            idrtToken.safeTransfer(dispute.raisedBy, disputeBond);
+        }
+
+        emit DisputeSettledByAgreement(
+            escrowId,
+            amountToExporter,
+            amountToImporter,
+            agreementCid
+        );
     }
 
     function getEscrow(uint256 escrowId) external view escrowExists(escrowId) returns (EscrowView memory) {

@@ -190,8 +190,11 @@ async function pinSlots(slots, documents) {
  * for the screen: the per-document CIDs so each can be opened, and the
  * quantity as the manifest recorded it.
  */
-async function pinEscrowManifest({ containerRef, commodity, quantity, documents } = {}) {
+async function pinEscrowManifest({ containerRef, commodity, quantity, documents, clauses } = {}) {
   const normalisedQuantity = normaliseQuantity(quantity);
+  // Validated before anything is pinned: after pinning, the text is addressed
+  // by a CID that goes on chain and cannot be corrected.
+  const normalisedClauses = require("./clauseService").normaliseClauses(clauses);
   const pinned = await pinSlots(ESCROW_SLOTS, documents);
 
   const manifest = {
@@ -200,6 +203,9 @@ async function pinEscrowManifest({ containerRef, commodity, quantity, documents 
     containerRef: String(containerRef || "").trim() || null,
     commodity: String(commodity || "").trim() || null,
     quantity: normalisedQuantity,
+    // The terms a person has to judge, anchored from the start. This is what
+    // stops a convenient clause being added after the goods have shipped.
+    ...(normalisedClauses.length ? { clauses: normalisedClauses } : {}),
     documents: Object.fromEntries(
       Object.entries(pinned).map(([name, doc]) => [
         name,
@@ -222,6 +228,7 @@ async function pinEscrowManifest({ containerRef, commodity, quantity, documents 
     sha256: manifestPin.sha256,
     manifest,
     documents: pinned,
+    clauses: normalisedClauses,
     pinnedAt: manifestPin.pinnedAt
   };
 }

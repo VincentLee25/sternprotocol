@@ -106,6 +106,12 @@ function toRow(detail, activity, source) {
     commodity: detail.commodity,
     containerRef: detail.containerRef,
     value: detail.value,
+    // The same figure in the token's smallest unit, plus its scale. A share of
+    // the escrow value has to be computed there — a percentage of a formatted
+    // decimal string loses the cents and then the two parties are agreeing on
+    // different numbers.
+    contractValue: detail.contractValue ?? null,
+    decimals: detail.decimals ?? 2,
     cid: detail.documentCid,
     deadline: detail.globalDeadline,
     createdAt: detail.createdAt,

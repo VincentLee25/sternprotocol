@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, ArrowLeft, KeyRound, Loader2, LogOut, ShieldCheck } from "lucide-react";
-import { closeOpsSession, getOpsSession, openOpsSession, arbitratedBy, resolveDisputeAsArbiter } from "../lib/opsAuth.js";
+import {
+  closeOpsSession,
+  getOpsSession,
+  openOpsSession,
+  arbitratedBy,
+  resolveDisputeAsArbiter,
+  settleByAgreementAsArbiter
+} from "../lib/opsAuth.js";
 import TxLink from "../components/TxLink.jsx";
 import { loadEscrowRows, sourceIsLive } from "../lib/escrowSource.js";
-import { getOracleStatus, getVerifiers } from "../lib/sternApi.js";
+import { getNegotiation, getOracleStatus, getVerifiers } from "../lib/sternApi.js";
 import { shortAddress } from "../lib/actors.js";
 import { CURRENCY_LABEL } from "../lib/currency.js";
 import { useLanguage } from "../lib/language.jsx";
@@ -311,6 +318,48 @@ function ResolveCard({ escrow, onResolved }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(null);
+  // What the two parties agreed between themselves, if they did. The arbiter
+  // should see it before imposing a decision — that is the whole point of
+  // letting them negotiate.
+  const [agreement, setAgreement] = useState(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getNegotiation(escrow.id, { signal: controller.signal })
+      .then((thread) => setAgreement(thread?.agreement || null))
+      // A gateway without the negotiation routes, or none configured at all, is
+      // not an error here: this card's own job is the binary decision.
+      .catch(() => {});
+    return () => controller.abort();
+  }, [escrow.id]);
+
+  async function executeAgreement() {
+    setBusy(true);
+    setError("");
+    try {
+      const res =
+        agreement.outcome === "split"
+          ? await settleByAgreementAsArbiter(escrow.id, {
+              amountToExporter: agreement.amountToExporter,
+              agreementCid: agreement.cid
+            })
+          : await resolveDisputeAsArbiter(escrow.id, {
+              // The parties' own document is the reasoning. Nothing the arbiter
+              // writes here would be more authoritative than what both of them
+              // already signed.
+              releaseToExporter: agreement.outcome === "release_to_exporter",
+              reasoningCid: agreement.cid,
+              slashVerifier: false,
+              bondFrivolous: false
+            });
+      setDone({ ...res, agreed: true });
+      await onResolved?.();
+    } catch (err) {
+      setError(err?.shortMessage || err?.message || "The agreement could not be executed.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submit() {
     setBusy(true);
@@ -335,7 +384,9 @@ function ResolveCard({ escrow, onResolved }) {
     return (
       <li className="rounded-panel border border-state-attested/40 bg-state-attested/10 px-4 py-3">
         <p className="font-serif text-sm text-state-attested">
-          {t("Resolved. Funds went to the {party}.", { party: t(releaseToExporter ? "exporter" : "importer") })}
+          {done.agreed
+            ? t("Settled on the agreement the parties reached themselves.")
+            : t("Resolved. Funds went to the {party}.", { party: t(releaseToExporter ? "exporter" : "importer") })}
         </p>
         <span className="mt-1 block"><TxLink hash={done.transactionHash} /></span>
       </li>
@@ -350,8 +401,57 @@ function ResolveCard({ escrow, onResolved }) {
         {Number(escrow.value).toLocaleString("id-ID")} {CURRENCY_LABEL}
       </p>
 
+      {/* The parties' own settlement, offered first.
+          An arbiter who imposes a binary outcome over an agreement both sides
+          already signed has overruled them for no reason, so this sits above
+          the decision rather than beside it. A split the deployed contract
+          cannot execute says so instead of offering a button that reverts. */}
+      {agreement ? (
+        <div className="mt-3.5 rounded-panel border border-teal/40 bg-teal/[0.06] px-3 py-3">
+          <p className="font-mono text-2xs uppercase text-teal">
+            {t("The parties agreed")} · {new Date(agreement.agreedAt).toLocaleString("id-ID")}
+          </p>
+          <p className="mt-1 font-serif text-xs leading-relaxed text-navy">
+            {agreement.outcome === "split"
+              ? t("Split — {amount} {currency} to the exporter, the rest back to the importer.", {
+                  amount: (
+                    Number(agreement.amountToExporter) / 10 ** Number(escrow.decimals ?? 2)
+                  ).toLocaleString("id-ID"),
+                  currency: CURRENCY_LABEL
+                })
+              : t(
+                  agreement.outcome === "release_to_exporter"
+                    ? "Release the full value to the exporter."
+                    : "Refund the full value to the importer."
+                )}
+          </p>
+          <p className="mt-1 font-serif text-xs leading-relaxed text-ink-dim">{agreement.note}</p>
+          <p className="mt-1 truncate font-mono text-2xs text-ink-faint" title={agreement.cid || ""}>
+            {agreement.cid || t("not pinned — no document to settle against")}
+          </p>
+          {agreement.executable && agreement.cid ? (
+            <button
+              type="button"
+              onClick={executeAgreement}
+              disabled={busy}
+              className="mt-2.5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-panel bg-teal-solid py-2.5 text-xs font-medium text-beige transition-colors duration-150 hover:bg-navy disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {busy ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : null}
+              {t(busy ? "Signing with your key…" : "Execute their agreement")}
+            </button>
+          ) : (
+            <p className="mt-2 font-serif text-xs leading-relaxed text-state-pending">
+              {agreement.blockedReason ||
+                t("This agreement has no pinned document, so it cannot be settled against one.")}
+            </p>
+          )}
+        </div>
+      ) : null}
+
       <fieldset className="mt-3.5">
-        <legend className="text-2xs uppercase text-ink-faint">{t("Where the escrow value goes")}</legend>
+        <legend className="text-2xs uppercase text-ink-faint">
+          {t(agreement ? "Or decide it yourself" : "Where the escrow value goes")}
+        </legend>
         <div className="mt-2 grid grid-cols-2 gap-2">
           {[
             { v: false, label: "Refund importer" },

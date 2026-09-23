@@ -313,6 +313,14 @@ async function getMockStatus(contractId, options = {}) {
   ]);
   const document = documentContext(ipfs, escrow, customs);
 
+  // The interpretive clauses, judged against the reviews recorded for them.
+  //
+  // The clause TEXT comes out of the pinned manifest that `ipfs` just read
+  // back — never from a store — so what a reviewer is held to is what the CID
+  // on chain commits to. An escrow that declared none is reported as
+  // `declared: false` and behaves exactly as it did before clauses existed.
+  const clauses = require("./clauseService").assess(contractId, ipfs?.manifest?.clauses || []);
+
   const sources = {
     vgm: getVgmData(
       contractId,
@@ -360,7 +368,16 @@ async function getMockStatus(contractId, options = {}) {
     // clearance, and `customsDocsCheckable` is what stops it blocking.
     customsDocsValid: customs.attached ? customs.valid === true : null,
     customsDocsCheckable: customs.attached === true && customs.available !== false,
-    customsDocsAttached: customs.attached === true
+    customsDocsAttached: customs.attached === true,
+    // Per milestone, because a clause governs one condition. `clausesBlock`
+    // names which milestones a person still has to answer for — the gateway
+    // refuses those proofs, and only those.
+    clausesDeclared: clauses.declared,
+    clausesBlock: {
+      inspected: clauses.milestones.inspected.blocked,
+      shipped: clauses.milestones.shipped.blocked,
+      arrived_cleared: clauses.milestones.arrived_cleared.blocked
+    }
   };
   // Each reading now states the shipment it is about, taken from the bill of
   // lading, so a discrepancy reads as a fact about this trade rather than a
@@ -493,6 +510,10 @@ async function getMockStatus(contractId, options = {}) {
     // escrows are in. The screen needs to say which of the three is missing,
     // which a boolean in `verification` cannot.
     customs,
+    // The clause block as its own section: "a person has not answered yet" is
+    // the normal state early on, and a boolean in `verification` cannot say
+    // which clause, who owes the answer, or what the clause actually says.
+    clauses,
     oracleAction: allVerified ? "submit_milestone" : "do_not_submit",
     note: allVerified
       ? "All configured automated checks passed."

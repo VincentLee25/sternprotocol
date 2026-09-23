@@ -59,6 +59,14 @@ const config = {
   // — but losing the file loses the link between an escrow and its clearance,
   // so this also needs a persistent volume.
   customsStoreFile: process.env.CUSTOMS_STORE_FILE || path.resolve(__dirname, "../data/customs.json"),
+  // Reviews of interpretive clauses. The clause TEXT is in the pinned creation
+  // manifest and cannot move; only the verdicts live here, so losing this file
+  // loses the reviews and the affected milestones go back to being blocked
+  // pending a review — which is the safe direction to fail.
+  clauseStoreFile: process.env.CLAUSE_STORE_FILE || path.resolve(__dirname, "../data/clauses.json"),
+  // Post-dispute settlement proposals between the two parties. Same volume
+  // requirement as the stores above.
+  negotiationStoreFile: process.env.NEGOTIATION_STORE_FILE || path.resolve(__dirname, "../data/negotiations.json"),
   authTokenSecret: process.env.AUTH_TOKEN_SECRET,
   particleProjectId: process.env.PARTICLE_PROJECT_ID || process.env.VITE_PARTICLE_PROJECT_ID || "",
   particleServerKey: process.env.PARTICLE_SERVER_KEY || "",

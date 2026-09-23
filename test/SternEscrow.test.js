@@ -211,6 +211,70 @@ describe("SternEscrow phase 0", function () {
     expect(await ctx.escrow.verifierSlashCount(ctx.quality.address)).to.equal(0);
   });
 
+  it("settles a disputed escrow on a negotiated split", async function () {
+    const ctx = await deployFixture();
+    const { escrowId } = await createEscrow(ctx);
+    const toExporter = (VALUE * 8500n) / 10_000n;
+    const toImporter = VALUE - toExporter;
+
+    await ctx.escrow.connect(ctx.quality).submitMilestoneProof(escrowId, Milestone.Inspected, "bafyinspection", PROOF_OK);
+    await ctx.escrow.connect(ctx.importer).raiseDispute(escrowId, Milestone.Inspected);
+
+    await expect(ctx.escrow.connect(ctx.arbiter).resolveDisputeByAgreement(escrowId, toExporter, "bafyagreement"))
+      .to.emit(ctx.escrow, "DisputeSettledByAgreement")
+      .withArgs(escrowId, toExporter, toImporter, "bafyagreement");
+
+    expect((await ctx.escrow.getEscrow(escrowId)).state).to.equal(State.Completed);
+    expect(await ctx.idrt.balanceOf(ctx.exporter.address)).to.equal(DEMO_BALANCE + toExporter);
+    // The importer paid VALUE and the dispute bond in, and gets their share of
+    // the split plus the whole bond back, so the bond cancels out.
+    expect(await ctx.idrt.balanceOf(ctx.importer.address)).to.equal(DEMO_BALANCE - VALUE + toImporter);
+
+    const dispute = await ctx.escrow.getDispute(escrowId);
+    expect(dispute.open).to.equal(false);
+    expect(dispute.releaseToExporter).to.equal(false);
+    expect(dispute.settledToExporter).to.equal(toExporter);
+    expect(dispute.reasoningCid).to.equal("bafyagreement");
+
+    // Nothing of the escrow or the bond is left behind, only the verifier bonds.
+    expect(await ctx.idrt.balanceOf(await ctx.escrow.getAddress())).to.equal(3n * 10_000_00n);
+  });
+
+  it("rejects a split that is not a split, or that nobody agreed to", async function () {
+    const ctx = await deployFixture();
+    const { escrowId } = await createEscrow(ctx);
+
+    await ctx.escrow.connect(ctx.quality).submitMilestoneProof(escrowId, Milestone.Inspected, "bafyinspection", PROOF_OK);
+    await ctx.escrow.connect(ctx.importer).raiseDispute(escrowId, Milestone.Inspected);
+
+    await expect(ctx.escrow.connect(ctx.importer).resolveDisputeByAgreement(escrowId, VALUE / 2n, "bafyagreement"))
+      .to.be.revertedWith("only arbiter");
+    await expect(ctx.escrow.connect(ctx.arbiter).resolveDisputeByAgreement(escrowId, VALUE / 2n, ""))
+      .to.be.revertedWith("agreement CID required");
+    // The whole amount either way belongs in resolveDispute, which also decides
+    // slashing and the frivolous bond.
+    await expect(ctx.escrow.connect(ctx.arbiter).resolveDisputeByAgreement(escrowId, VALUE, "bafyagreement"))
+      .to.be.revertedWith("not a split");
+    await expect(ctx.escrow.connect(ctx.arbiter).resolveDisputeByAgreement(escrowId, 0, "bafyagreement"))
+      .to.be.revertedWith("not a split");
+  });
+
+  it("cannot settle by agreement outside an open dispute", async function () {
+    const ctx = await deployFixture();
+    const { escrowId } = await createEscrow(ctx);
+
+    await expect(ctx.escrow.connect(ctx.arbiter).resolveDisputeByAgreement(escrowId, VALUE / 2n, "bafyagreement"))
+      .to.be.revertedWith("escrow not disputed");
+
+    await ctx.escrow.connect(ctx.quality).submitMilestoneProof(escrowId, Milestone.Inspected, "bafyinspection", PROOF_OK);
+    await ctx.escrow.connect(ctx.importer).raiseDispute(escrowId, Milestone.Inspected);
+    await ctx.escrow.connect(ctx.arbiter).resolveDisputeByAgreement(escrowId, VALUE / 2n, "bafyagreement");
+
+    // And it is not replayable once settled.
+    await expect(ctx.escrow.connect(ctx.arbiter).resolveDisputeByAgreement(escrowId, 1n, "bafyagreement"))
+      .to.be.revertedWith("escrow not disputed");
+  });
+
   it("supports global deadline refund from an unfinished state", async function () {
     const ctx = await deployFixture();
     const deadline = (await time.latest()) + 100;

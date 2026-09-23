@@ -94,6 +94,37 @@ function getContract(signerOrProvider) {
   return new ethers.Contract(config.contractAddress, loadAbi(), signerOrProvider);
 }
 
+// Does the contract at the configured address have resolveDisputeByAgreement?
+//
+// The ABI cannot answer this. The ABI is the artifact this repo just compiled;
+// the address may hold a deployment from before the function existed, and
+// calling it there reverts with nothing useful. So ask the bytecode: Solidity's
+// dispatcher embeds each external function's 4-byte selector as a literal, so a
+// selector that is absent from the deployed code is a function that is not
+// there.
+//
+// Deployed code at an address never changes, so one probe per address is enough.
+let agreementSupport = null;
+
+async function supportsAgreementSettlement() {
+  const address = config.contractAddress;
+  if (agreementSupport && agreementSupport.address === address) return agreementSupport.supported;
+
+  let selector;
+  try {
+    selector = new ethers.Interface(loadAbi()).getFunction("resolveDisputeByAgreement").selector;
+  } catch {
+    // Not even in the compiled artifact — an older build of this repo.
+    agreementSupport = { address, supported: false };
+    return false;
+  }
+
+  const code = await getProvider().getCode(address);
+  const supported = code.length > 2 && code.toLowerCase().includes(selector.slice(2).toLowerCase());
+  agreementSupport = { address, supported };
+  return supported;
+}
+
 function normalizeMilestone(milestone) {
   // MILESTONES is keyed by name, but the contract side of this file works in
   // numeric ids — so passing one straight back in threw "Unknown milestone: 1".
@@ -173,6 +204,26 @@ function customsBlocks(verification) {
   return verification.customsDocsCheckable === true && verification.customsDocsValid === false;
 }
 
+/**
+ * Whether an interpretive clause is a reason to refuse THIS milestone.
+ *
+ * The third blocker, after eblBlocks and customsBlocks, and the only one whose
+ * default is to refuse. The other two exist to avoid false refusals — a slow
+ * IPFS gateway is not evidence about a shipment. This one is the opposite: a
+ * clause that a person has not answered yet SHOULD hold the milestone, because
+ * the whole point of declaring it was that a machine cannot settle it.
+ *
+ * `clausesDeclared` is what keeps that from being retroactive. An escrow that
+ * declared no clauses — every escrow created before this existed — is never
+ * blocked by one.
+ */
+function clauseBlocks(milestone, verification) {
+  if (verification.clausesDeclared !== true) return false;
+  const normalized = normalizeMilestone(milestone);
+  const name = MILESTONE_NAMES[normalized];
+  return verification.clausesBlock?.[name] === true;
+}
+
 function milestonePassed(milestone, verification) {
   const normalized = normalizeMilestone(milestone);
   // The e-BL is the document the whole escrow is written against, so a
@@ -181,6 +232,10 @@ function milestonePassed(milestone, verification) {
   // expire: if this is not the bill of lading for this container, nothing
   // downstream of it is worth writing on chain.
   if (eblBlocks(verification)) return false;
+  // A term the parties wrote into the instrument, that a named person has to
+  // judge, and that nobody has judged yet. Committing the proof anyway would
+  // settle the objective half of a condition and quietly drop the other half.
+  if (clauseBlocks(normalized, verification)) return false;
   if (normalized === MILESTONES.inspected) {
     return verification.vgmMatch === true && verification.inspectionPassed === true;
   }
@@ -198,6 +253,10 @@ function serializeEscrow(escrow, decimals = 2) {
   return {
     contractValue: escrow.contractValue.toString(),
     value: ethers.formatUnits(escrow.contractValue, decimals),
+    // Stated rather than left to be inferred. Anything that computes a share of
+    // the value — a negotiated split, say — works in the smallest unit, and a
+    // client that guesses the scale is off by a factor of a hundred.
+    decimals: Number(decimals),
     currency: "IDRT-demo",
     importer: escrow.importer,
     exporter: escrow.exporter,
@@ -440,6 +499,11 @@ async function getDispute(contractId) {
     resolvedVerifier: d[4],
     reasoningCid: d[5],
     releaseToExporter: d[6],
+    // A negotiated split cannot be read off `releaseToExporter`: that bool is
+    // false both for "everything back to the importer" and for "85% to the
+    // exporter". Anything reading the outcome has to check this first.
+    settledToExporter: d.length > 7 ? d[7].toString() : "0",
+    settledByAgreement: d.length > 7 && d[7] > 0n,
     resolved: !d[0] && (d[5] !== "" || d[4] !== ethers.ZeroAddress)
   };
 }
@@ -667,6 +731,7 @@ function resetScanCaches() {
   decimalsCache.clear();
   headCache = { block: null, at: 0 };
   windowStart = { key: null, from: null };
+  agreementSupport = null;
 }
 
 // Block number -> block. A mined block's timestamp does not change, so this is
@@ -747,20 +812,29 @@ async function getActivity(contractId) {
     ["Refunded", "refunded"],
     ["DisputeRaised", "dispute_raised"],
     ["DisputeResolved", "dispute_resolved"],
+    ["DisputeSettledByAgreement", "dispute_settled_by_agreement"],
     ["VerifierSlashed", "verifier_slashed"]
   ];
   const { from, to } = await activityWindow(provider, contract);
 
-  // ONE filter for all eight events, and no escrow id in it.
+  // ONE filter for all of these events, and no escrow id in it.
   //
-  // Every one of these declares escrowId as its first indexed parameter, so a
-  // single filter carries all eight signatures in topic0. Leaving topic1 open
+  // Every one of them declares escrowId as its first indexed parameter, so a
+  // single filter carries all of their signatures in topic0. Leaving topic1 open
   // means the scan is identical for every escrow, so it can be done once and
   // shared — the difference between 42 requests and 588 on a dashboard holding a
   // dozen escrows. The id is matched below, on data already in hand.
   const byTopic = new Map();
   for (const [eventName, type] of specs) {
-    byTopic.set(contract.interface.getEvent(eventName).topicHash, { eventName, type });
+    // An older artifact will not have every event in this list. Skipping one is
+    // a gap in the log; throwing would be no log at all.
+    let event;
+    try {
+      event = contract.interface.getEvent(eventName);
+    } catch {
+      continue;
+    }
+    if (event) byTopic.set(event.topicHash, { eventName, type });
   }
   const filter = {
     address: await contract.getAddress(),
@@ -955,9 +1029,11 @@ async function verifyAndSubmitAll(contractId, verification, { proofCidPrefix = "
         status: "source_failed",
         reason: eblBlocks(verification)
           ? "The e-BL document failed verification, so no proof was written on chain. Every milestone is gated on it: re-create the escrow with the correct bill of lading."
-          : customsBlocks(verification) && name === "arrived_cleared"
-            ? "The customs documents attached to this escrow failed verification, so no proof was written on chain. Cleared claims the goods are legally through both borders: re-upload the PEB, PIB and proof of payment."
-            : "The automated check did not pass, so no proof was written on chain."
+          : clauseBlocks(name, verification)
+            ? "Sebuah klausul interpretatif pada milestone ini belum dijawab, atau dinilai tidak terpenuhi. Klausul semacam itu memang tidak bisa diputuskan mesin — penilainya harus menuliskan putusan dan alasannya dulu."
+            : customsBlocks(verification) && name === "arrived_cleared"
+              ? "The customs documents attached to this escrow failed verification, so no proof was written on chain. Cleared claims the goods are legally through both borders: re-upload the PEB, PIB and proof of payment."
+              : "The automated check did not pass, so no proof was written on chain."
       };
       stop = true;
       continue;
@@ -1087,10 +1163,80 @@ async function resolveDispute(contractId, options = {}) {
   return { transactionHash: receipt.hash, blockNumber: receipt.blockNumber, arbiter: wallet.address };
 }
 
+// Executes the split the two parties agreed on in negotiationService.
+//
+// The amount is not taken from the request. It is recomputed here from the
+// accepted agreement the gateway itself pinned, because a caller who could name
+// the amount could name any amount and the pinned document would no longer be
+// what got paid out.
+async function resolveDisputeByAgreement(contractId, options = {}) {
+  const agreementId = typeof options.agreementId === "string" ? options.agreementId.trim() : "";
+  if (!agreementId) {
+    const error = new Error("agreementId (the accepted negotiation agreement) is required.");
+    error.statusCode = 400;
+    error.code = "INVALID_AGREEMENT";
+    throw error;
+  }
+
+  const negotiation = require("./negotiationService");
+  const agreement = negotiation.acceptedAgreement(contractId, agreementId);
+  if (agreement.outcome !== "split") {
+    const error = new Error(
+      "Only a negotiated split goes through this call. A full release or full refund is resolveDispute, which also decides slashing and the frivolous bond."
+    );
+    error.statusCode = 422;
+    error.code = "NOT_A_SPLIT";
+    throw error;
+  }
+  if (!agreement.agreementCid) {
+    const error = new Error(
+      "The agreement was accepted but never pinned, so there is no document the payout can be audited against. Re-accept once IPFS pinning is available."
+    );
+    error.statusCode = 503;
+    error.code = "AGREEMENT_NOT_PINNED";
+    throw error;
+  }
+
+  const provider = getProvider();
+  const wallet = getArbiterWallet(provider);
+  const contract = getContract(wallet);
+
+  // The chain's current value, not the value recorded when the deal was struck.
+  // If they disagree the escrow moved underneath the agreement and the split
+  // would pay out a different share than the one both sides signed.
+  const raw = await contract.getEscrow(contractId);
+  const onchainValue = raw[0].toString();
+  if (onchainValue !== agreement.contractValue) {
+    const error = new Error(
+      `Escrow value changed since the agreement was accepted (${agreement.contractValue} -> ${onchainValue}). Negotiate again against the current value.`
+    );
+    error.statusCode = 409;
+    error.code = "VALUE_CHANGED";
+    throw error;
+  }
+
+  const tx = await contract.resolveDisputeByAgreement(
+    contractId,
+    BigInt(agreement.amountToExporter),
+    agreement.agreementCid
+  );
+  const receipt = await tx.wait();
+  return {
+    transactionHash: receipt.hash,
+    blockNumber: receipt.blockNumber,
+    arbiter: wallet.address,
+    amountToExporter: agreement.amountToExporter,
+    amountToImporter: (BigInt(agreement.contractValue) - BigInt(agreement.amountToExporter)).toString(),
+    agreementCid: agreement.agreementCid
+  };
+}
+
 module.exports = {
   submitMilestoneProof,
   verifyAndSubmitAll,
   resolveDispute,
+  resolveDisputeByAgreement,
+  supportsAgreementSettlement,
   // Exported so the gate can be tested directly. Both are pure functions over
   // a verification object, and the rule they encode — which sources stop which
   // milestone — is worth a test that does not need a chain to run.
@@ -1098,6 +1244,7 @@ module.exports = {
   eblBlocks,
   __setTestProviders,
   customsBlocks,
+  clauseBlocks,
   proofCidFor,
   normalizeMilestone,
   getOracleIdentity,

@@ -11,6 +11,8 @@ import ActivityLog from "../components/ActivityLog.jsx";
 import StatusPill from "../components/StatusPill.jsx";
 import Timeline from "../components/Timeline.jsx";
 import EvidencePanel from "../components/EvidencePanel.jsx";
+import ClausePanel from "../components/ClausePanel.jsx";
+import NegotiationPanel from "../components/NegotiationPanel.jsx";
 import { inputClass } from "../components/Field.jsx";
 import { getBrowserContract } from "../lib/contract.js";
 import { CURRENCY_LABEL } from "../lib/currency.js";
@@ -821,6 +823,36 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
             </Disclosure>
           </article>
 
+          {/* The terms a feed cannot read, and the person assigned to each.
+              Directly under the instrument because that is what they are: part
+              of the deed, declared at creation and pinned with it. Only against
+              a live gateway — the mock registry has no clause endpoint. */}
+          {isOnChainReady ? (
+            <div className="mt-5">
+              <ClausePanel
+                escrowId={escrow.id}
+                walletAddress={walletAddress}
+                onStateChanged={reload}
+              />
+            </div>
+          ) : null}
+
+          {/* While a dispute is open, the two parties can settle it themselves
+              instead of waiting for the arbiter's binary call. Placed in this
+              column rather than the rail because it is a conversation, not a
+              button. */}
+          {isOnChainReady && (escrow.state === "Disputed" || escrow.disputeOpen) ? (
+            <div className="mt-5">
+              <NegotiationPanel
+                escrowId={escrow.id}
+                walletAddress={walletAddress}
+                escrow={escrow}
+                onStateChanged={reload}
+              />
+            </div>
+          ) : null}
+
+          {/* Oracle consortium */}
           <div className="mt-5 overflow-hidden rounded-doc bg-surface shadow-card">
             <div className="flex items-center justify-between gap-2 border-b border-sky px-6 py-3.5 lg:px-9">
               <p className="text-2xs uppercase text-ink-faint">

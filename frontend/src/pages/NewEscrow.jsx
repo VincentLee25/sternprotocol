@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, ArrowLeft, Check, ExternalLink, FileCheck2, Loader2, Lock, Paperclip, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Check, ExternalLink, FileCheck2, Loader2, Lock, Paperclip, Plus, X } from "lucide-react";
 import Field, { inputClass } from "../components/Field.jsx";
 import { Button, Card, CardTitle, Notice, Tag } from "../components/ui.jsx";
 import { CURRENCY_CAPTION, CURRENCY_LABEL } from "../lib/currency.js";
@@ -64,6 +64,11 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
   // can show where the address came from — the handle is a convenience, the
   // address is what binds.
   const [pickedFrom, setPickedFrom] = useState({ exporter: null, arbiter: null });
+  // The terms no feed can answer: "layak jual", "fit for ocean carriage".
+  // Declared here, at creation, because they go inside the manifest that gets
+  // pinned — and `documentCid` has no setter, so a clause added later would be
+  // a term someone could introduce after the goods shipped.
+  const [clauses, setClauses] = useState([]);
 
   const { errors, valid } = useMemo(
     () => validateEscrowForm(form, document_?.cid),
@@ -104,14 +109,44 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
     }
     // The manifest records the quantity, the commodity and the container, so
     // editing any of them makes the pinned one stale.
-    if (MANIFEST_INPUTS.includes(name)) {
-      setDocument((current) => {
-        if (!current) return current;
-        setSubmitError("");
-        setAcknowledged(false);
-        return null;
-      });
-    }
+    if (MANIFEST_INPUTS.includes(name)) dropPinnedManifest();
+  }
+
+  /**
+   * Forgets a manifest that no longer describes this form.
+   *
+   * Keeping it would put a CID on chain stating a quantity — or a clause —
+   * nobody on this screen agreed to, which is the one thing content addressing
+   * is supposed to make impossible.
+   */
+  function dropPinnedManifest() {
+    setDocument((current) => {
+      if (!current) return current;
+      setSubmitError("");
+      setAcknowledged(false);
+      return null;
+    });
+  }
+
+  function addClause() {
+    dropPinnedManifest();
+    setClauses((current) => [
+      ...current,
+      // The arbiter by default: they are already the party this escrow appoints
+      // to judge what the parties cannot agree on. Editable, because a quality
+      // surveyor is often the right reader for a quality term.
+      { text: "", milestone: "inspected", reviewer: form.arbiter || "", reviewerRole: "arbiter" }
+    ]);
+  }
+
+  function updateClause(index, patch) {
+    dropPinnedManifest();
+    setClauses((current) => current.map((clause, i) => (i === index ? { ...clause, ...patch } : clause)));
+  }
+
+  function removeClause(index) {
+    dropPinnedManifest();
+    setClauses((current) => current.filter((_, i) => i !== index));
   }
 
   function pickCounterparty(field, address, entry) {
@@ -157,12 +192,31 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
         );
       }
 
+      // Checked here rather than left to the gateway's 422, because an
+      // incomplete clause is a half-written contract term and the person who can
+      // finish it is looking at this form.
+      const incomplete = clauses.findIndex(
+        (clause) => clause.text.trim().length < 12 || !/^0x[a-fA-F0-9]{40}$/.test(clause.reviewer.trim())
+      );
+      if (incomplete >= 0) {
+        throw new Error(
+          `Clause ${incomplete + 1} is not finished — it needs wording of at least 12 characters and the address of the person who will judge it.`
+        );
+      }
+
       // The real path: pin the set, and let the gateway read it back by CID and
       // tell us what it found.
       const pinned = await pinDocumentSet(files, {
         containerRef: form.containerRef.trim().toUpperCase(),
         commodity: form.commodity.trim(),
-        quantity: { value: form.quantity, unit: form.quantityUnit }
+        quantity: { value: form.quantity, unit: form.quantityUnit },
+        clauses: clauses.map((clause) => ({
+          text: clause.text.trim(),
+          kind: "interpretive",
+          milestone: clause.milestone,
+          reviewer: clause.reviewer.trim(),
+          reviewerRole: clause.reviewerRole
+        }))
       });
       setDocument({ mode: "ipfs", ...pinned });
     } catch (error) {
@@ -441,6 +495,51 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
             </div>
           </Card>
 
+          {/* Declared before the documents are pinned, because they are pinned
+              with them. A clause here is a promise that a named person will
+              answer it in writing before the milestone it governs can be
+              committed — nothing scores it, and nothing here pretends to. */}
+          <Card>
+            <CardTitle
+              hint={t(
+                "Terms a feed cannot read: merchantable quality, packaging fit for ocean carriage. Each one names the person who must judge it, and the milestone it holds until they have. Their wording goes into the pinned manifest, so it cannot be added or edited after the goods ship."
+              )}
+              action={
+                <Button size="sm" tone="secondary" icon={Plus} onClick={addClause}>
+                  {t("Add clause")}
+                </Button>
+              }
+            >
+              {t("Interpretive clauses")}
+            </CardTitle>
+
+            {clauses.length === 0 ? (
+              <p className="text-[13px] leading-relaxed text-ink-dim">
+                {t(
+                  "None. Every condition on this escrow will be a machine-readable reading — a mass matched, a vessel departed, customs cleared. Add a clause if the contract also says something a person has to decide."
+                )}
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {clauses.map((clause, index) => (
+                  <ClauseRow
+                    key={index}
+                    index={index}
+                    clause={clause}
+                    arbiter={form.arbiter}
+                    onChange={(patch) => updateClause(index, patch)}
+                    onRemove={() => removeClause(index)}
+                  />
+                ))}
+                <p className="text-[13px] leading-relaxed text-ink-dim">
+                  {t(
+                    "The gateway will refuse to submit a milestone while one of its clauses is unanswered. That refusal is the feature: judgement is not automated here, it is assigned and recorded."
+                  )}
+                </p>
+              </div>
+            )}
+          </Card>
+
           <Card>
             <CardTitle
               hint={t("Pinned to IPFS, then read back from their own addresses and checked: that the bytes hash to each address, that the bill of lading is one and names container {container}, and that the quantity above agrees with the invoice and packing list. What the contract stores is the address of a manifest naming all three.", { container: containerLabel || "…" })}
@@ -547,6 +646,14 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
                   : t("{count} chosen, not pinned", { count: Object.keys(files).length || t("None") })
               }
             />
+            <Row
+              label="Human review"
+              value={
+                clauses.length
+                  ? `${clauses.length} clause${clauses.length === 1 ? "" : "s"} to be judged`
+                  : "None — all conditions automated"
+              }
+            />
           </div>
 
           {submitError ? (
@@ -578,6 +685,88 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
           </p>
         </Card>
       </form>
+    </div>
+  );
+}
+
+/**
+ * One interpretive clause, as it will be written into the manifest.
+ *
+ * Three fields and no more, because each answers a question that has to have an
+ * answer before this is worth writing down: what does the contract say, which
+ * milestone does it hold, and who answers for it. A clause with no named
+ * reviewer is a clause nobody owns, and the gateway refuses it.
+ */
+function ClauseRow({ index, clause, arbiter, onChange, onRemove }) {
+  const short = clause.text.trim().length > 0 && clause.text.trim().length < 12;
+  const badAddress =
+    clause.reviewer.trim().length > 0 && !/^0x[a-fA-F0-9]{40}$/.test(clause.reviewer.trim());
+
+  return (
+    <div className="rounded-panel border border-sky bg-surface-soft/60 p-3.5">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <p className="text-2xs uppercase text-ink-faint">Clause {index + 1}</p>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="cursor-pointer text-2xs uppercase text-ink-faint transition-colors duration-150 hover:text-state-disputed"
+        >
+          Remove
+        </button>
+      </div>
+
+      <label htmlFor={`clause-text-${index}`} className="sr-only">
+        Clause wording
+      </label>
+      <textarea
+        id={`clause-text-${index}`}
+        rows={2}
+        value={clause.text}
+        onChange={(event) => onChange({ text: event.target.value })}
+        placeholder="Biji kopi harus dalam kondisi layak jual dan bebas dari bau apek."
+        className={`${inputClass(short)} resize-y`}
+      />
+      {short ? (
+        <p className="mt-1 text-[12.5px] text-state-disputed">
+          Write it out — this is the wording someone will be asked to judge, and it is fixed the
+          moment the manifest is pinned.
+        </p>
+      ) : null}
+
+      <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2">
+        <label className="block">
+          <span className="text-2xs uppercase text-ink-faint">Holds milestone</span>
+          <select
+            value={clause.milestone}
+            onChange={(event) => onChange({ milestone: event.target.value })}
+            className={`${inputClass(false)} mt-1 cursor-pointer`}
+          >
+            <option value="inspected">Inspected</option>
+            <option value="shipped">Shipped</option>
+            <option value="arrived_cleared">Arrived and cleared</option>
+          </select>
+        </label>
+        <label className="block">
+          <span className="text-2xs uppercase text-ink-faint">Judged by</span>
+          <input
+            value={clause.reviewer}
+            onChange={(event) => onChange({ reviewer: event.target.value })}
+            placeholder={arbiter || "0x…"}
+            spellCheck="false"
+            className={`${inputClass(badAddress)} mt-1 font-mono text-xs`}
+          />
+        </label>
+      </div>
+      {badAddress ? (
+        <p className="mt-1 text-[12.5px] text-state-disputed">
+          That is not a wallet address. The reviewer signs in with it to record their verdict.
+        </p>
+      ) : null}
+      <p className="mt-1.5 text-2xs text-ink-faint">
+        {clause.reviewer.trim() && arbiter && clause.reviewer.trim().toLowerCase() === arbiter.toLowerCase()
+          ? "The arbiter on this escrow."
+          : "Anyone you appoint — a surveyor, a lab, your own quality manager."}
+      </p>
     </div>
   );
 }
