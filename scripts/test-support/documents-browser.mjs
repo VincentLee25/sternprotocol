@@ -10,6 +10,7 @@
 // putting a stale one on chain, and that the customs upload turns the panel's
 // "not attached" into a verdict read off the real PEB.
 import { chromium } from "playwright";
+import { signIn } from "./browser-session.mjs";
 
 const BASE = process.env.APP_URL || "http://127.0.0.1:4173";
 const DEMO = process.env.DEMO_DIR || "docs/demo";
@@ -34,50 +35,7 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
 const errors = [];
 page.on("pageerror", (err) => errors.push(String(err)));
 
-// The workspace is reached through company sign-in, so the account is created
-// against the gateway first. Registering over HTTP rather than through the
-// form keeps this suite about the documents; the registration form has its own
-// coverage in the identity tests.
-const API = process.env.API_URL || "http://127.0.0.1:4112";
-const CREDENTIALS = { email: "docs@stern.test", password: "Rahasia12345!" };
-const registration = await fetch(`${API}/auth/register-company`, {
-  method: "POST",
-  headers: { "content-type": "application/json" },
-  body: JSON.stringify({
-    companyName: "PT Demo Importir",
-    username: "docsimportir",
-    // Must be the wallet the mock session derives, or the workspace step
-    // refuses with "this workspace identity is not linked to the company
-    // user". mockBackend hashes the characters of "smart-buyer@example.com",
-    // so the address is deterministic — this is that value.
-    walletAddress: "0x736d6172742d6275796572406578616d706c652e",
-    ...CREDENTIALS
-  })
-});
-// A 409 is the expected answer on a second run against the same stub. Anything
-// else is reported rather than swallowed: a failed registration otherwise
-// surfaces three steps later as "invalid email or password", which sends you
-// looking at the password.
-if (!registration.ok && registration.status !== 409) {
-  console.log(`  note  registration returned ${registration.status}: ${(await registration.text()).slice(0, 200)}`);
-}
-
-await page.goto(BASE, { waitUntil: "networkidle" });
-await page.getByRole("button", { name: "Access workspace" }).first().click();
-await page.waitForTimeout(2500);
-
-await page.locator('input[name="email"]').fill(CREDENTIALS.email);
-await page.locator('input[name="password"]').fill(CREDENTIALS.password);
-await page.getByRole("button", { name: /^continue$/i }).click();
-await page.waitForTimeout(2000);
-
-// Then the wallet step. Its label depends on whether Particle is configured;
-// without it, the social buttons are disabled and this is the way through.
-await page
-  .getByRole("button", { name: /continue to workspace|continue with google, apple/i })
-  .first()
-  .click();
-await page.waitForTimeout(2500);
+await signIn(page, { base: BASE, api: process.env.API_URL || "http://127.0.0.1:4112", log: console.log });
 
 // --- the creation form ------------------------------------------------------
 await page.getByRole("button", { name: /new escrow/i }).first().click();

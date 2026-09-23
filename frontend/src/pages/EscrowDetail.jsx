@@ -158,6 +158,25 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
     readPendingExtension(escrow.id)
       .then((pending) => onUpdate(escrow.id, (current) => ({ ...current, pendingExtension: pending ? { ...pending, proposer: null } : null })))
       .catch(() => {});
+
+    // The history, if the row arrived without it.
+    //
+    // Normally Overview has already filled it in — it loads activity as a
+    // second phase, for exactly the same reason this page does. But a row can
+    // reach here with none: its scan failed, or it was opened before that
+    // phase finished. Without this the panel would sit on "Reading the event
+    // log…" until something else happened to call reload().
+    if (escrow.activity === undefined) {
+      loadEscrowActivity(escrow.id)
+        .then((log) => onUpdate(escrow.id, (current) => ({
+          ...current,
+          activity: log.activity ?? current.activity ?? [],
+          activityError: log.activityError,
+          activityTruncatedBefore: log.activityTruncatedBefore,
+          activityPending: false
+        })))
+        .catch(() => onUpdate(escrow.id, (current) => ({ ...current, activityPending: false })));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [escrow.id, isChain]);
 
@@ -297,7 +316,11 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
         disputeOpen: fresh.disputeOpen,
         verified: fresh.verified,
         value: fresh.value,
-        deadline: fresh.deadline
+        deadline: fresh.deadline,
+        // Not touched here. The history arrives separately, below, and writing
+        // an empty list in the meantime would blank the log on screen — so the
+        // panel is told it is waiting rather than told it is empty.
+        activityPending: true
       }));
       if (fresh.state === "TimelockActive") {
         getTimelock(escrow.id).then(setTimelock).catch(() => {});
@@ -306,8 +329,29 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
       // A failed re-read must not replace the result notice the user is reading;
       // the page simply keeps showing what it had.
     } finally {
+      // Closed as soon as the STATE is in hand. The event history is a wide
+      // log scan on the gateway and used to be awaited inside this try, which
+      // is why a refresh could hold a page-level modal for minutes to show a
+      // state change that had already arrived.
       setReloading(false);
     }
+
+    // Now the history, unblocking. A failure here leaves the log alone and is
+    // reported inside the Activity panel, not over the whole page.
+    loadEscrowActivity(escrow.id)
+      .then((log) => {
+        onUpdate(escrow.id, (current) => ({
+          ...current,
+          activity: log.activity ?? current.activity,
+          activityError: log.activityError,
+          activityTruncatedBefore: log.activityTruncatedBefore,
+          activityPending: false
+        }));
+      })
+      .catch(() => {
+        onUpdate(escrow.id, (current) => ({ ...current, activityPending: false }));
+      });
+
     // Keeps the Overview list in step for when they navigate back.
     onRefresh?.();
   }, [escrow.id, isChain, onUpdate, onRefresh]);
@@ -848,7 +892,12 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
             </Panel>
 
             <Disclosure title={t("Activity history")} summary={t("Recorded escrow events")}>
-              <ActivityLog entries={escrow.activity} error={escrow.activityError} truncatedBefore={escrow.activityTruncatedBefore} />
+              <ActivityLog
+                entries={escrow.activity}
+                error={escrow.activityError}
+                truncatedBefore={escrow.activityTruncatedBefore}
+                pending={escrow.activityPending}
+              />
             </Disclosure>
           </div>
 

@@ -188,7 +188,24 @@ export async function loadActivityForRows(rows, { signal } = {}) {
   );
 }
 
-/** One escrow, refreshed after a transaction. */
+/**
+ * One escrow's STATE, refreshed after a transaction.
+ *
+ * Activity is deliberately not fetched here, and that omission is the whole
+ * point. The gateway's activity endpoint is an event-log scan over a wide
+ * block range; the state is a handful of eth_calls. Putting both in one
+ * Promise.all made the fast half wait for the slow half, so "Reading the latest
+ * state" sat on screen for as long as a history rescan took — minutes, on a
+ * deployment with no CONTRACT_DEPLOY_BLOCK set.
+ *
+ * The list view was already split this way (loadEscrowRows /
+ * loadActivityForRows). The detail view was the one place still paying for
+ * history to see a state change.
+ *
+ * `activity` is left undefined rather than empty: the caller is merging into a
+ * row that already has one, and an empty array would wipe the log off screen
+ * for as long as the second request takes.
+ */
 export async function loadEscrowDetail(id, { signal } = {}) {
   if (!sourceIsLive) {
     const detail = await mockGet(id);

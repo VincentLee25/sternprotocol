@@ -215,7 +215,29 @@ const ESCROW = {
 
 app.get("/escrows", (_req, res) => res.json({ escrows: [{ escrowId: ESCROW_ID }] }));
 app.get("/escrows/:id", (_req, res) => res.json(ESCROW));
-app.get("/escrows/:id/activity", (_req, res) => res.json({ activity: [] }));
+
+// Deliberately slow when asked to be. ACTIVITY_DELAY_MS stands in for the real
+// cost of this endpoint — an event-log scan over a wide block range — so a
+// browser test can check that the page's state appears without waiting for it.
+const ACTIVITY_DELAY_MS = Number(process.env.ACTIVITY_DELAY_MS || 0);
+app.get("/escrows/:id/activity", (_req, res) => {
+  const answer = () =>
+    res.json({
+      activity: [
+        {
+          time: new Date(Date.now() - 3600_000).toISOString(),
+          type: "escrow_created",
+          actorAddress: ESCROW.importer,
+          text: "EscrowCreated",
+          transactionHash: `0x${"a".repeat(64)}`,
+          blockNumber: 1
+        }
+      ],
+      truncatedBefore: null
+    });
+  if (ACTIVITY_DELAY_MS > 0) setTimeout(answer, ACTIVITY_DELAY_MS);
+  else answer();
+});
 app.get("/escrows/:id/timelock", (_req, res) => res.json({ active: false }));
 app.get("/escrows/:id/dispute", (_req, res) => res.json({ open: false }));
 app.get("/verifiers", (_req, res) => res.json({ verifiers: [] }));

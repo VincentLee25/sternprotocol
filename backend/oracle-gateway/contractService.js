@@ -37,7 +37,25 @@ function loadAbi() {
 }
 
 let providerCache;
+
+// A seam for the request-count test, and only for that.
+//
+// scripts/test-activity-scan.js measures how many eth_getLogs a refresh costs,
+// which is the thing that was wrong with it. That count has to come from the
+// shipped scan rather than a copy of it, so the test substitutes a provider
+// that counts calls. Null in every other case, including production, where
+// these two functions behave exactly as they always did.
+let testProvider = null;
+let testContract = null;
+
+function __setTestProviders({ provider = null, contract = null } = {}) {
+  testProvider = provider;
+  testContract = contract;
+  resetScanCaches();
+}
+
 function getProvider() {
+  if (testProvider) return testProvider;
   requireConfig(["rpcUrl", "contractAddress"]);
   if (!providerCache) providerCache = createRpcProvider([config.rpcUrl, ...config.rpcFallbackUrls], config.rpcChainId);
   return providerCache;
@@ -72,6 +90,7 @@ async function chainNow(provider) {
 }
 
 function getContract(signerOrProvider) {
+  if (testContract) return testContract;
   return new ethers.Contract(config.contractAddress, loadAbi(), signerOrProvider);
 }
 
@@ -197,10 +216,21 @@ function serializeEscrow(escrow, decimals = 2) {
   };
 }
 
+// The token address and its decimals are fixed for the life of a deployment,
+// and reading them cost two sequential round trips on EVERY escrow read — so
+// every refresh paid for a fact that cannot change. Keyed on the escrow
+// contract so a redeploy in the same process still re-reads.
+const decimalsCache = new Map();
+
 async function getIdrtDecimals(contract) {
+  const escrowAddress = await contract.getAddress();
+  if (decimalsCache.has(escrowAddress)) return decimalsCache.get(escrowAddress);
+
   const tokenAddress = await contract.idrtToken();
   const token = new ethers.Contract(tokenAddress, ["function decimals() view returns (uint8)"], contract.runner);
-  return Number(await token.decimals());
+  const decimals = Number(await token.decimals());
+  decimalsCache.set(escrowAddress, decimals);
+  return decimals;
 }
 
 async function getOracleIdentity() {
@@ -492,22 +522,37 @@ async function latestBlock(provider) {
  * entirely and is worth setting: the guess has to allow a wide margin, and the
  * margin is what makes the scan expensive.
  */
+// The estimated start block, once worked out.
+//
+// It must be STABLE across calls, not merely cheap: the incremental log cache
+// above is keyed on `from`, so an estimate that drifts a few blocks between
+// refreshes would look like a different range every time and throw the cache
+// away — which is precisely the full rescan this is all meant to stop. It also
+// saves a getEscrow(0) round trip per call.
+let windowStart = { key: null, from: null };
+
 async function activityWindow(provider, contract) {
   const latest = await latestBlock(provider);
   const to = latest?.number ?? (await provider.getBlockNumber());
   if (config.contractDeployBlock != null) return { from: config.contractDeployBlock, to };
 
+  const key = config.contractAddress || "unknown";
+  if (windowStart.key === key && windowStart.from != null) return { from: windowStart.from, to };
+
+  let from = Math.max(0, to - 500_000);
   try {
     const createdAt = Number((await contract.getEscrow(0))[8]);
     if (createdAt > 0 && latest?.timestamp > createdAt) {
       const blocksAgo = Math.ceil((latest.timestamp - createdAt) / AVG_BLOCK_SECONDS);
       const margin = Math.ceil(blocksAgo * 0.2) + 5000;
-      return { from: Math.max(0, to - blocksAgo - margin), to };
+      from = Math.max(0, to - blocksAgo - margin);
     }
   } catch {
-    // No escrow 0, or the chain is unreachable — fall through.
+    // No escrow 0, or the chain is unreachable — keep the wide fallback.
   }
-  return { from: Math.max(0, to - 500_000), to };
+
+  windowStart = { key, from };
+  return { from, to };
 }
 
 /**
@@ -586,21 +631,107 @@ async function getLogsInRange(provider, filter, fromBlock, toBlock) {
   return { logs, prunedThrough };
 }
 
-// One scan serves every escrow.
+// One scan serves every escrow, and after the first one it only ever scans
+// forward.
 //
-// The range is the same for all of them, so scanning it once per escrow meant
+// The range is the same for all escrows, so scanning it once per escrow meant
 // doing identical work a dozen times over — with the window this needs, 42
-// requests each instead of 42 in total. Cached briefly: long enough for one
-// dashboard load, short enough that a new transaction shows up on the next one.
-let logCache = { key: null, result: null, at: 0 };
-const LOG_CACHE_MS = 15_000;
+// requests each instead of 42 in total. That part was already fixed. What was
+// not: the cache lasted 15 seconds, so a manual Refresh half a minute later
+// rescanned the entire history from the deploy block. Pressing Refresh cost
+// exactly what the first page load cost, for ever.
+//
+// A mined log never changes, so there is nothing to re-read. This keeps what it
+// has and asks only for the blocks appended since — one request instead of
+// forty-two, and the wide range is paid once per process.
+const logCache = new Map();
+
+// Two different waits, and they answer different questions.
+//
+// HEAD_TTL: how long to serve the cache without even asking the node for the
+// head. It only has to cover the burst of calls one page load makes.
+//
+// The tail overlap: how far back to re-scan on every top-up. A chain can
+// reorganise its most recent blocks, so the newest logs are not yet immutable;
+// re-reading a short tail and de-duplicating is what keeps a reorg from leaving
+// a phantom event in the cache for the life of the process.
+const HEAD_TTL_MS = 5_000;
+const REORG_OVERLAP_BLOCKS = 64;
+
+const logKey = (log) => `${log.transactionHash}:${log.logIndex ?? log.index}`;
+
+/** Drops every scan cache. Used when the test seam swaps the provider. */
+function resetScanCaches() {
+  logCache.clear();
+  blockTimeCache.clear();
+  decimalsCache.clear();
+  headCache = { block: null, at: 0 };
+  windowStart = { key: null, from: null };
+}
+
+// Block number -> block. A mined block's timestamp does not change, so this is
+// shared across calls and never expires. Bounded below so a long-running
+// gateway cannot grow it without limit.
+const blockTimeCache = new Map();
+const MAX_CACHED_BLOCKS = 2000;
+
+function trimBlockCache() {
+  if (blockTimeCache.size <= MAX_CACHED_BLOCKS) return;
+  // Insertion order: drop the oldest entries, which are the ones least likely
+  // to be asked for again.
+  const excess = blockTimeCache.size - MAX_CACHED_BLOCKS;
+  let dropped = 0;
+  for (const key of blockTimeCache.keys()) {
+    blockTimeCache.delete(key);
+    if (++dropped >= excess) break;
+  }
+}
 
 async function contractLogs(provider, contract, filter, from, to) {
-  const key = `${filter.address}:${from}:${Math.floor(to / 50)}`;
-  if (logCache.key === key && Date.now() - logCache.at < LOG_CACHE_MS) return logCache.result;
-  const result = await getLogsInRange(provider, filter, from, to);
-  logCache = { key, result, at: Date.now() };
-  return result;
+  const key = `${filter.address}:${filter.topics?.[0]?.length ?? 0}:${from}`;
+  const hit = logCache.get(key);
+  const now = Date.now();
+
+  // Fresh enough that the head is not worth asking about.
+  if (hit && now - hit.at < HEAD_TTL_MS) return { logs: hit.logs, prunedThrough: hit.prunedThrough };
+
+  // Nothing cached for this range: the one full scan.
+  if (!hit) {
+    const { logs, prunedThrough } = await getLogsInRange(provider, filter, from, to);
+    logCache.set(key, { logs, prunedThrough, scannedTo: to, at: now });
+    return { logs, prunedThrough };
+  }
+
+  // Top up. `to` can sit behind scannedTo when a provider serves a slightly
+  // stale head, and scanning backwards would be a wasted request.
+  const start = Math.max(from, hit.scannedTo - REORG_OVERLAP_BLOCKS + 1);
+  if (to < start) {
+    hit.at = now;
+    return { logs: hit.logs, prunedThrough: hit.prunedThrough };
+  }
+
+  const { logs: tail, prunedThrough } = await getLogsInRange(provider, filter, start, to);
+
+  // Drop everything inside the re-scanned window and take the node's answer for
+  // it, so a reorged-out log disappears rather than lingering.
+  const merged = hit.logs.filter((log) => log.blockNumber < start);
+  const seen = new Set(merged.map(logKey));
+  for (const log of tail) {
+    if (seen.has(logKey(log))) continue;
+    seen.add(logKey(log));
+    merged.push(log);
+  }
+
+  const next = {
+    logs: merged,
+    // A pruning report from the first scan still stands; the tail cannot
+    // discover that early blocks came back.
+    prunedThrough: hit.prunedThrough ?? prunedThrough,
+    scannedTo: Math.max(hit.scannedTo, to),
+    at: now
+  };
+  logCache.set(key, next);
+  return { logs: next.logs, prunedThrough: next.prunedThrough };
 }
 
 async function getActivity(contractId) {
@@ -640,12 +771,16 @@ async function getActivity(contractId) {
   const { logs: all, prunedThrough } = await contractLogs(provider, contract, filter, from, to);
   const logs = all.filter((log) => String(log.topics[1] || "").toLowerCase() === idTopic);
 
-  // One read per block, not one per event. Three milestones committed in the
-  // same block used to cost three identical round trips.
-  const blockCache = new Map();
+  // One read per block, ever. Three milestones committed in the same block used
+  // to cost three identical round trips within one call; the cache is now
+  // shared across calls too, because a mined block's timestamp is immutable and
+  // re-reading it on every refresh bought nothing.
   const blockAt = async (number) => {
-    if (!blockCache.has(number)) blockCache.set(number, await provider.getBlock(number));
-    return blockCache.get(number);
+    if (!blockTimeCache.has(number)) {
+      blockTimeCache.set(number, await provider.getBlock(number));
+      trimBlockCache();
+    }
+    return blockTimeCache.get(number);
   };
 
   for (const log of logs) {
@@ -961,6 +1096,7 @@ module.exports = {
   // milestone — is worth a test that does not need a chain to run.
   milestonePassed,
   eblBlocks,
+  __setTestProviders,
   customsBlocks,
   proofCidFor,
   normalizeMilestone,

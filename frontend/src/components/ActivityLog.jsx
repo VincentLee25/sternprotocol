@@ -1,3 +1,4 @@
+import { Loader2 } from "lucide-react";
 import { AddressLink } from "./TxLink.jsx";
 import TxLink from "./TxLink.jsx";
 import { useLanguage } from "../lib/language.jsx";
@@ -18,7 +19,26 @@ function TruncationNote({ before }) {
   );
 }
 
-export default function ActivityLog({ entries, error, truncatedBefore }) {
+/**
+ * "Updating activity…", inline.
+ *
+ * The event history is a log scan over a wide block range on the gateway, so it
+ * is fetched after the escrow's state rather than with it. That means this
+ * panel can legitimately be a few seconds behind the rest of the page, and it
+ * has to say so HERE — a page-level overlay for a side panel is what made a
+ * refresh feel like a history rescan, because it was waiting for one.
+ */
+function UpdatingNote() {
+  const { t } = useLanguage();
+  return (
+    <p className="mt-2.5 flex items-center gap-1.5 text-2xs text-ink-faint">
+      <Loader2 size={11} className="animate-spin text-teal" aria-hidden="true" />
+      {t("Updating activity…")}
+    </p>
+  );
+}
+
+export default function ActivityLog({ entries, error, truncatedBefore, pending = false }) {
   const { t, language } = useLanguage();
   // "Nothing happened" and "the read failed" look identical to a reader and are
   // completely different to whoever has to fix it.
@@ -33,8 +53,13 @@ export default function ActivityLog({ entries, error, truncatedBefore }) {
   if (!entries || entries.length === 0) {
     return (
       <>
-        <p className="font-serif text-sm text-ink-dim">{t("No activity recorded yet.")}</p>
-        <TruncationNote before={truncatedBefore} />
+        {/* Two different sentences, because they mean opposite things: the log
+            is still being read, or it was read and is empty. Saying "nothing
+            recorded yet" while a scan is in flight is simply wrong. */}
+        <p className="font-serif text-sm text-ink-dim">
+          {t(pending ? "Reading the event log from the chain…" : "No activity recorded yet.")}
+        </p>
+        {pending ? null : <TruncationNote before={truncatedBefore} />}
       </>
     );
   }
@@ -67,7 +92,7 @@ export default function ActivityLog({ entries, error, truncatedBefore }) {
         );
       })}
     </ol>
-    <TruncationNote before={truncatedBefore} />
+    {pending ? <UpdatingNote /> : <TruncationNote before={truncatedBefore} />}
     </>
   );
 }
