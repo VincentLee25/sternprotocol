@@ -4,6 +4,8 @@ import { shortAddress } from "../lib/actors.js";
 import { getHealth } from "../lib/api.js";
 import { onChainConfigured } from "../lib/sternContract.js";
 import { CHAIN_LABEL } from "../lib/explorer.js";
+import ThemeToggle from "./ThemeToggle.jsx";
+import HandleCard from "./HandleCard.jsx";
 import sternLogo from "../assets/stern-logo.png";
 import LanguageToggle from "./LanguageToggle.jsx";
 import { useLanguage } from "../lib/language.jsx";
@@ -62,6 +64,7 @@ export default function Sidebar({
           <span className="mt-1 block text-[9px] font-semibold uppercase tracking-[0.14em] text-teal">Trade workspace</span>
         </button>
         <div className="flex items-center gap-1.5">
+          <ThemeToggle />
           <LanguageToggle compact />
           <button type="button" onClick={onClose} aria-label="Close navigation" className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-ink-dim transition-colors hover:bg-beige hover:text-navy lg:hidden"><X size={16} aria-hidden="true" /></button>
         </div>
@@ -98,6 +101,8 @@ export default function Sidebar({
             {canClaim && user?.hasClaimedDemoBalance ? <p className="mt-2 text-[10px] leading-relaxed text-ink-faint">Demo balance already claimed for this account.</p> : null}
             {claimError ? <p role="alert" className="mt-2 border-l-2 border-state-disputed pl-2 text-[10px] leading-relaxed text-state-disputed">{claimError}</p> : null}
           </section>
+
+          <HandleCard address={user?.smartAccountAddress} />
 
           <section className="pt-4" aria-label="Signed-in user">
             <div className="flex items-center gap-2.5">

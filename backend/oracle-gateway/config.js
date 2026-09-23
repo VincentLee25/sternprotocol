@@ -28,6 +28,15 @@ const config = {
   logScanChunk: Number(process.env.LOG_SCAN_CHUNK || 9000),
   nativeGasWarningWei: BigInt(process.env.NATIVE_GAS_WARNING_WEI || "1000000000000000"),
   identityStoreFile: process.env.IDENTITY_STORE_FILE || path.resolve(__dirname, "../data/identities.json"),
+  // The counterparty address book. Like the identity store, it must sit on a
+  // persistent volume on a host with ephemeral disk, or every redeploy wipes
+  // the handles people registered.
+  directoryStoreFile: process.env.DIRECTORY_STORE_FILE || path.resolve(__dirname, "../data/directory.json"),
+  // Customs documents (PEB / PIB / proof of duty paid) recorded per escrow.
+  // Only CIDs and file names live here — the documents themselves are on IPFS
+  // — but losing the file loses the link between an escrow and its clearance,
+  // so this wants the same persistent volume as the two stores above.
+  customsStoreFile: process.env.CUSTOMS_STORE_FILE || path.resolve(__dirname, "../data/customs.json"),
   authTokenSecret: process.env.AUTH_TOKEN_SECRET,
 
   // --- IPFS ------------------------------------------------------------------

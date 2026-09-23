@@ -1,0 +1,26 @@
+process.env.PINATA_JWT = "";
+process.env.IPFS_API_URL = "http://127.0.0.1:5703";
+// Dua gateway menggantung DULU, yang sehat terakhir: kasus terburuk urutan lama.
+process.env.IPFS_GATEWAYS = "http://127.0.0.1:5701,http://127.0.0.1:5702,http://127.0.0.1:5703";
+import fs from "node:fs";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REPO = path.resolve(HERE, "..", "..");
+const require = createRequire(path.join(REPO, "backend", "oracle-gateway", "index.js"));
+const ipfs = require(path.join(REPO, "backend", "oracle-gateway", "ipfsService.js"));
+const pdf = fs.readFileSync(path.join(REPO, "docs", "demo", "e-bl-TGHU-2026-001.pdf"));
+const pinned = await ipfs.pinDocument(pdf, "e.pdf");
+const t0 = Date.now();
+const v = await ipfs.verifyDocument(pinned.cid, { containerRef: "TGHU-2026-001" });
+const ms = Date.now() - t0;
+console.log(`dua gateway menggantung, satu sehat di urutan TERAKHIR`);
+console.log(`  hasil  : valid=${v.valid}`);
+console.log(`  diambil: ${v.document?.retrievedFrom}`);
+console.log(`  waktu  : ${ms} ms`);
+console.log(ms < 3000 ? "  -> balapan bekerja: tidak menunggu yang menggantung" : "  -> MASIH LAMBAT");
+const t1 = Date.now();
+await ipfs.verifyDocumentCached(pinned.cid, { containerRef: "TGHU-2026-001" });
+console.log(`cache  : ${Date.now() - t1} ms`);
+process.exit(ms < 3000 ? 0 : 1);

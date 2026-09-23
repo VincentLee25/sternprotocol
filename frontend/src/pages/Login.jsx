@@ -35,7 +35,7 @@ export default function Login({
               <p>One clear record<br />from cargo to settlement.</p>
             </div>
             <figure className="stern-auth-editorial-figure">
-              <img src="https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=960&q=85" alt="" />
+              <img src="https://images.unsplash.com/photo-1494412574643-ff11b0a5c1c3?auto=format&fit=crop&w=960&q=85" alt="" />
               <figcaption>Physical trade, with evidence in view.</figcaption>
             </figure>
           </div>

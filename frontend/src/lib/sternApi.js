@@ -148,6 +148,29 @@ export const verifyMilestones = (id) => request(`/oracle/verify/${id}`, { method
 export const simulateFault = (id, fault) =>
   request(`/oracle/simulate/${id}`, { method: "POST", body: { fault } });
 
+// --- Counterparty directory ------------------------------------------------
+//
+// So creating an escrow does not mean pasting 42 hex characters twice. A
+// handle is self-chosen and proves nothing about who owns the wallet, so every
+// response carries the address and the UI keeps it visible — see
+// backend/oracle-gateway/directoryService.js.
+
+/** Matches for a partial handle or company name. Needs at least 2 characters. */
+export const lookupDirectory = (q, { signal } = {}) =>
+  request(`/directory/lookup?q=${encodeURIComponent(q)}`, { signal });
+
+/** Exact resolution of a handle typed as @name. */
+export const resolveHandle = (handle, { signal } = {}) =>
+  request(`/directory/resolve/${encodeURIComponent(String(handle).replace(/^@/, ""))}`, { signal });
+
+/** Claims or renames the handle pointing at this Smart Account. */
+export const claimHandle = ({ smartAccountAddress, handle, displayName }) =>
+  request("/directory/claim", { method: "POST", body: { smartAccountAddress, handle, displayName } });
+
+/** The handle this Smart Account already holds, or null. */
+export const directoryForAddress = (address, { signal } = {}) =>
+  request(`/directory/address/${encodeURIComponent(address)}`, { signal });
+
 // --- e-BL on IPFS ----------------------------------------------------------
 //
 // The pinning credential is a secret and stays on the gateway, so the browser
@@ -158,6 +181,39 @@ export const simulateFault = (id, fault) =>
 /** Pins the e-BL and returns its CID, plus the gateway's read-back check. */
 export const pinEblDocument = ({ fileName, contentBase64, containerRef }) =>
   request("/ipfs/pin", { method: "POST", body: { fileName, contentBase64, containerRef } });
+
+/**
+ * Pins the bill of lading, the commercial invoice and the packing list, plus a
+ * manifest stating the quantity and naming all three.
+ *
+ * The manifest's CID is what goes on chain. `documentCid` is written once in
+ * _createEscrow and has no setter, so one address has to stand for the whole
+ * set — and the manifest is what makes that possible without giving up the
+ * property that matters: change any figure on any document and the CID changes.
+ *
+ * The gateway builds the manifest from the bytes it pinned. This sends files
+ * and a declared quantity, never a manifest.
+ */
+export const pinManifest = ({ containerRef, commodity, quantity, documents }) =>
+  request("/ipfs/manifest", { method: "POST", body: { containerRef, commodity, quantity, documents } });
+
+/** The units and document slots the gateway accepts, so the form need not guess. */
+export const getManifestSchema = ({ signal } = {}) => request("/ipfs/manifest/schema", { signal });
+
+// --- customs documents for milestone 3 ---------------------------------------
+//
+// PEB is issued at export and PIB at import, so neither exists when the escrow
+// is created. They are attached afterwards, and the CID of the manifest naming
+// them becomes milestone 3's proof CID on chain.
+
+export const uploadCustomsDocuments = (escrowId, { containerRef, documents }) =>
+  request(`/customs/${escrowId}`, { method: "POST", body: { containerRef, documents } });
+
+export const getCustomsDocuments = (escrowId, { containerRef, signal } = {}) =>
+  request(
+    `/customs/${escrowId}${containerRef ? `?containerRef=${encodeURIComponent(containerRef)}` : ""}`,
+    { signal }
+  );
 
 /** The verdict on a CID: does it resolve, do the bytes hash back to it, is it this e-BL. */
 export const verifyEblCid = (cid, { containerRef, signal } = {}) =>

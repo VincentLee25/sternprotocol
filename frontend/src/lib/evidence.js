@@ -103,6 +103,35 @@ const MILESTONE_FAULT = {
  * window is still open, because nothing is waiting behind it and the whole
  * window is available — and names the fault that will make it disagree.
  */
+/**
+ * "Now" as the contract sees it, from the viewer's clock.
+ *
+ * Every deadline in the evidence payload is block.timestamp plus a window, and
+ * the contract compares against block.timestamp. Amoy's block timestamps trail
+ * wall time; when they trail by more than the challenge window, a countdown
+ * run against the viewer's clock shows every window as closed the moment it
+ * opens, while the chain still accepts a dispute for the full window. The
+ * dispute CTA then never appears no matter how fast anyone is.
+ *
+ * So the gateway sends the chain clock with the payload, and this converts a
+ * local tick into chain time by the offset between them. `tick` still drives
+ * the re-render; it just no longer decides the answer.
+ */
+export function chainClock(evidence, tick = Math.floor(Date.now() / 1000)) {
+  const chain = evidence?.clock?.chainNowUnix;
+  const server = evidence?.clock?.serverNowUnix;
+  if (chain == null || server == null) {
+    // No clock in the payload: an older gateway, or the chain read failed.
+    // Falling back to the local tick keeps the countdown moving, and it is
+    // what the panel did before, so nothing gets worse.
+    return { now: tick, offsetSeconds: 0, source: "local" };
+  }
+  // Measured at the same instant on the gateway, so their difference is the
+  // chain's lag and is independent of how wrong the viewer's clock is.
+  const offsetSeconds = Number(chain) - Number(server);
+  return { now: tick + offsetSeconds, offsetSeconds, source: "chain" };
+}
+
 export function disputeRehearsal(evidence, nowSeconds = Math.floor(Date.now() / 1000)) {
   const rows = milestoneRows(evidence);
   const committed = rows.filter((row) => row.submitted);
@@ -238,6 +267,13 @@ export function sourceEvidence(evidence) {
     field: item.field,
     expected: formatValue(item.expected),
     actual: formatValue(item.actual),
+    // What the reading is about, in the bill of lading's own terms, and where
+    // the expected value came from. Without these the panel showed "expected
+    // departed, actual in_port" — true, and silent about which vessel, which
+    // voyage and which ports, so a reader could not tell the reading even
+    // concerned this shipment.
+    subject: item.subject || null,
+    basis: item.basis || null,
     passed: item.passed !== false,
     simulated: Boolean(item.simulated)
   }));
@@ -262,8 +298,52 @@ export function verificationChecks(evidence) {
     // Was "Document CID valid", back when the check was that a string started
     // with "bafybeistern". It now retrieves the document from IPFS and reads
     // it, so the label says what it means.
-    { key: "eblCidValid", label: "e-BL verified", passed: v.eblCidValid, source: "IPFS" }
-  ].filter((c) => c.passed !== undefined);
+    { key: "eblCidValid", label: "e-BL verified", passed: v.eblCidValid, source: "IPFS" },
+    // Only once documents have been attached. `customsDocsValid` is null until
+    // then — not false — because nobody having uploaded a PEB is not a finding
+    // about a clearance, and a permanently red chip on every escrow created
+    // before this existed would say the opposite.
+    {
+      key: "customsDocsValid",
+      label: "Customs documents verified",
+      passed: v.customsDocsValid,
+      source: "Bea Cukai"
+    }
+  ].filter((c) => c.passed !== undefined && c.passed !== null);
+}
+
+/**
+ * The customs documents for milestone 3, in the form the panel needs.
+ *
+ * `attached: false` is the normal state and is returned rather than null, so
+ * the panel can say what claiming Cleared is supposed to carry instead of
+ * showing nothing.
+ */
+export function customsSummary(evidence) {
+  const customs = evidence?.customs;
+  if (!customs) return null;
+
+  if (!customs.attached) {
+    return {
+      attached: false,
+      reason: customs.reason || "No customs documents are attached to this escrow.",
+      missing: customs.missing || []
+    };
+  }
+
+  return {
+    attached: true,
+    cid: customs.cid || null,
+    valid: customs.valid === true,
+    available: customs.available !== false,
+    reason: customs.reason || "",
+    failedChecks: customs.failedChecks || [],
+    checks: customs.checks || {},
+    fields: customs.fields || null,
+    documents: customs.documents || {},
+    containerRef: customs.containerRef || null,
+    createdAt: customs.createdAt || null
+  };
 }
 
 /**

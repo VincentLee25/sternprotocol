@@ -67,7 +67,12 @@ function pdfParser() {
 const PIN_OPTIONS = { cidVersion: 0, rawLeaves: false };
 
 const MAX_DOCUMENT_BYTES = 8 * 1024 * 1024;
-const FETCH_TIMEOUT_MS = 25000;
+// Pinning uploads a document, so it gets room. Retrieval sits on the critical
+// path of every evidence read and every verify, so it does not: a slow public
+// gateway must not be able to hold up a settlement while somebody watches a
+// spinner.
+const PIN_TIMEOUT_MS = 30000;
+const FETCH_TIMEOUT_MS = 8000;
 
 // A CID names immutable content, so a verdict about one can never go stale —
 // cache successes for the life of the process. Failures are cached briefly
@@ -108,7 +113,7 @@ function providerError(message, code, statusCode = 502) {
   return error;
 }
 
-async function withTimeout(run, ms = FETCH_TIMEOUT_MS) {
+async function withTimeout(run, ms = PIN_TIMEOUT_MS) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
   try {
@@ -118,9 +123,23 @@ async function withTimeout(run, ms = FETCH_TIMEOUT_MS) {
   }
 }
 
+/**
+ * The MIME type to upload under.
+ *
+ * IPFS does not store it — a CID addresses bytes and nothing else — so this
+ * only affects what the pinning service shows in its own dashboard. Worth
+ * getting right anyway: a manifest listed as a PDF is confusing to whoever goes
+ * looking at the pins.
+ */
+function contentTypeOf(bytes, fileName) {
+  if (bytes.subarray(0, 5).toString("latin1") === "%PDF-") return "application/pdf";
+  if (/\.json$/i.test(String(fileName))) return "application/json";
+  return "application/octet-stream";
+}
+
 async function pinToPinata(bytes, fileName) {
   const form = new FormData();
-  form.append("file", new Blob([bytes], { type: "application/pdf" }), fileName);
+  form.append("file", new Blob([bytes], { type: contentTypeOf(bytes, fileName) }), fileName);
   form.append("pinataMetadata", JSON.stringify({ name: fileName }));
   // cidVersion here must stay in step with PIN_OPTIONS above.
   form.append("pinataOptions", JSON.stringify({ cidVersion: 0 }));
@@ -159,7 +178,7 @@ async function pinToPinata(bytes, fileName) {
 async function pinToKubo(bytes, fileName) {
   const base = String(config.ipfsApiUrl).replace(/\/+$/, "");
   const form = new FormData();
-  form.append("file", new Blob([bytes], { type: "application/pdf" }), fileName);
+  form.append("file", new Blob([bytes], { type: contentTypeOf(bytes, fileName) }), fileName);
 
   const headers = {};
   if (config.ipfsApiAuth) headers.authorization = config.ipfsApiAuth;
@@ -245,38 +264,68 @@ async function pinDocument(bytes, fileName = "e-bill-of-lading.pdf") {
   };
 }
 
-/** Retrieves the bytes at a CID, trying each configured gateway in turn. */
+/**
+ * Retrieves the bytes at a CID, racing every configured gateway.
+ *
+ * This used to try them one at a time with a 25-second timeout each, which put
+ * up to 75 seconds on the critical path of every evidence read and every
+ * verify — and the cache that normally hides that is cleared by any gateway
+ * restart. Pressing "Verify milestones" then sat there for a minute before it
+ * had even looked at the chain.
+ *
+ * Racing is the right shape for this: the gateways are interchangeable,
+ * content addressing means a wrong answer is caught anyway, and the slowest
+ * one no longer decides how long anyone waits. The losers are aborted so a
+ * hung request does not hold a socket for the full timeout.
+ */
 async function fetchByCid(cid) {
+  const gateways = config.ipfsGateways;
+  if (!gateways.length) {
+    throw providerError("No IPFS read gateways configured. Set IPFS_GATEWAYS.", "IPFS_NO_GATEWAYS");
+  }
+
   const attempts = [];
-  for (const gateway of config.ipfsGateways) {
+  const controllers = [];
+
+  async function tryGateway(gateway) {
     const url = `${gateway.replace(/\/+$/, "")}/ipfs/${cid}`;
+    const controller = new AbortController();
+    controllers.push(controller);
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     try {
-      const response = await withTimeout((signal) => fetch(url, { signal }));
-      if (!response.ok) {
-        attempts.push(`${gateway} → HTTP ${response.status}`);
-        continue;
-      }
-      const length = Number(response.headers.get("content-length") || 0);
-      if (length > MAX_DOCUMENT_BYTES) {
-        attempts.push(`${gateway} → ${length} bytes, over the limit`);
-        continue;
-      }
+      const response = await fetch(url, { signal: controller.signal });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const declared = Number(response.headers.get("content-length") || 0);
+      if (declared > MAX_DOCUMENT_BYTES) throw new Error(`${declared} bytes, over the limit`);
+
       const bytes = Buffer.from(await response.arrayBuffer());
-      if (bytes.length > MAX_DOCUMENT_BYTES) {
-        attempts.push(`${gateway} → ${bytes.length} bytes, over the limit`);
-        continue;
-      }
+      if (bytes.length > MAX_DOCUMENT_BYTES) throw new Error(`${bytes.length} bytes, over the limit`);
+
       return { bytes, gateway, url };
     } catch (error) {
-      attempts.push(`${gateway} → ${error.name === "AbortError" ? "timed out" : error.message}`);
+      const why = error.name === "AbortError" ? `timed out after ${FETCH_TIMEOUT_MS / 1000}s` : error.message;
+      attempts.push(`${gateway} → ${why}`);
+      throw error;
+    } finally {
+      clearTimeout(timer);
     }
   }
-  const error = providerError(
-    `Could not retrieve ${cid} from any IPFS gateway. Tried: ${attempts.join("; ")}`,
-    "IPFS_UNREACHABLE"
-  );
-  error.details = { attempts };
-  throw error;
+
+  try {
+    const winner = await Promise.any(gateways.map(tryGateway));
+    for (const controller of controllers) {
+      try { controller.abort(); } catch { /* the winner is already read */ }
+    }
+    return winner;
+  } catch {
+    const error = providerError(
+      `Could not retrieve ${cid} from any IPFS gateway. Tried: ${attempts.join("; ")}`,
+      "IPFS_UNREACHABLE"
+    );
+    error.details = { attempts };
+    throw error;
+  }
 }
 
 const FIELD_PATTERNS = {
@@ -303,6 +352,79 @@ const FIELD_PATTERNS = {
   verifiedGrossMass: /\bverified\s+gross\s+mass\b\s*(?:\(kg\))?\s*[:.\-]?\s*(\d[\d\s .,]{0,18}\d|\d)\s*(kgs?|mt|tonnes?|tons?)?/i,
   placeOfIssue: /\bplace\s+of\s+issue\s*[:.\-]?\s*([^\n]{2,60})/i,
   issueDate: /\b(?:date\s+of\s+issue|issued?\s+(?:on|date)|shipped\s+on\s+board)\s*[:.\-]?\s*([0-9]{1,2}[\s\-\/][A-Za-z0-9]{2,9}[\s\-\/][0-9]{2,4}|[0-9]{4}-[0-9]{2}-[0-9]{2})/i
+};
+
+// The Commercial Invoice states what was sold and for how much; the Packing
+// List states how it was packed. Between them they are the reference for the
+// quantity the escrow is settling against, which the commodity string on chain
+// never carried.
+// A money figure, with or without the currency in front of it. Trade documents
+// write "IDR 4.725.000,00", "Rp 4.725.000", and "4,725,000.00" — the first of
+// which an `Rp`-only prefix silently skipped, so every amount read back as
+// null while the pattern looked like it was working.
+const MONEY = String.raw`(?:(?:IDR|USD|EUR|SGD|JPY|CNY|Rp)\.?[^\S\n]*)?(\d[\d\s .,]{2,20})`;
+
+const INVOICE_PATTERNS = {
+  // "No." is required and must sit on the same line. Optional, it matched the
+  // "COMMERCIAL INVOICE" heading and then captured the word "Invoice" off the
+  // next line as the invoice number.
+  invoiceNumber:
+    /\b(?:commercial\s+invoice|tax\s+invoice|invoice)[^\S\n]*(?:no\.?|number|#|nomor)[^\S\n]*[:.\-]?[^\S\n]*([A-Z0-9][A-Z0-9\-\/]{2,28})/i,
+  invoiceDate:
+    /\b(?:invoice\s+date|date\s+of\s+invoice|tanggal\s+invoice)\s*[:.\-]?\s*([0-9]{1,2}[\s\-\/][A-Za-z0-9]{2,9}[\s\-\/][0-9]{2,4}|[0-9]{4}-[0-9]{2}-[0-9]{2})/i,
+  quantity:
+    /\b(?:total\s+)?(?:quantity|qty|jumlah)\b\s*[:.\-]?\s*(\d[\d\s .,]{0,14}\d|\d)\s*(kgs?|mt|tonnes?|tons?|bags?|cartons?|pcs)?/i,
+  totalAmount: new RegExp(
+    String.raw`\b(?:total\s+(?:amount|value)|amount\s+due|grand\s+total|total\s+invoice)\b[^\S\n]*[:.\-]?[^\S\n]*` + MONEY,
+    "i"
+  ),
+  currency: /\b(USD|IDR|EUR|SGD|JPY|CNY)\b/,
+  // Incoterms decide who pays freight and insurance, which is the difference
+  // between an invoice total and what the importer actually owes.
+  incoterm: /\b(FOB|CIF|CFR|EXW|FCA|FAS|DAP|DDP|CIP|CPT)\b/i
+};
+
+const PACKING_PATTERNS = {
+  // Both orders: "Packages: 320" and "320 bags".
+  packages:
+    /\b(?:total\s+)?(?:packages?|colli|koli|cases?|bags?|cartons?)\b\s*[:.\-]?\s*(\d[\d\s.,]{0,10}\d|\d)\b/i,
+  packagesReversed: /\b(\d[\d\s.,]{0,10}\d|\d)\s*(?:bags?|cartons?|packages?|colli|koli|cases?)\b/i,
+  netWeight:
+    /\bnet\s+weight\b\s*(?:\(kg\))?\s*[:.\-]?\s*(\d[\d\s .,]{0,18}\d|\d)\s*(kgs?|mt|tonnes?|tons?)?/i,
+  grossWeight:
+    /\bgross\s+weight\b\s*(?:\(kg\))?\s*[:.\-]?\s*(\d[\d\s .,]{0,18}\d|\d)\s*(kgs?|mt|tonnes?|tons?)?/i,
+  marks: /\b(?:shipping\s+marks|marks\s+(?:and|&)\s+numbers)\s*[:.\-]?\s*([^\n]{2,60})/i
+};
+
+// Indonesian customs, as the documents are actually headed. PEB is issued by
+// Bea Cukai at export, PIB at import, and the payment is evidenced by an NTPN
+// — the state receipt number, which is the figure an auditor would check
+// against DJP's own records.
+const CUSTOMS_PATTERNS = {
+  // A PEB or PIB carries two numbers and they are not interchangeable: the
+  // "nomor pengajuan" is what the exporter's system submitted under, and the
+  // "nomor pendaftaran" is what Bea Cukai registered it as. The registration
+  // number is the one an auditor cites, so it is read separately and preferred
+  // — see readCustomsFields. These two only catch the number when the document
+  // writes it against the form's own name.
+  pebNumber:
+    /\bPEB\b[^\S\n]*(?:no\.?|nomor|number)[^\S\n]*[:.\-]?[^\S\n]*([0-9][0-9A-Z\-\/]{4,32})/i,
+  pibNumber:
+    /\bPIB\b[^\S\n]*(?:no\.?|nomor|number)[^\S\n]*[:.\-]?[^\S\n]*([0-9][0-9A-Z\-\/]{4,32})/i,
+  registrationNumber: /\bnomor\s+pendaftaran\b[^\S\n]*[:.\-]?[^\S\n]*([0-9][0-9A-Z\-\/]{4,32})/i,
+  submissionNumber: /\bnomor\s+(?:pengajuan|aju)\b[^\S\n]*[:.\-]?[^\S\n]*([0-9][0-9A-Z\-\/]{4,32})/i,
+  registrationDate:
+    /\b(?:tanggal\s+pendaftaran|registration\s+date)\s*[:.\-]?\s*([0-9]{1,2}[\s\-\/][A-Za-z0-9]{2,9}[\s\-\/][0-9]{2,4}|[0-9]{4}-[0-9]{2}-[0-9]{2})/i,
+  npwp: /\bNPWP\s*[:.\-]?\s*([0-9][0-9.\-]{10,24})/i,
+  customsOffice:
+    /\b(?:kantor\s+(?:pabean|pelayanan|bea\s+(?:dan\s+)?cukai)|customs\s+office)\s*[:.\-]?\s*([^\n]{3,60})/i,
+  ntpn: /\bNTPN\s*[:.\-]?\s*([0-9A-Z]{10,32})/i,
+  importDuty: new RegExp(String.raw`\b(?:bea\s+masuk|import\s+duty)\b[^\S\n]*(?:\(idr\))?[^\S\n]*[:.\-]?[^\S\n]*` + MONEY, "i"),
+  vat: new RegExp(String.raw`\b(?:ppn|value\s+added\s+tax|vat)\b[^\S\n]*[:.\-]?[^\S\n]*` + MONEY, "i"),
+  incomeTax: new RegExp(String.raw`\b(?:pph[^\S\n]*(?:22)?|income\s+tax)\b[^\S\n]*[:.\-]?[^\S\n]*` + MONEY, "i"),
+  totalLevy: new RegExp(String.raw`\b(?:total\s+pungutan|jumlah\s+setoran|total\s+(?:duties|levy))\b[^\S\n]*[:.\-]?[^\S\n]*` + MONEY, "i"),
+  paymentDate:
+    /\b(?:tanggal\s+(?:bayar|pembayaran|setor)|payment\s+date|paid\s+on)\s*[:.\-]?\s*([0-9]{1,2}[\s\-\/][A-Za-z0-9]{2,9}[\s\-\/][0-9]{2,4}|[0-9]{4}-[0-9]{2}-[0-9]{2})/i
 };
 
 // ISO 6346 container numbers (4 letters + 7 digits) and the looser
@@ -406,9 +528,256 @@ function readFields(text) {
   return fields;
 }
 
+/** Runs a pattern set over extracted text. Absent fields are null, never guessed. */
+function readWith(text, patterns) {
+  const fields = {};
+  for (const [name, pattern] of Object.entries(patterns)) {
+    const match = text.match(pattern);
+    fields[name] = match ? clean(match[1] ?? match[0]) : null;
+  }
+  return fields;
+}
+
+function readInvoiceFields(text) {
+  const fields = readWith(text, INVOICE_PATTERNS);
+  if (fields.quantity) {
+    const unit = text.match(INVOICE_PATTERNS.quantity)?.[2];
+    fields.quantityUnit = unit ? clean(unit).toLowerCase() : null;
+    // Only mass units convert. A bag count is not a weight, and turning one
+    // into kilograms would invent a figure no document states.
+    fields.quantityKg = /^(kgs?|mt|tonnes?|tons?)$/i.test(String(fields.quantityUnit || ""))
+      ? parseWeight(fields.quantity, fields.quantityUnit)
+      : null;
+    fields.quantityCount = parseWeight(fields.quantity, null);
+  }
+  return fields;
+}
+
+function readPackingFields(text) {
+  const fields = readWith(text, PACKING_PATTERNS);
+  // Whichever order the document wrote it in.
+  fields.packageCount = parseWeight(fields.packages || fields.packagesReversed, null);
+  for (const name of ["netWeight", "grossWeight"]) {
+    if (!fields[name]) continue;
+    const unit = text.match(PACKING_PATTERNS[name])?.[2];
+    fields[`${name}Unit`] = unit ? clean(unit).toLowerCase() : null;
+    fields[`${name}Kg`] = parseWeight(fields[name], fields[`${name}Unit`]);
+  }
+  return fields;
+}
+
+function readCustomsFields(text) {
+  const fields = readWith(text, CUSTOMS_PATTERNS);
+
+  // A PEB and a PIB are laid out identically and both head their number "Nomor
+  // Pendaftaran", so which form this is decides which field that number goes
+  // in. The document's TITLE decides it, not the abbreviation appearing
+  // somewhere in the body: a payment receipt cites the PIB it settles without
+  // being one.
+  //
+  // The registration number is preferred over a number caught next to the
+  // form's abbreviation, because "nomor pendaftaran" is what Bea Cukai
+  // registered the declaration as, while the other candidate is usually the
+  // submission number — which identifies a filing, not a lodged declaration.
+  const registered = fields.registrationNumber || null;
+  if (/pemberitahuan\s+ekspor/i.test(text)) fields.pebNumber = registered || fields.pebNumber || null;
+  if (/pemberitahuan\s+impor/i.test(text)) fields.pibNumber = registered || fields.pibNumber || null;
+
+  for (const name of ["importDuty", "vat", "incomeTax", "totalLevy"]) {
+    if (fields[name]) fields[`${name}Idr`] = parseWeight(fields[name], null);
+  }
+  return fields;
+}
+
+// The two manifest kinds. They live here rather than in manifestService
+// because that module requires this one, and verification has to recognise a
+// manifest without importing the thing that writes them.
+const ESCROW_MANIFEST_KIND = "stern/escrow-manifest@1";
+const CUSTOMS_MANIFEST_KIND = "stern/customs-manifest@1";
+
+/**
+ * A STERN manifest, or null if these bytes are not one.
+ *
+ * Deliberately strict about the `stern` key. Anything else at a document CID —
+ * a PDF, somebody else's JSON, a truncated file — is not a manifest and must
+ * fall through to being checked as a document in its own right, which is what
+ * keeps every escrow created before manifests existed working unchanged.
+ */
+function parseManifest(bytes, kind = ESCROW_MANIFEST_KIND) {
+  // Cheap gate before spending a parse on an 8mb PDF.
+  const head = bytes.subarray(0, 64).toString("utf8").trimStart();
+  if (!head.startsWith("{")) return null;
+  try {
+    const parsed = JSON.parse(bytes.toString("utf8"));
+    if (!parsed || parsed.stern !== kind) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/** Retrieved, re-addressed, and read. The shared first half of every check. */
+async function retrieveDocument(cid) {
+  const { bytes, gateway, url } = await fetchByCid(cid);
+  const recomputed = await computeCid(bytes);
+  const isPdf = bytes.subarray(0, 5).toString("latin1") === "%PDF-";
+
+  let extracted = null;
+  let parseError = null;
+  if (isPdf) {
+    try {
+      extracted = await extractPdf(bytes);
+    } catch (error) {
+      parseError = error.message;
+    }
+  }
+
+  return {
+    bytes,
+    gateway,
+    url,
+    recomputed,
+    cidMatchesContent: recomputed === cid,
+    isPdf,
+    extracted,
+    parseError,
+    text: extracted?.text || ""
+  };
+}
+
+const hasEnoughText = (text) => text.replace(/\s+/g, "").length >= 200;
+
+/**
+ * One document named by a manifest.
+ *
+ * `sha256Matches` is the check worth having here beyond the CID: the manifest
+ * records the digest of the bytes the gateway pinned, so comparing it against
+ * what a public gateway serves catches a manifest that was written against
+ * different content — a thing a CID alone cannot say, because a manifest and
+ * the documents it names are addressed separately.
+ */
+async function verifySlot(entry, { read } = {}) {
+  if (!entry?.cid) return null;
+
+  const got = await retrieveDocument(entry.cid).catch((error) => ({ error }));
+  if (got.error) {
+    return {
+      cid: entry.cid,
+      fileName: entry.fileName || null,
+      resolves: false,
+      valid: false,
+      reason: got.error.message
+    };
+  }
+
+  const digest = sha256(got.bytes);
+  const hasText = hasEnoughText(got.text);
+  const notes = [];
+  if (!got.isPdf) notes.push("The content at this CID is not a PDF.");
+  if (got.parseError) notes.push(`The PDF could not be parsed: ${got.parseError}`);
+  if (got.isPdf && !hasText) {
+    notes.push("Almost no text could be extracted — a scan of this document would need OCR before its fields can be read.");
+  }
+
+  return {
+    cid: entry.cid,
+    fileName: entry.fileName || null,
+    resolves: true,
+    cidMatchesContent: got.cidMatchesContent,
+    isPdf: got.isPdf,
+    hasText,
+    sha256: digest,
+    declaredSha256: entry.sha256 || null,
+    sha256Matches: entry.sha256 ? digest === entry.sha256 : null,
+    pages: got.extracted?.pages ?? null,
+    size: got.bytes.length,
+    fields: got.text && read ? read(got.text) : null,
+    text: got.text,
+    notes,
+    // Resolving and hashing back is the bar for a slot. Whether its CONTENT is
+    // the right document is judged by the caller, which knows what the slot is
+    // supposed to be.
+    valid: got.cidMatchesContent && got.isPdf,
+    gatewayUrl: got.url,
+    retrievedFrom: got.gateway
+  };
+}
+
+/**
+ * Does the declared quantity agree with what the documents say?
+ *
+ * Reported, never required. Gross weight includes the tare of the packaging and
+ * net weight does not, so a strict comparison produces discrepancies that are
+ * an artefact of which figure a document happened to print. A visible
+ * disagreement is useful; a milestone blocked by one would be a false refusal,
+ * and this gateway's whole claim is that its refusals mean something.
+ */
+function compareQuantity(quantity, invoice, packing, bl) {
+  if (!quantity) return null;
+
+  const candidates = [
+    invoice?.quantityKg != null && { label: "commercial invoice", kg: invoice.quantityKg },
+    packing?.netWeightKg != null && { label: "packing list (net)", kg: packing.netWeightKg },
+    packing?.grossWeightKg != null && { label: "packing list (gross)", kg: packing.grossWeightKg },
+    bl?.grossWeightKg != null && { label: "bill of lading (gross)", kg: bl.grossWeightKg }
+  ].filter(Boolean);
+
+  // A count unit is compared against a count, not a weight.
+  if (quantity.valueKg == null) {
+    const counted = invoice?.quantityCount ?? packing?.packageCount ?? null;
+    if (counted == null) {
+      return { comparable: false, reason: `No document states a count to compare ${quantity.text} against.` };
+    }
+    const agrees = Math.abs(counted - quantity.value) <= Math.max(1, quantity.value * 0.02);
+    return {
+      comparable: true,
+      agrees,
+      declared: quantity.text,
+      found: `${counted.toLocaleString("id-ID")} ${quantity.unitLabel}`,
+      against: invoice?.quantityCount != null ? "commercial invoice" : "packing list",
+      reason: agrees
+        ? `The documents state ${counted.toLocaleString("id-ID")} ${quantity.unitLabel}, matching the declared quantity.`
+        : `Declared ${quantity.text}, but the documents state ${counted.toLocaleString("id-ID")} ${quantity.unitLabel}.`
+    };
+  }
+
+  if (!candidates.length) {
+    return { comparable: false, reason: `No document states a weight to compare ${quantity.text} against.` };
+  }
+
+  // 5%: enough to absorb packaging and rounding between net, gross and VGM,
+  // tight enough that a tenfold error or a wrong container is still caught.
+  const tolerance = Math.max(1, quantity.valueKg * 0.05);
+  const best = candidates.reduce((a, b) =>
+    Math.abs(b.kg - quantity.valueKg) < Math.abs(a.kg - quantity.valueKg) ? b : a
+  );
+  const agrees = Math.abs(best.kg - quantity.valueKg) <= tolerance;
+
+  return {
+    comparable: true,
+    agrees,
+    declared: quantity.text,
+    declaredKg: quantity.valueKg,
+    found: `${best.kg.toLocaleString("id-ID")} kg`,
+    against: best.label,
+    tolerancePct: 5,
+    reason: agrees
+      ? `The ${best.label} states ${best.kg.toLocaleString("id-ID")} kg, within 5% of the declared ${quantity.text}.`
+      : `Declared ${quantity.text} (${quantity.valueKg.toLocaleString("id-ID")} kg), but the ${best.label} states ${best.kg.toLocaleString("id-ID")} kg.`
+  };
+}
+
 /**
  * The full check on a CID: does it resolve, do the bytes hash back to it, is
  * it a bill of lading, and is it this escrow's bill of lading.
+ *
+ * Two shapes are accepted at `documentCid`, and the verdict returned is the
+ * same shape for both so nothing downstream has to know which it got:
+ *
+ *   - a bill of lading PDF, which is how every escrow created before manifests
+ *     existed was written, and
+ *   - a STERN escrow manifest: JSON stating the quantity and naming the CIDs
+ *     of the bill of lading, the commercial invoice and the packing list.
  *
  * `simulateFault` keeps the existing demo lever working. It marks the result
  * as failed *and* says it was simulated, so a rehearsal can never be mistaken
@@ -463,6 +832,37 @@ async function verifyDocument(cid, { containerRef = null, simulateFault = false 
     );
   }
 
+  const manifest = parseManifest(bytes, ESCROW_MANIFEST_KIND);
+  const verdict = manifest
+    ? await verifyManifestDocument({ manifest, trimmed, bytes, gateway, url, recomputed, checks, notes, containerRef })
+    : await verifyBareBillOfLading({ trimmed, bytes, gateway, url, recomputed, checks, notes, containerRef });
+
+  const failed = verdict.required.filter((name) => !checks[name]);
+  const valid = failed.length === 0 && !simulateFault;
+
+  if (simulateFault) {
+    notes.push("Fault simulation is on for this escrow, so this check is reported as failed regardless of the document.");
+  }
+
+  return {
+    cid: trimmed,
+    available: true,
+    valid,
+    kind: manifest ? "manifest" : "bill_of_lading",
+    simulatedFault: Boolean(simulateFault),
+    failedChecks: simulateFault ? [...failed, "simulatedFault"] : failed,
+    checks,
+    fields: verdict.fields,
+    notes,
+    reason: valid ? verdict.reason : notes[0] || `Failed: ${failed.join(", ")}.`,
+    document: verdict.document,
+    ...(verdict.extra || {}),
+    checkedAt: new Date().toISOString()
+  };
+}
+
+/** The pre-manifest shape: `documentCid` is the bill of lading PDF itself. */
+async function verifyBareBillOfLading({ trimmed, bytes, gateway, url, recomputed, checks, notes, containerRef }) {
   checks.isPdf = bytes.subarray(0, 5).toString("latin1") === "%PDF-";
 
   let extracted = null;
@@ -478,7 +878,7 @@ async function verifyDocument(cid, { containerRef = null, simulateFault = false 
   }
 
   const text = extracted?.text || "";
-  checks.hasText = text.replace(/\s+/g, "").length >= 200;
+  checks.hasText = hasEnoughText(text);
   if (checks.isPdf && !checks.hasText) {
     notes.push(
       "Almost no text could be extracted. A scanned image of a bill of lading needs OCR before its fields can be read."
@@ -488,7 +888,159 @@ async function verifyDocument(cid, { containerRef = null, simulateFault = false 
   if (text) fields = readFields(text);
 
   checks.hasBillOfLadingNumber = Boolean(fields?.billOfLadingNumber);
+  applyContainerCheck({ checks, notes, fields, text, containerRef });
 
+  return {
+    required: ["cidResolves", "cidMatchesContent", "isPdf", "hasText", "hasBillOfLadingNumber", "hasContainerReference"],
+    fields,
+    reason: "The bytes at this CID hash back to it, and they are a bill of lading naming this escrow's container.",
+    document: {
+      size: bytes.length,
+      sha256: sha256(bytes),
+      pages: extracted?.pages ?? null,
+      title: clean(extracted?.info?.Title) || null,
+      recomputedCid: recomputed,
+      retrievedFrom: gateway,
+      gatewayUrl: url
+    }
+  };
+}
+
+/**
+ * `documentCid` is a manifest: the quantity plus the CIDs of the bill of
+ * lading, the commercial invoice and the packing list.
+ *
+ * The bill of lading's own checks are merged into the same `checks` object
+ * under the same names the bare-PDF path uses, so every consumer — the
+ * milestone gate, the evidence panel, the tests — reads one shape. What is new
+ * sits alongside under distinct names.
+ */
+async function verifyManifestDocument({ manifest, trimmed, bytes, gateway, url, recomputed, checks, notes, containerRef }) {
+  const declared = manifest.documents || {};
+  checks.manifestValid = Boolean(declared.billOfLading?.cid);
+  if (!checks.manifestValid) {
+    notes.push("This manifest names no bill of lading, so there is no document to identify the shipment by.");
+  }
+
+  // In parallel: they are independent retrievals, and a manifest with three
+  // documents would otherwise cost three sequential gateway races.
+  const [bl, invoice, packing] = await Promise.all([
+    verifySlot(declared.billOfLading, { read: readFields }),
+    verifySlot(declared.commercialInvoice, { read: readInvoiceFields }),
+    verifySlot(declared.packingList, { read: readPackingFields })
+  ]);
+
+  const required = ["cidResolves", "cidMatchesContent", "manifestValid"];
+
+  if (bl) {
+    checks.billOfLadingResolves = bl.resolves;
+    checks.isPdf = Boolean(bl.isPdf);
+    checks.hasText = Boolean(bl.hasText);
+    checks.hasBillOfLadingNumber = Boolean(bl.fields?.billOfLadingNumber);
+    if (bl.sha256Matches === false) {
+      notes.push("The bill of lading's bytes do not match the digest the manifest recorded for it.");
+    }
+    for (const note of bl.notes || []) notes.push(`Bill of lading: ${note}`);
+    applyContainerCheck({ checks, notes, fields: bl.fields, text: bl.text || "", containerRef });
+    required.push("billOfLadingResolves", "isPdf", "hasText", "hasBillOfLadingNumber", "hasContainerReference");
+  } else {
+    checks.billOfLadingResolves = false;
+    checks.isPdf = false;
+    checks.hasText = false;
+    checks.hasBillOfLadingNumber = false;
+    checks.hasContainerReference = false;
+    required.push("billOfLadingResolves");
+  }
+
+  // A document is only required once the manifest declares it. Declared and
+  // broken must fail; not attached at all is a different statement, and the
+  // screen says which.
+  if (invoice) {
+    checks.invoiceResolves = invoice.valid;
+    for (const note of invoice.notes || []) notes.push(`Commercial invoice: ${note}`);
+    required.push("invoiceResolves");
+  }
+  if (packing) {
+    checks.packingListResolves = packing.valid;
+    for (const note of packing.notes || []) notes.push(`Packing list: ${note}`);
+    required.push("packingListResolves");
+  }
+
+  const quantity = manifest.quantity || null;
+  const quantityCheck = compareQuantity(quantity, invoice?.fields, packing?.fields, bl?.fields);
+  if (quantityCheck?.comparable) {
+    // Reported, not required — see compareQuantity.
+    checks.quantityAgrees = quantityCheck.agrees;
+    if (!quantityCheck.agrees) notes.push(quantityCheck.reason);
+  }
+
+  const fields = {
+    ...(bl?.fields || {}),
+    quantity,
+    invoice: invoice?.fields || null,
+    packing: packing?.fields || null
+  };
+
+  const attached = [
+    "bill of lading",
+    invoice ? "commercial invoice" : null,
+    packing ? "packing list" : null
+  ].filter(Boolean);
+
+  return {
+    required,
+    fields,
+    reason: `The manifest at this CID hashes back to it and names ${attached.join(", ")}${
+      quantity ? `, for ${quantity.text}` : ""
+    }. The bill of lading resolves and names this escrow's container.`,
+    // `document` describes the bill of lading, because that is the document a
+    // reader means when they ask to see the e-BL.
+    document: bl?.resolves
+      ? {
+          size: bl.size,
+          sha256: bl.sha256,
+          pages: bl.pages,
+          title: null,
+          recomputedCid: bl.cid,
+          retrievedFrom: bl.retrievedFrom,
+          gatewayUrl: bl.gatewayUrl
+        }
+      : {
+          size: bytes.length,
+          sha256: sha256(bytes),
+          pages: null,
+          title: null,
+          recomputedCid: recomputed,
+          retrievedFrom: gateway,
+          gatewayUrl: url
+        },
+    extra: {
+      manifest: {
+        cid: trimmed,
+        containerRef: manifest.containerRef || null,
+        commodity: manifest.commodity || null,
+        quantity,
+        quantityCheck,
+        createdAt: manifest.createdAt || null,
+        // `text` is dropped: it is the whole PDF, and this payload is served to
+        // a browser on every evidence read.
+        documents: {
+          billOfLading: stripText(bl),
+          commercialInvoice: stripText(invoice),
+          packingList: stripText(packing)
+        }
+      }
+    }
+  };
+}
+
+function stripText(slot) {
+  if (!slot) return null;
+  const { text, ...rest } = slot;
+  return rest;
+}
+
+function applyContainerCheck({ checks, notes, fields, text, containerRef }) {
   if (containerRef) {
     const wanted = normaliseRef(containerRef);
     const found = (fields?.containerNumbers || []).some((c) => normaliseRef(c) === wanted);
@@ -501,38 +1053,152 @@ async function verifyDocument(cid, { containerRef = null, simulateFault = false 
   } else {
     checks.hasContainerReference = (fields?.containerNumbers || []).length > 0;
   }
+}
 
-  const required = ["cidResolves", "cidMatchesContent", "isPdf", "hasText", "hasBillOfLadingNumber", "hasContainerReference"];
-  const failed = required.filter((name) => !checks[name]);
-  const valid = failed.length === 0 && !simulateFault;
-
-  if (simulateFault) {
-    notes.push("Fault simulation is on for this escrow, so this check is reported as failed regardless of the document.");
+/**
+ * The customs manifest for a milestone-3 proof: PEB, PIB and the payment.
+ *
+ * Separate from verifyDocument because it answers a different question and
+ * carries a different verdict. Claiming Cleared is a claim about legality at
+ * two borders, and the documents that evidence it are issued by two different
+ * authorities at two different times — none of which exists when the escrow is
+ * created, which is why they cannot live in `documentCid` at all.
+ */
+async function verifyCustomsManifest(cid, { containerRef = null } = {}) {
+  if (typeof cid !== "string" || !cid.trim()) {
+    return { cid: cid ?? null, available: false, valid: false, reason: "No customs manifest CID.", checks: {} };
   }
+
+  const trimmed = cid.trim();
+  const checks = {};
+  const notes = [];
+
+  const retrieval = await fetchByCid(trimmed).catch((error) => ({ error }));
+  if (retrieval.error) {
+    return {
+      cid: trimmed,
+      available: false,
+      valid: false,
+      reason: retrieval.error.message,
+      checks: { cidResolves: false },
+      notes: [retrieval.error.message]
+    };
+  }
+
+  const { bytes } = retrieval;
+  checks.cidResolves = true;
+  checks.cidMatchesContent = (await computeCid(bytes)) === trimmed;
+
+  const manifest = parseManifest(bytes, CUSTOMS_MANIFEST_KIND);
+  checks.manifestValid = Boolean(manifest?.documents?.exportDeclaration?.cid);
+  if (!manifest) {
+    notes.push("The content at this CID is not a STERN customs manifest.");
+  } else if (!checks.manifestValid) {
+    notes.push("The customs manifest names no PEB, which is the document that evidences the export itself.");
+  }
+
+  const declared = manifest?.documents || {};
+  const [peb, pib, duty] = await Promise.all([
+    verifySlot(declared.exportDeclaration, { read: readCustomsFields }),
+    verifySlot(declared.importDeclaration, { read: readCustomsFields }),
+    verifySlot(declared.dutyPayment, { read: readCustomsFields })
+  ]);
+
+  const required = ["cidResolves", "cidMatchesContent", "manifestValid"];
+
+  if (peb) {
+    checks.pebResolves = peb.valid;
+    checks.hasPebNumber = Boolean(peb.fields?.pebNumber || peb.fields?.registrationNumber);
+    if (!checks.hasPebNumber) {
+      notes.push("No PEB registration number could be read from the export declaration.");
+    }
+    for (const note of peb.notes || []) notes.push(`PEB: ${note}`);
+    required.push("pebResolves", "hasPebNumber");
+  } else {
+    checks.pebResolves = false;
+    checks.hasPebNumber = false;
+    required.push("pebResolves");
+  }
+
+  if (pib) {
+    checks.pibResolves = pib.valid;
+    checks.hasPibNumber = Boolean(pib.fields?.pibNumber || pib.fields?.registrationNumber);
+    for (const note of pib.notes || []) notes.push(`PIB: ${note}`);
+    required.push("pibResolves");
+  }
+
+  if (duty) {
+    checks.dutyPaymentResolves = duty.valid;
+    // NTPN is the state receipt number. Its presence is what distinguishes a
+    // payment that was made from a bill that was issued.
+    checks.hasPaymentReference = Boolean(duty.fields?.ntpn || duty.fields?.paymentDate);
+    if (!checks.hasPaymentReference) {
+      notes.push("No NTPN or payment date could be read from the duty payment document, so it evidences an amount owed rather than one paid.");
+    }
+    for (const note of duty.notes || []) notes.push(`Duty payment: ${note}`);
+    required.push("dutyPaymentResolves");
+  }
+
+  // The container reference, checked against whichever declarations carry it.
+  if (containerRef) {
+    const wanted = normaliseRef(containerRef);
+    const texts = [peb?.text, pib?.text, duty?.text].filter(Boolean);
+    checks.mentionsContainer = texts.some((text) => normaliseRef(text).includes(wanted));
+    if (!checks.mentionsContainer && texts.length) {
+      notes.push(`None of the customs documents mentions container ${containerRef}.`);
+    }
+  }
+
+  const failed = required.filter((name) => !checks[name]);
+  const valid = failed.length === 0;
+
+  const attached = [peb && "PEB", pib && "PIB", duty && "proof of payment"].filter(Boolean);
 
   return {
     cid: trimmed,
     available: true,
     valid,
-    simulatedFault: Boolean(simulateFault),
-    failedChecks: simulateFault ? [...failed, "simulatedFault"] : failed,
+    failedChecks: failed,
     checks,
-    fields,
     notes,
     reason: valid
-      ? "The bytes at this CID hash back to it, and they are a bill of lading naming this escrow's container."
+      ? `The customs manifest hashes back to its CID and names ${attached.join(", ")}, each of which resolves.`
       : notes[0] || `Failed: ${failed.join(", ")}.`,
-    document: {
-      size: bytes.length,
-      sha256: sha256(bytes),
-      pages: extracted?.pages ?? null,
-      title: clean(extracted?.info?.Title) || null,
-      recomputedCid: recomputed,
-      retrievedFrom: gateway,
-      gatewayUrl: url
+    escrowId: manifest?.escrowId || null,
+    containerRef: manifest?.containerRef || null,
+    createdAt: manifest?.createdAt || null,
+    documents: {
+      exportDeclaration: stripText(peb),
+      importDeclaration: stripText(pib),
+      dutyPayment: stripText(duty)
+    },
+    fields: {
+      pebNumber: peb?.fields?.pebNumber || peb?.fields?.registrationNumber || null,
+      pebDate: peb?.fields?.registrationDate || null,
+      pibNumber: pib?.fields?.pibNumber || pib?.fields?.registrationNumber || null,
+      pibDate: pib?.fields?.registrationDate || null,
+      customsOffice: peb?.fields?.customsOffice || pib?.fields?.customsOffice || null,
+      npwp: peb?.fields?.npwp || pib?.fields?.npwp || null,
+      ntpn: duty?.fields?.ntpn || null,
+      importDutyIdr: duty?.fields?.importDutyIdr ?? pib?.fields?.importDutyIdr ?? null,
+      vatIdr: duty?.fields?.vatIdr ?? pib?.fields?.vatIdr ?? null,
+      incomeTaxIdr: duty?.fields?.incomeTaxIdr ?? pib?.fields?.incomeTaxIdr ?? null,
+      paymentDate: duty?.fields?.paymentDate || null
     },
     checkedAt: new Date().toISOString()
   };
+}
+
+/** Same check, memoised on the CID, which names immutable content. */
+async function verifyCustomsManifestCached(cid, options = {}) {
+  const key = `customs|${cid}|${options.containerRef || ""}`;
+  const hit = verdicts.get(key);
+  const now = Date.now();
+  if (hit && hit.expiresAt > now) return { ...hit.value, cached: true };
+
+  const value = await verifyCustomsManifest(cid, options);
+  verdicts.set(key, { value, expiresAt: now + (value.valid ? OK_TTL_MS : FAIL_TTL_MS) });
+  return value;
 }
 
 /**
@@ -601,7 +1267,12 @@ module.exports = {
   fetchByCid,
   verifyDocument,
   verifyDocumentCached,
+  verifyCustomsManifest,
+  verifyCustomsManifestCached,
+  parseManifest,
   pinningProvider,
   ipfsStatus,
+  ESCROW_MANIFEST_KIND,
+  CUSTOMS_MANIFEST_KIND,
   MAX_DOCUMENT_BYTES
 };

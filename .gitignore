@@ -20,6 +20,8 @@ frontend/.vite/
 .claude/
 .mcp.json
 *.log
+# git bundles are a transport for handing commits over, not source
+*.bundle
 cache.zip
 stern-dashboard.png
 *.pdf

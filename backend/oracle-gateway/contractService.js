@@ -131,6 +131,26 @@ function eblBlocks(verification) {
   return verification.eblCheckable === true && verification.eblCidValid === false;
 }
 
+/**
+ * Whether the customs documents are a reason to refuse milestone 3.
+ *
+ * Same shape as eblBlocks, and the distinction matters even more here. Three
+ * states, not two:
+ *
+ *   - nothing attached (`customsDocsValid === null`): does not block. Every
+ *     escrow created before customs documents existed is in this state, and
+ *     refusing their third milestone retroactively would be a false refusal
+ *     about a shipment that cleared perfectly well.
+ *   - attached and checked and wrong: blocks. A PEB that does not resolve, or
+ *     whose bytes do not hash back to its address, is not evidence of a
+ *     clearance, and Cleared is the milestone that claims one.
+ *   - attached but the check could not run: does not block, for the same reason
+ *     a slow IPFS gateway must not hold up a settlement.
+ */
+function customsBlocks(verification) {
+  return verification.customsDocsCheckable === true && verification.customsDocsValid === false;
+}
+
 function milestonePassed(milestone, verification) {
   const normalized = normalizeMilestone(milestone);
   // The e-BL is the document the whole escrow is written against, so a
@@ -143,7 +163,12 @@ function milestonePassed(milestone, verification) {
     return verification.vgmMatch === true && verification.inspectionPassed === true;
   }
   if (normalized === MILESTONES.shipped) return verification.aisDeparted === true;
-  if (normalized === MILESTONES.arrivedcleared) return verification.ceisaApproved === true;
+  if (normalized === MILESTONES.arrivedcleared) {
+    // Cleared is the milestone that claims the goods are legally through both
+    // borders, so the customs documents gate this one and only this one.
+    if (customsBlocks(verification)) return false;
+    return verification.ceisaApproved === true;
+  }
   return false;
 }
 
@@ -695,6 +720,32 @@ async function getVerifiers() {
  *   blocked               — escrow state does not allow this milestone yet
  *   error                 — the transaction itself reverted or the node refused
  */
+/**
+ * What goes on chain as this milestone's proof CID.
+ *
+ * For Cleared, when customs documents have been attached, it is the real CID of
+ * the customs manifest — so the proof recorded on chain resolves to the PEB,
+ * the PIB and the receipt for the duty, and anyone can fetch them and check the
+ * hashes. That is the thing a proof CID was always supposed to be.
+ *
+ * Everything else keeps the synthetic string it has always had. It is honest
+ * about what it is — the gateway attesting that its own checks passed, with no
+ * document behind it — and changing the format for the first two milestones
+ * would rewrite what earlier escrows can be compared against for no gain.
+ */
+function proofCidFor(contractId, milestone, prefix) {
+  if (milestone === "arrived_cleared") {
+    try {
+      const record = require("./manifestService").customsFor(contractId);
+      if (record?.cid) return record.cid;
+    } catch {
+      // No store or an unreadable one: fall through to the synthetic string
+      // rather than failing a milestone over a missing file.
+    }
+  }
+  return `${prefix}-${contractId}-${milestone}`;
+}
+
 async function verifyAndSubmitAll(contractId, verification, { proofCidPrefix = "bafy-verified" } = {}) {
   const provider = getProvider();
   const contract = getContract(provider);
@@ -761,14 +812,16 @@ async function verifyAndSubmitAll(contractId, verification, { proofCidPrefix = "
         status: "source_failed",
         reason: eblBlocks(verification)
           ? "The e-BL document failed verification, so no proof was written on chain. Every milestone is gated on it: re-create the escrow with the correct bill of lading."
-          : "The automated check did not pass, so no proof was written on chain."
+          : customsBlocks(verification) && name === "arrived_cleared"
+            ? "The customs documents attached to this escrow failed verification, so no proof was written on chain. Cleared claims the goods are legally through both borders: re-upload the PEB, PIB and proof of payment."
+            : "The automated check did not pass, so no proof was written on chain."
       };
       stop = true;
       continue;
     }
 
     try {
-      const submitted = await submitMilestoneProof(contractId, name, `${proofCidPrefix}-${contractId}-${name}`, verification);
+      const submitted = await submitMilestoneProof(contractId, name, proofCidFor(contractId, name, proofCidPrefix), verification);
       results[name] = {
         status: "submitted",
         transactionHash: submitted.transactionHash,
@@ -900,6 +953,8 @@ module.exports = {
   // milestone — is worth a test that does not need a chain to run.
   milestonePassed,
   eblBlocks,
+  customsBlocks,
+  proofCidFor,
   normalizeMilestone,
   getOracleIdentity,
   getOracleStatus,

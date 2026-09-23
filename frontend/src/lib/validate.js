@@ -34,6 +34,17 @@ export function validateEscrowForm(form, cid) {
     errors.commodity = "Describe the commodity (min. 3 characters).";
   }
 
+  // The quantity the contract value is being paid for. It lives in the
+  // manifest rather than on chain — the contract has no field for it — but it
+  // is not optional: an escrow that settles a sum against a commodity name and
+  // no amount states no enforceable term.
+  const quantity = Number(form.quantity);
+  if (!form.quantity) {
+    errors.quantity = "Quantity is required — how much of it is this escrow for?";
+  } else if (!Number.isFinite(quantity) || quantity <= 0) {
+    errors.quantity = "Enter a positive number.";
+  }
+
   if (!form.containerRef) {
     errors.containerRef = "Container reference is required.";
   } else if (!CONTAINER_REF.test(form.containerRef.trim())) {
@@ -60,7 +71,8 @@ export function validateEscrowForm(form, cid) {
   }
 
   if (!cid) {
-    errors.document = "Attach the e-BL document — its content hash anchors the contract.";
+    errors.document =
+      "Attach the bill of lading and pin it — the address of the pinned manifest is what anchors the contract.";
   }
 
   return { errors, valid: Object.keys(errors).length === 0 };
