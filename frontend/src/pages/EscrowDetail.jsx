@@ -831,7 +831,7 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
             <div className="mt-5">
               <ClausePanel
                 escrowId={escrow.id}
-                reviewerAddress={particleOwnerAddress}
+                walletAddress={particleOwnerAddress}
                 accessToken={companyAccessToken}
                 onStateChanged={reload}
               />

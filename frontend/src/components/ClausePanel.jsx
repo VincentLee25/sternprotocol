@@ -71,7 +71,7 @@ const MIN_REASONING = 40;
 
 const same = (a, b) => String(a || "").toLowerCase() === String(b || "").toLowerCase();
 
-export default function ClausePanel({ escrowId, reviewerAddress, accessToken, onStateChanged }) {
+export default function ClausePanel({ escrowId, walletAddress, accessToken, onStateChanged }) {
   const { t } = useLanguage();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -199,7 +199,7 @@ export default function ClausePanel({ escrowId, reviewerAddress, accessToken, on
           <ClauseRow
             key={clause.id}
             clause={clause}
-            isReviewer={Boolean(accessToken) && same(clause.reviewer, reviewerAddress)}
+            isReviewer={Boolean(accessToken) && same(clause.reviewer, walletAddress)}
             open={open === clause.id}
             onToggle={() => setOpen(open === clause.id ? "" : clause.id)}
             busy={busy === clause.id}
