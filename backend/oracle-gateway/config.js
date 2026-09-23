@@ -6,9 +6,11 @@ const oraclePrivateKeys = (process.env.ORACLE_PRIVATE_KEYS || process.env.ORACLE
 const primaryRpcUrl = process.env.RPC_URL || "";
 const rpcFallbackUrls = [
   ...(process.env.RPC_FALLBACK_URLS || "").split(",").map(value => value.trim()).filter(Boolean),
-  ...(primaryRpcUrl.includes("polygon-amoy-bor-rpc.publicnode.com")
-    ? ["https://rpc-amoy.polygon.technology"]
-    : [])
+  // These public endpoints are deliberately independent of PublicNode. A
+  // temporary upstream 524 must not make all historical escrow and balance
+  // reads fail. Operators can still place a paid endpoint first via RPC_URL.
+  "https://polygon-amoy.drpc.org",
+  "https://polygon-amoy.gateway.tenderly.co"
 ].filter((url, index, urls) => url !== primaryRpcUrl && urls.indexOf(url) === index);
 const defaultCorsOrigins = [
   "https://thesternman.up.railway.app",

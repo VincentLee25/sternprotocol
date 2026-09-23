@@ -1,6 +1,6 @@
 const { ethers } = require("ethers");
 
-const RPC_REQUEST_TIMEOUT_MS = 8000;
+const RPC_REQUEST_TIMEOUT_MS = 5000;
 
 function createJsonRpcProvider(url, chainId) {
   const request = new ethers.FetchRequest(url);
@@ -26,7 +26,7 @@ function createRpcProvider(urls, chainId = 80002) {
       provider,
       priority: index + 1,
       weight: 1,
-      stallTimeout: 1200
+      stallTimeout: 600
     })),
     chainId,
     { quorum: 1 }

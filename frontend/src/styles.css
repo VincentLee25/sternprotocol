@@ -234,12 +234,12 @@ html {
 }
 
 .stern-workspace-card {
-  border: 1px solid rgb(200 217 230 / 0.42);
-  transition: border-color 180ms ease;
+  border: 0;
+  transition: box-shadow 180ms ease, transform 180ms ease;
 }
 
 .stern-workspace-card:hover {
-  border-color: rgb(86 124 141 / 0.26);
+  box-shadow: var(--shadow-elevated);
 }
 
 /* The new-escrow lead surfaces use shape, tone and a quiet maritime wave in
@@ -347,9 +347,50 @@ html {
 /* The loading mark uses the real logo asset as a mask. A quiet base remains
    visible while the navy-to-teal wordmark is revealed from left to right. */
 .stern-boot {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  overflow: hidden;
   background:
-    radial-gradient(circle at 50% 42%, rgb(200 217 230 / 0.3), transparent 30%),
+    radial-gradient(circle at 74% 40%, rgb(200 217 230 / 0.42), transparent 32%),
+    radial-gradient(circle at 22% 78%, rgb(86 124 141 / 0.08), transparent 28%),
     #faf8f5;
+}
+
+.stern-boot::after {
+  position: absolute;
+  right: -7vw;
+  bottom: -3rem;
+  width: min(62vw, 820px);
+  height: 185px;
+  border-radius: 50% 50% 0 0;
+  border-top: 1px solid rgb(86 124 141 / 0.18);
+  box-shadow: 0 -28px 0 -27px rgb(200 217 230 / 0.8), 0 -57px 0 -56px rgb(86 124 141 / 0.1);
+  content: "";
+  pointer-events: none;
+}
+
+.stern-boot-header {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  height: 72px;
+  max-width: 1240px;
+  width: 100%;
+  margin: 0 auto;
+  border-bottom: 1px solid rgb(200 217 230 / 0.72);
+}
+
+.stern-boot-stage {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  min-height: 0;
+  padding-bottom: 72px;
+  text-align: center;
 }
 
 .stern-boot-mark {
@@ -376,6 +417,23 @@ html {
 .stern-boot-copy {
   animation: stern-boot-copy 420ms 720ms ease both;
 }
+
+.stern-boot-action {
+  cursor: pointer;
+  border: 0;
+  border-radius: 9px;
+  background: rgb(var(--rgb-surface));
+  padding: 9px 13px;
+  color: rgb(var(--rgb-ink));
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 1px 0 rgb(var(--rgb-sky)), var(--shadow-card);
+  transition: transform 160ms ease, background-color 160ms ease;
+}
+
+.stern-boot-action:hover { transform: translateY(-1px); background: rgb(var(--rgb-surface-soft)); }
+.stern-boot-action-primary { background: rgb(var(--rgb-ink)); color: #fff; box-shadow: none; }
+.stern-boot-action-primary:hover { background: rgb(var(--rgb-teal-solid)); }
 
 @keyframes workspace-enter {
   from { opacity: 0; transform: translateY(8px); }

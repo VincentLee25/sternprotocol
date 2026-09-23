@@ -24,8 +24,8 @@ export default function Field({ label, htmlFor, required, error, hint, children 
 // 40px control, 12px radius, white ground, slate hairline, teal focus ring -
 // the form field DESIGN.md specifies. Focus never uses an ambient glow.
 export const inputClass = (hasError) =>
-  `w-full rounded-panel border bg-surface px-3.5 py-2.5 text-sm text-navy placeholder:text-ink-faint transition-colors duration-150 focus:outline-none ${
+  `w-full rounded-panel border border-transparent bg-surface-soft px-3.5 py-2.5 text-sm text-navy placeholder:text-ink-faint shadow-[inset_0_1px_0_rgb(47_65_86_/_0.04)] transition-colors duration-150 hover:bg-surface focus:bg-surface focus:outline-none focus:ring-2 focus:ring-teal/20 ${
     hasError
       ? "border-state-disputed/60 focus:border-state-disputed"
-      : "border-sky hover:border-teal/40 focus:border-teal"
+      : "focus:border-teal"
   }`;

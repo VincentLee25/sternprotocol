@@ -79,7 +79,7 @@ export default function CounterpartyLookup({ label, onPick }) {
 
   return (
     <div ref={boxRef} className="relative mb-2">
-      <label className="flex items-center gap-2 rounded-panel border border-sky bg-surface-soft px-3 py-2 focus-within:border-teal/50">
+      <label className="flex items-center gap-2 rounded-panel border border-transparent bg-surface-soft px-3 py-2 shadow-[inset_0_1px_0_rgb(47_65_86_/_0.04)] focus-within:bg-surface focus-within:ring-2 focus-within:ring-teal/20">
         {busy ? (
           <Loader2 size={13} className="shrink-0 animate-spin text-teal" aria-hidden="true" />
         ) : (
@@ -103,7 +103,7 @@ export default function CounterpartyLookup({ label, onPick }) {
       ) : null}
 
       {results ? (
-        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-panel border border-sky bg-surface shadow-card">
+        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-panel bg-surface shadow-elevated">
           {results.length ? (
             <>
               <ul className="max-h-56 overflow-y-auto">

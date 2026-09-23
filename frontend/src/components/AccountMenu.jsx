@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown, LogOut, Settings2, ShieldCheck, UsersRound } from "lucide-react";
 import { getCompanyMemberships, switchCompany } from "../lib/sternApi.js";
 import { useLanguage } from "../lib/language.jsx";
+import ThemeToggle from "./ThemeToggle.jsx";
 
 export default function AccountMenu({ session, onNavigate, onSignOut, onSessionChange }) {
   const { t } = useLanguage();
@@ -58,14 +59,15 @@ export default function AccountMenu({ session, onNavigate, onSignOut, onSessionC
   }
 
   return (
-    <div ref={rootRef} className="stern-account-menu relative ml-auto">
+    <div ref={rootRef} className="stern-account-menu relative ml-auto flex items-center gap-2">
+      <ThemeToggle />
       <button
         type="button"
         aria-label={`${t("Account menu")} — ${handle}`}
         aria-expanded={open}
         aria-haspopup="menu"
         onClick={() => setOpen((current) => !current)}
-        className="stern-account-trigger flex cursor-pointer items-center gap-2.5 rounded-full border border-sky/70 bg-white px-2 py-1.5 text-left text-navy transition-colors hover:border-teal/50 hover:bg-sky/20 sm:pr-3"
+        className="stern-account-trigger flex cursor-pointer items-center gap-2.5 rounded-full bg-white px-2 py-1.5 text-left text-navy shadow-card transition-colors hover:bg-sky/20 sm:pr-3"
       >
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-navy text-xs font-semibold uppercase text-white">{(session?.user?.username || "S")[0]}</span>
         <span className="hidden min-w-0 sm:block">
@@ -76,7 +78,7 @@ export default function AccountMenu({ session, onNavigate, onSignOut, onSessionC
       </button>
 
       {open ? (
-        <div role="menu" aria-label={t("Account")} className="stern-account-popover absolute right-0 top-[calc(100%+10px)] z-50 w-[min(320px,calc(100vw-24px))] rounded-2xl border border-sky/70 bg-white p-2 shadow-elevated">
+        <div role="menu" aria-label={t("Account")} className="stern-account-popover absolute right-0 top-[calc(100%+10px)] z-50 w-[min(320px,calc(100vw-24px))] rounded-2xl bg-white p-2 shadow-elevated">
           <div className="border-b border-sky/70 px-3 pb-3 pt-2">
             <p className="text-[15px] font-semibold text-navy">{handle}</p>
             <p className="mt-0.5 truncate text-xs text-ink-dim">{session?.company?.name || t("Company")} · <span className="capitalize">{t(session?.user?.role || "member")}</span></p>

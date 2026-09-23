@@ -309,20 +309,25 @@ async function getEscrow(contractId) {
     error.code = "INVALID_ESCROW_ID";
     throw error;
   }
-  const raw = await contract.getEscrow(id);
-  const decimals = await getIdrtDecimals(contract);
+  // The former serial sequence made one page open wait on seven independent
+  // RPC calls. Read-only chain facts have no dependency on one another, so
+  // issue them together and let the RPC fallback settle each call.
+  const [raw, decimals, inspected, shipped, arrivedCleared, dispute, releaseEligible] = await Promise.all([
+    contract.getEscrow(id),
+    getIdrtDecimals(contract),
+    getOnchainEvidence(id, "inspected"),
+    getOnchainEvidence(id, "shipped"),
+    getOnchainEvidence(id, "arrived_cleared"),
+    getDispute(id),
+    contract.isReleaseEligible(id)
+  ]);
   const escrow = serializeEscrow({
     contractValue: raw[0], importer: raw[1], exporter: raw[2], arbiter: raw[3],
     documentCid: raw[4], commodity: raw[5], containerRef: raw[6], globalDeadline: raw[7],
     createdAt: raw[8], state: raw[9], timelockReleaseAt: raw[10]
   }, decimals);
 
-  const milestones = {};
-  for (const name of ["inspected", "shipped", "arrived_cleared"]) {
-    milestones[name] = await getOnchainEvidence(id, name);
-  }
-  const dispute = await getDispute(id);
-  const releaseEligible = await contract.isReleaseEligible(id);
+  const milestones = { inspected, shipped, arrived_cleared: arrivedCleared };
   return { escrowId: String(id), ...escrow, milestones, dispute, releaseEligible };
 }
 

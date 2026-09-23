@@ -97,7 +97,7 @@ function identityRequest(path, { token, ...options } = {}) {
 export const registerCompany = (body) => identityRequest("/auth/register-company", { method: "POST", body });
 export const authorizeParticle = (body) => identityRequest("/auth/particle/session", { method: "POST", body });
 export const acceptCompanyInvitation = (body) => identityRequest("/auth/accept-invitation", { method: "POST", body });
-export const getCompanyMe = (token) => identityRequest("/auth/me", { token });
+export const getCompanyMe = (token, { signal } = {}) => identityRequest("/auth/me", { token, signal });
 export const updateCompanyMe = (token, body) => identityRequest("/auth/me", { method: "PATCH", token, body });
 export const getCompanyMemberships = (token) => identityRequest("/auth/memberships", { token });
 export const switchCompany = (token, companyId) => identityRequest("/auth/switch-company", { method: "POST", token, body: { companyId } });

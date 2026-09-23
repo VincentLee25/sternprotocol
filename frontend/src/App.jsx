@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Menu } from "lucide-react";
 import Sidebar from "./components/Sidebar.jsx";
 import AccountMenu from "./components/AccountMenu.jsx";
-import ThemeToggle from "./components/ThemeToggle.jsx";
 import sternLogo from "./assets/stern-logo.png";
 import SessionBoot from "./components/SessionBoot.jsx";
 import Landing from "./pages/Landing.jsx";
@@ -64,6 +63,15 @@ const KNOWN_VIEWS = new Set([
   "login", "overview", "create", "escrow", "ops", "security", "account", "team"
 ]);
 
+const BOOTSTRAP = {
+  BOOTING: "booting",
+  RESTORING: "restoring session",
+  AUTHENTICATED: "authenticated",
+  UNAUTHENTICATED: "unauthenticated",
+  ERROR: "error"
+};
+const RESTORE_TIMEOUT_MS = 12000;
+
 function viewFromPath(pathname = window.location.pathname) {
   if (pathname === "/workspace" || pathname === VIEW_PATHS.overview) return { name: "overview" };
   const escrowMatch = pathname.match(/^\/workspace\/escrows\/([^/]+)$/);
@@ -113,8 +121,9 @@ function SternApp() {
   const [navOpen, setNavOpen] = useState(false);
   const [companySession, setCompanySession] = useState(readCompanySession);
   const [companySessionValidated, setCompanySessionValidated] = useState(false);
-  const [restoreGraceElapsed, setRestoreGraceElapsed] = useState(false);
+  const [restoreTimedOut, setRestoreTimedOut] = useState(false);
   const [sessionRestoreError, setSessionRestoreError] = useState("");
+  const [authRecoveryMessage, setAuthRecoveryMessage] = useState("");
   const [sessionRestoreRetry, setSessionRestoreRetry] = useState(0);
   const inviteCode = new URLSearchParams(window.location.search).get("invite");
 
@@ -123,15 +132,29 @@ function SternApp() {
   const accountMatches = !expectedAddress || !address || expectedAddress === address.toLowerCase();
   const companyIdentityMatches = Boolean(companySession?.user?.particleUserId && particleIdentity?.uuid === companySession.user.particleUserId);
   const workspaceReady = Boolean(companySession && companySessionValidated && companyIdentityMatches && status === AUTH.READY && address && accountMatches);
+  const isWorkspaceRoute = !MARKETING[view.name] && view.name !== "landing" && view.name !== "login" && view.name !== "ops";
+  const shouldRestoreWorkspace = isWorkspaceRoute && !workspaceReady && (Boolean(companySession) || status === AUTH.LOADING || status === AUTH.AUTHENTICATING);
+  const bootstrapState = workspaceReady
+    ? BOOTSTRAP.AUTHENTICATED
+    : restoreTimedOut || sessionRestoreError || status === AUTH.ERROR
+      ? BOOTSTRAP.ERROR
+      : shouldRestoreWorkspace
+        ? status === AUTH.LOADING ? BOOTSTRAP.BOOTING : BOOTSTRAP.RESTORING
+        : BOOTSTRAP.UNAUTHENTICATED;
 
   useEffect(() => {
-    if (!companySession || status !== AUTH.ANONYMOUS) return undefined;
-    const timer = window.setTimeout(() => setRestoreGraceElapsed(true), 5000);
+    if (!shouldRestoreWorkspace) {
+      setRestoreTimedOut(false);
+      return undefined;
+    }
+    if (restoreTimedOut || sessionRestoreError || status === AUTH.ERROR) return undefined;
+    const timer = window.setTimeout(() => setRestoreTimedOut(true), RESTORE_TIMEOUT_MS);
     return () => window.clearTimeout(timer);
-  }, [companySession, status]);
+  }, [shouldRestoreWorkspace, restoreTimedOut, sessionRestoreError, status, sessionRestoreRetry]);
 
   const updateCompanySession = useCallback((session) => {
     setSessionRestoreError("");
+    setAuthRecoveryMessage("");
     setCompanySessionValidated((current) => current && companySession?.accessToken === session?.accessToken);
     setCompanySession(session);
     writeCompanySession(session);
@@ -146,7 +169,9 @@ function SternApp() {
     let cancelled = false;
     setCompanySessionValidated(false);
     setSessionRestoreError("");
-    getCompanyMe(companySession.accessToken)
+    const controller = new AbortController();
+    const requestTimeout = window.setTimeout(() => controller.abort(), 10000);
+    getCompanyMe(companySession.accessToken, { signal: controller.signal })
       .then(({ user: verifiedUser, company }) => {
         if (cancelled) return;
         const sameParticleUser = verifiedUser?.particleUserId === particleIdentity.uuid;
@@ -169,11 +194,17 @@ function SternApp() {
         } else {
           // A temporary gateway outage is not a sign-out. Keep the Particle and
           // company sessions intact so the operator can retry in place.
-          setSessionRestoreError(cause?.message || "Company access could not be verified");
+          setSessionRestoreError(cause?.name === "AbortError"
+            ? "Workspace restoration took too long. Please retry or return to sign in."
+            : cause?.message || "Company access could not be verified");
         }
       });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      window.clearTimeout(requestTimeout);
+      controller.abort();
+    };
   }, [companySession?.accessToken, status, address, particleIdentity?.uuid, sessionRestoreRetry]);
 
   useEffect(() => {
@@ -324,6 +355,22 @@ function SternApp() {
     await disconnect();
   }, [disconnect]);
 
+  const retryWorkspaceRestore = useCallback(() => {
+    setRestoreTimedOut(false);
+    setSessionRestoreError("");
+    setCompanySessionValidated(false);
+    setSessionRestoreRetry((count) => count + 1);
+  }, []);
+
+  const returnToSignIn = useCallback(() => {
+    clearCompanySession();
+    setCompanySession(null);
+    setCompanySessionValidated(false);
+    setRestoreTimedOut(false);
+    setAuthRecoveryMessage("Your saved session could not be restored. Sign in again to continue.");
+    setView({ name: "login" });
+  }, []);
+
   // Once authenticated, "login" stops being a destination. Deriving this rather
   // than setting state on sign-in avoids a frame where the workspace is ready
   // but the router still points at the login screen.
@@ -360,24 +407,24 @@ function SternApp() {
     );
   }
 
-  // Particle restores a session asynchronously. Without this branch the app
-  // renders Login for a beat on every refresh, even for a signed-in user.
-  if (companySession && activeView.name !== "login" && status === AUTH.LOADING) {
-    return <SessionBoot label="Restoring your workspace" />;
-  }
-
-  if (companySession && activeView.name !== "login" && status === AUTH.ANONYMOUS && !restoreGraceElapsed) {
-    return <SessionBoot label="Restoring your workspace" />;
-  }
-
-  // Connected, but the smart account address is still being derived. Entering
-  // the workspace here would show an empty wallet and a zero balance.
-  if (companySession && activeView.name !== "login" && status === AUTH.AUTHENTICATING) {
-    return <SessionBoot label="Preparing your workspace" detail="Loading your company access and settlement permissions." />;
-  }
-
-  if (companySession && activeView.name !== "login" && status === AUTH.READY && address && particleIdentity?.uuid && !companySessionValidated) {
-    return <SessionBoot label="Checking company access" detail="Confirming your Particle identity and STERN company membership." error={sessionRestoreError} onRetry={() => setSessionRestoreRetry((count) => count + 1)} />;
+  // A workspace route always has an explicit bootstrap state. This holds the
+  // route while Particle restores, but never forever: timeout or API failure
+  // moves to a recovery state with retry and sign-in actions.
+  if (isWorkspaceRoute && !workspaceReady && bootstrapState !== BOOTSTRAP.UNAUTHENTICATED) {
+    const isError = bootstrapState === BOOTSTRAP.ERROR;
+    return (
+      <SessionBoot
+        label={isError ? "We could not restore your workspace" : "Restoring your workspace"}
+        detail={isError
+          ? "Your saved session could not be restored."
+          : bootstrapState === BOOTSTRAP.BOOTING
+            ? "Restoring your secure sign-in session."
+            : "Restoring your company access and settlement account."}
+        error={isError ? sessionRestoreError || error || "Please retry or return to sign in." : ""}
+        onRetry={isError ? retryWorkspaceRestore : undefined}
+        onSignIn={isError ? returnToSignIn : undefined}
+      />
+    );
   }
 
   if (inviteCode || !workspaceReady) {
@@ -391,7 +438,7 @@ function SternApp() {
         onPrepareAccount={connect}
         onRefreshParticleIdentity={refreshParticleIdentity}
         onDisconnectAccount={disconnect}
-        accountError={error}
+        accountError={authRecoveryMessage || error}
         onBack={() => {
           if (inviteCode) {
             const url = new URL(window.location.href);
@@ -443,7 +490,6 @@ function SternApp() {
           {/* `invert` matches the sidebar: the asset is light-on-transparent, so
               without it the mark is almost invisible on the light chrome. */}
           <img src={sternLogo} alt="STERN" className="h-4 w-auto invert lg:hidden" />
-          <ThemeToggle />
           <AccountMenu session={companySession} onNavigate={(name) => setView({ name })} onSessionChange={updateCompanySession} onSignOut={handleSignOut} />
         </header>
 
