@@ -1,11 +1,11 @@
-@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500&family=Poppins:wght@400;500;600;700&display=swap");
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /*
- * STERN design tokens — DESIGN.md v2.0.
+ * STERN design tokens — Stitch design system.
  *
  * Every named colour in tailwind.config.js resolves through one of these
  * "R G B" triples, so toggling the `dark` class on <html> re-themes the whole
@@ -22,46 +22,46 @@
  * DESIGN.md values verbatim.
  */
 :root {
-  --rgb-page: 247 245 240; /* #F7F5F0 warm paper ground */
+  --rgb-page: 245 239 235; /* #F5EFEB unbleached paper ground */
   --rgb-surface: 255 255 255; /* #FFFFFF card + panel fill */
-  --rgb-surface-soft: 242 246 247; /* #F2F6F7 recessed fill, inputs, chips */
-  --rgb-ink: 19 43 69; /* #132B45 primary type */
-  --rgb-ink-dim: 80 100 122; /* #50647A body + secondary type */
-  --rgb-ink-faint: 100 115 133; /* DESIGN.md #7B8A9A, taken to 4.45:1 */
-  --rgb-sky: 220 228 232; /* #DCE4E8 borders and rules — never type */
-  --rgb-teal: 40 124 131; /* #287C83 accent */
+  --rgb-surface-soft: 243 237 233; /* #F3EDE9 recessed fill */
+  --rgb-ink: 47 65 86; /* #2F4156 STERN navy */
+  --rgb-ink-dim: 78 94 109; /* #4E5E6D supporting copy */
+  --rgb-ink-faint: 92 110 126; /* #5C6E7E metadata */
+  --rgb-sky: 200 217 230; /* #C8D9E6 STERN sky */
+  --rgb-teal: 86 124 141; /* #567C8D STERN teal */
   /* Teal as a BACKGROUND fill: white type sits on it, so this one is constant
      across themes. Lightening it for dark mode (as --rgb-teal is) would drop
      that white to ~3:1. */
-  --rgb-teal-solid: 23 107 115; /* #176B73 */
-  --rgb-ocean: 63 120 181; /* #3F78B5 */
-  --rgb-cyan: 101 191 196; /* #65BFC4 */
-  --rgb-lavender: 169 155 234; /* #A99BEA */
-  --rgb-coral: 230 138 122; /* #E68A7A */
-  --rgb-state-attested: 47 122 89; /* DESIGN.md #3D8A68, contrast-corrected */
-  --rgb-state-pending: 143 99 32; /* DESIGN.md #B98235, contrast-corrected */
-  --rgb-state-disputed: 178 74 66; /* DESIGN.md #C95D55, contrast-corrected */
+  --rgb-teal-solid: 70 108 125; /* accessible darkened teal for white labels */
+  --rgb-ocean: 67 105 122; /* secondary maritime */
+  --rgb-cyan: 184 231 251; /* #B8E7FB light supporting blue */
+  --rgb-lavender: 209 228 255; /* #D1E4FF document accent */
+  --rgb-coral: 255 218 214; /* #FFDAD6 error container */
+  --rgb-state-attested: 60 117 95; /* #3C755F verified */
+  --rgb-state-pending: 140 97 35; /* #8C6123 awaiting review */
+  --rgb-state-disputed: 168 68 60; /* #A8443C disputed */
 
-  --shadow-card: 0 8px 30px rgb(19 43 69 / 0.07);
-  --shadow-elevated: 0 14px 40px rgb(19 43 69 / 0.1);
+  --shadow-card: 0 1px 2px rgb(47 65 86 / 0.035), 0 10px 28px -22px rgb(47 65 86 / 0.34);
+  --shadow-elevated: 0 18px 52px -28px rgb(47 65 86 / 0.32);
 }
 
 :root.dark {
-  --rgb-page: 16 21 27; /* #10151B */
-  --rgb-surface: 24 33 43; /* #18212B */
-  --rgb-surface-soft: 32 43 55; /* #202B37 */
-  --rgb-ink: 241 244 245; /* #F1F4F5 */
-  --rgb-ink-dim: 182 195 206; /* #B6C3CE */
-  --rgb-ink-faint: 135 150 164; /* #8796A4 */
-  --rgb-sky: 52 68 81; /* #344451 */
-  --rgb-teal: 101 191 196; /* #65BFC4 — re-tuned for the dark ground */
-  --rgb-ocean: 106 155 208;
-  --rgb-cyan: 120 201 206;
-  --rgb-lavender: 183 174 239;
-  --rgb-coral: 231 154 140;
-  --rgb-state-attested: 104 185 149;
-  --rgb-state-pending: 213 163 87;
-  --rgb-state-disputed: 223 119 109;
+  --rgb-page: 10 10 10; /* #0A0A0A */
+  --rgb-surface: 28 37 55; /* #1C2537 */
+  --rgb-surface-soft: 46 57 76;
+  --rgb-ink: 229 228 226; /* #E5E4E2 */
+  --rgb-ink-dim: 168 182 196; /* #A8B6C4 */
+  --rgb-ink-faint: 133 146 160; /* #8592A0 */
+  --rgb-sky: 64 78 98; /* #404E62 */
+  --rgb-teal: 91 151 174; /* #5B97AE */
+  --rgb-ocean: 159 205 225;
+  --rgb-cyan: 157 212 232;
+  --rgb-lavender: 177 200 232;
+  --rgb-coral: 214 110 100;
+  --rgb-state-attested: 94 176 138;
+  --rgb-state-pending: 214 158 74;
+  --rgb-state-disputed: 214 110 100;
 
   --shadow-card: 0 8px 30px rgb(0 0 0 / 0.28);
   --shadow-elevated: 0 14px 40px rgb(0 0 0 / 0.38);
@@ -71,17 +71,17 @@
    laid directly over the (always-dark) port photography, where type needs
    guaranteed contrast against the image rather than against the page theme. */
 .chrome-dark {
-  --rgb-page: 16 21 27;
-  --rgb-surface: 24 33 43;
-  --rgb-surface-soft: 32 43 55;
-  --rgb-ink: 241 244 245;
-  --rgb-ink-dim: 182 195 206;
-  --rgb-ink-faint: 135 150 164;
-  --rgb-sky: 52 68 81;
-  --rgb-teal: 101 191 196;
-  --rgb-state-attested: 104 185 149;
-  --rgb-state-pending: 213 163 87;
-  --rgb-state-disputed: 223 119 109;
+  --rgb-page: 10 10 10;
+  --rgb-surface: 28 37 55;
+  --rgb-surface-soft: 46 57 76;
+  --rgb-ink: 229 228 226;
+  --rgb-ink-dim: 168 182 196;
+  --rgb-ink-faint: 133 146 160;
+  --rgb-sky: 64 78 98;
+  --rgb-teal: 91 151 174;
+  --rgb-state-attested: 94 176 138;
+  --rgb-state-pending: 214 158 74;
+  --rgb-state-disputed: 214 110 100;
 }
 
 * {
@@ -92,10 +92,211 @@ body {
   margin: 0;
   background: rgb(var(--rgb-page));
   color: rgb(var(--rgb-ink));
-  font-family: "Poppins", system-ui, sans-serif;
+  font-family: "Acherus Militant", "Poppins", system-ui, sans-serif;
   font-size: 15px;
   font-weight: 400;
   -webkit-font-smoothing: antialiased;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* ---------------------------- workspace system --------------------------- */
+
+.stern-workspace-shell {
+  background:
+    radial-gradient(circle at 78% -18%, rgb(200 217 230 / 0.72), transparent 34%),
+    linear-gradient(145deg, #f5efeb 0%, #f8fafb 58%, #eef4f6 100%);
+}
+
+.stern-workspace-main {
+  position: relative;
+  isolation: isolate;
+}
+
+.stern-workspace-main::before {
+  position: fixed;
+  inset: 0 0 auto 252px;
+  z-index: -1;
+  height: 190px;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgb(200 217 230 / 0.38), transparent);
+  content: "";
+}
+
+.stern-workspace-sidebar {
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.97), rgb(245 239 235 / 0.96)),
+    #fff;
+  box-shadow: 12px 0 38px -34px rgb(47 65 86 / 0.48);
+}
+
+.stern-workspace-sidebar::before {
+  display: block;
+  width: 100%;
+  height: 3px;
+  flex: 0 0 auto;
+  background: linear-gradient(90deg, #2f4156 0 58%, #567c8d 58% 82%, #c8d9e6 82%);
+  content: "";
+}
+
+.stern-sidebar-scroll {
+  scrollbar-color: rgb(200 217 230 / 0.9) transparent;
+  scrollbar-width: thin;
+}
+
+.stern-sidebar-scroll::-webkit-scrollbar { width: 6px; }
+.stern-sidebar-scroll::-webkit-scrollbar-thumb {
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: rgb(200 217 230 / 0.9);
+  background-clip: padding-box;
+}
+
+.stern-workspace-page {
+  animation: workspace-enter 430ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.stern-workspace-card {
+  border: 1px solid rgb(200 217 230 / 0.42);
+  transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+}
+
+.stern-workspace-card:hover {
+  border-color: rgb(86 124 141 / 0.26);
+  box-shadow: var(--shadow-elevated);
+}
+
+.stern-workspace-summary {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid rgb(200 217 230 / 0.52);
+  border-radius: 18px;
+  background: linear-gradient(112deg, #ffffff 0%, #f6fafb 62%, #edf4f6 100%);
+  box-shadow: var(--shadow-card);
+}
+
+.stern-workspace-summary-cell {
+  position: relative;
+  min-width: 0;
+  padding: 20px;
+}
+
+.stern-workspace-summary-cell + .stern-workspace-summary-cell {
+  border-top: 1px solid rgb(200 217 230 / 0.68);
+}
+
+.stern-workspace-summary-cell::after {
+  position: absolute;
+  right: 20px;
+  bottom: 0;
+  left: 20px;
+  height: 2px;
+  background: linear-gradient(90deg, rgb(86 124 141 / 0.7), transparent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 260ms ease;
+  content: "";
+}
+
+.stern-workspace-summary-cell:hover::after {
+  transform: scaleX(1);
+}
+
+.stern-operational-table tbody tr {
+  transition: background-color 180ms ease, box-shadow 180ms ease;
+}
+
+.stern-operational-table tbody tr:hover {
+  background: rgb(200 217 230 / 0.2);
+  box-shadow: inset 3px 0 #567c8d;
+}
+
+.stern-milestone-segment {
+  transition: background-color 240ms ease, transform 240ms ease;
+}
+
+.stern-milestone-segment.is-complete {
+  animation: milestone-confirm 520ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+/* The loading mark uses the real logo asset as a mask. A quiet base remains
+   visible while the navy-to-teal wordmark is revealed from left to right. */
+.stern-boot {
+  background:
+    radial-gradient(circle at 50% 42%, rgb(200 217 230 / 0.3), transparent 30%),
+    #faf8f5;
+}
+
+.stern-boot-mark {
+  position: relative;
+  width: clamp(148px, 18vw, 212px);
+  aspect-ratio: 4.05 / 1;
+}
+
+.stern-boot-mark::before,
+.stern-boot-mark::after {
+  position: absolute;
+  inset: 0;
+  background: #c8d9e6;
+  -webkit-mask: url("./assets/stern-logo.png") center / contain no-repeat;
+  mask: url("./assets/stern-logo.png") center / contain no-repeat;
+  content: "";
+}
+
+.stern-boot-mark::after {
+  background: linear-gradient(100deg, #2f4156 0 66%, #567c8d 66% 100%);
+  animation: stern-wordmark-reveal 1000ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.stern-boot-copy {
+  animation: stern-boot-copy 420ms 720ms ease both;
+}
+
+@keyframes workspace-enter {
+  from { opacity: 0; transform: translateY(8px); }
+}
+
+@keyframes stern-wordmark-reveal {
+  from { opacity: 0.25; clip-path: inset(0 100% 0 0); transform: translateX(-8px); }
+  to { opacity: 1; clip-path: inset(0 0 0 0); transform: translateX(0); }
+}
+
+@keyframes stern-boot-copy {
+  from { opacity: 0; transform: translateY(5px); }
+}
+
+@keyframes milestone-confirm {
+  0% { transform: scaleX(0.45); transform-origin: left; opacity: 0.45; }
+  100% { transform: scaleX(1); transform-origin: left; opacity: 1; }
+}
+
+@media (min-width: 768px) {
+  .stern-workspace-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stern-workspace-summary-cell:nth-child(even) {
+    border-left: 1px solid rgb(200 217 230 / 0.68);
+  }
+}
+
+@media (min-width: 1280px) {
+  .stern-workspace-summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .stern-workspace-summary-cell + .stern-workspace-summary-cell {
+    border-top: 0;
+    border-left: 1px solid rgb(200 217 230 / 0.68);
+  }
+}
+
+@media (max-width: 1023px) {
+  .stern-workspace-main::before {
+    inset-inline-start: 0;
+  }
 }
 
 button,
@@ -163,6 +364,584 @@ textarea {
 
 .rise-in {
   animation: rise-in 560ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+/* STERN marketing: restrained editorial movement and a palette used only on
+   the public landing surface. The product workspace keeps its existing tokens. */
+.stern-duotone-mark {
+  display: block;
+  width: 100px;
+  height: 28px;
+  background: linear-gradient(102deg, #2F4156 0 68%, #567C8D 68% 100%);
+  -webkit-mask: url("./assets/stern-logo.png") center / contain no-repeat;
+  mask: url("./assets/stern-logo.png") center / contain no-repeat;
+}
+
+.stern-hero-wash {
+  background: linear-gradient(112deg, #F5EFEB 0%, #FFFFFF 54%, #C8D9E6 100%);
+}
+
+#process {
+  background: linear-gradient(135deg, #F5EFEB 0%, #FFFFFF 72%);
+}
+
+#evidence,
+.stern-sky-wash {
+  background: linear-gradient(135deg, #C8D9E6 0%, #FFFFFF 68%);
+}
+
+#operations {
+  background: linear-gradient(120deg, #E8EFF2 0%, #C8D9E6 100%);
+}
+
+.stern-beige-wash {
+  background: linear-gradient(135deg, #F5EFEB 0%, #FFFFFF 76%);
+}
+
+.stern-navy-teal {
+  background: linear-gradient(112deg, #2F4156 0%, #3B5A6B 56%, #567C8D 100%);
+}
+
+.stern-hero-image,
+.stern-editorial-image {
+  transform: scale(1.045) translateY(var(--hero-parallax, 0px));
+  transition: transform 900ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: transform;
+}
+
+#security:hover .stern-editorial-image {
+  transform: scale(1.08);
+}
+
+.stern-workflow-route {
+  position: relative;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  min-height: 420px;
+  isolation: isolate;
+}
+
+.stern-workflow-route::before,
+.stern-workflow-route::after {
+  content: "";
+  position: absolute;
+  left: 105px;
+  top: 12%;
+  bottom: 12%;
+  width: 1px;
+  background: rgb(47 65 86 / 0.16);
+  z-index: -1;
+}
+
+.stern-workflow-route::after {
+  top: 12%;
+  bottom: auto;
+  height: min(var(--workflow-progress), 76%);
+  background: #567C8D;
+  transition: height 520ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.stern-workflow-step {
+  display: grid;
+  grid-template-columns: 82px 46px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  padding: 14px 16px 14px 0;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  text-align: left;
+  transition: background-color 220ms ease, padding 220ms ease;
+}
+
+.stern-workflow-step:hover,
+.stern-workflow-step.is-active {
+  padding-left: 14px;
+  background: rgb(255 255 255 / 0.62);
+}
+
+.stern-workflow-index {
+  color: #567C8D;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.stern-workflow-icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 50%;
+  background: #F5EFEB;
+  color: #2F4156;
+  box-shadow: 0 0 0 1px rgb(47 65 86 / 0.08);
+  transition: background-color 220ms ease, color 220ms ease, box-shadow 220ms ease;
+}
+
+.stern-workflow-step.is-active .stern-workflow-icon {
+  background: #567C8D;
+  color: #fff;
+  box-shadow: 0 0 0 5px rgb(86 124 141 / 0.15);
+}
+
+.stern-workflow-image {
+  animation: workflow-fade 420ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@keyframes workflow-fade {
+  from { opacity: 0.65; transform: scale(1.045); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.stern-ecosystem-map {
+  position: relative;
+  min-height: 470px;
+  background: #2F4156;
+}
+
+.stern-party {
+  position: relative;
+  padding: 26px;
+  border-top: 1px solid rgb(200 217 230 / 0.7);
+  color: #fff;
+}
+
+.stern-party p {
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.65;
+  color: rgb(255 255 255 / 0.76);
+}
+
+.stern-party-left { text-align: right; }
+.stern-party-right { text-align: left; }
+
+.stern-route-line {
+  position: absolute;
+  top: 47%;
+  height: 1px;
+  width: 34%;
+  background: linear-gradient(90deg, rgb(200 217 230 / 0.18), #C8D9E6, rgb(200 217 230 / 0.18));
+  background-size: 220% 100%;
+  animation: ecosystem-flow 4.2s ease-in-out infinite;
+  transition: filter 220ms ease, opacity 220ms ease;
+}
+
+.stern-route-left { left: 0; }
+.stern-route-right { right: 0; }
+
+.stern-trade-core {
+  display: grid;
+  width: min(220px, 68%);
+  min-height: 150px;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  padding: 22px;
+  background: #fff;
+  color: #2F4156;
+  text-align: center;
+  box-shadow: 0 22px 50px rgb(0 0 0 / 0.22);
+  transition: transform 240ms ease, box-shadow 240ms ease;
+}
+
+.stern-ecosystem-map:hover .stern-trade-core {
+  transform: translateY(-4px);
+  box-shadow: 0 28px 58px rgb(0 0 0 / 0.3);
+}
+
+.stern-ecosystem-map:hover .stern-route-line { filter: brightness(1.25); }
+
+.stern-trade-core p { margin: 0; font-size: 16px; font-weight: 700; }
+.stern-trade-core span { color: #567C8D; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
+
+.stern-evidence-feed {
+  padding: 9px 6px;
+  border-top: 1px solid rgb(255 255 255 / 0.32);
+  color: rgb(255 255 255 / 0.85);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  transition: background-color 220ms ease, color 220ms ease, border-color 220ms ease;
+}
+
+.stern-evidence-feed:hover {
+  border-color: #C8D9E6;
+  background: rgb(200 217 230 / 0.16);
+  color: #fff;
+}
+
+.stern-party {
+  transition: transform 220ms ease, border-color 220ms ease;
+}
+
+.stern-party:hover {
+  border-color: #C8D9E6;
+  transform: translateY(-3px);
+}
+
+@keyframes ecosystem-flow {
+  0%, 100% { background-position: 100% 0; opacity: 0.55; }
+  50% { background-position: 0 0; opacity: 1; }
+}
+
+.stern-trust-route {
+  position: relative;
+  display: grid;
+  gap: 0;
+}
+
+.stern-trust-route::before {
+  position: absolute;
+  top: 16px;
+  bottom: 16px;
+  left: 16px;
+  width: 1px;
+  background: #C8D9E6;
+  content: "";
+}
+
+.stern-trust-point {
+  position: relative;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 16px;
+  padding: 0 0 22px;
+}
+
+.stern-trust-point:last-child { padding-bottom: 0; }
+
+.stern-trust-point > span {
+  display: grid;
+  width: 33px;
+  height: 33px;
+  place-items: center;
+  border-radius: 50%;
+  background: #2F4156;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.stern-trust-point h3 {
+  margin: 5px 0 0;
+  color: #2F4156;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.stern-trust-point p {
+  margin: 5px 0 0;
+  color: rgb(var(--rgb-ink-dim));
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+@media (max-width: 1023px) {
+  .stern-ecosystem-map { min-height: auto; }
+  .stern-party-left { text-align: left; }
+  .stern-route-line { display: none; }
+  .stern-trade-core { width: min(260px, 82%); }
+}
+
+@media (max-width: 640px) {
+  .stern-workflow-route { min-height: auto; }
+  .stern-workflow-route::before,
+  .stern-workflow-route::before,
+  .stern-workflow-route::after { left: 90px; top: 8%; bottom: 8%; }
+  .stern-workflow-step { grid-template-columns: 70px 40px minmax(0, 1fr); gap: 10px; padding-right: 0; }
+  .stern-workflow-step > svg { display: none; }
+  .stern-workflow-icon { width: 40px; height: 40px; }
+  .stern-party { padding: 18px 0; }
+}
+
+.stern-motion-ready main > section:not(#top) {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 700ms cubic-bezier(0.22, 0.61, 0.36, 1), transform 700ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.stern-motion-ready main > section:not(#top).is-revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* The landing hero has a deliberate editorial two-column composition. Keeping
+   the three structural rules here (rather than relying on arbitrary utility
+   values) prevents a stale Tailwind HMR sheet from flattening the hero into a
+   single column on desktop. */
+.stern-landing-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(340px, 1fr);
+}
+
+.stern-landing-title {
+  font-size: clamp(2.5rem, 4vw, 3.375rem);
+  line-height: 1.12;
+}
+
+.stern-landing-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.stern-evidence-editorial {
+  position: relative;
+  padding-bottom: 4px;
+}
+
+.stern-evidence-photo {
+  overflow: hidden;
+  border-radius: 17px;
+  background: #2F4156;
+}
+
+.stern-evidence-photo img {
+  display: block;
+  width: 100%;
+  height: 218px;
+  object-fit: cover;
+  filter: saturate(.78);
+  transition: transform 700ms ease;
+}
+
+.stern-evidence-editorial:hover .stern-evidence-photo img { transform: scale(1.035); }
+
+.stern-evidence-document {
+  position: absolute;
+  z-index: 1;
+  top: 170px;
+  right: -14px;
+  display: flex;
+  width: min(58%, 225px);
+  min-height: 102px;
+  flex-direction: column;
+  justify-content: center;
+  padding: 15px 18px;
+  border-left: 3px solid #567C8D;
+  border-radius: 2px 10px 10px 2px;
+  background: #FFFFFF;
+  box-shadow: 0 16px 35px rgb(47 65 86 / .17);
+}
+
+.stern-evidence-document span { color: #567C8D; font-size: 9px; font-weight: 700; letter-spacing: .04em; }
+.stern-evidence-document strong { margin-top: 5px; color: #2F4156; font-size: 14px; line-height: 1.25; }
+.stern-evidence-document small { margin-top: 5px; color: #567C8D; font-size: 10px; }
+.stern-evidence-caption { max-width: 44%; margin: 16px 0 0 2px; color: #2F4156; font-size: 12px; line-height: 1.5; }
+
+@media (max-width: 540px) {
+  .stern-evidence-document { position: relative; top: auto; right: auto; width: min(86%, 280px); margin: -32px 12px 0 auto; }
+  .stern-evidence-caption { max-width: none; margin-top: 18px; }
+}
+
+/* Authentication is a quiet enterprise gateway: one focused surface over a
+   restrained horizon-like gradient, without a promotional split-screen. */
+.stern-auth-shell {
+  position: relative;
+  min-height: 100dvh;
+  background:
+    linear-gradient(100deg, rgb(245 239 235 / 0.96), rgb(255 255 255 / 0.86) 55%, rgb(200 217 230 / 0.68)),
+    linear-gradient(180deg, #F5EFEB, #e9f1f4);
+}
+
+.stern-auth-shell::before {
+  position: fixed;
+  inset: 58% 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgb(86 124 141 / 0.2), transparent);
+  content: "";
+}
+
+.stern-auth-frame {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-height: 100dvh;
+  width: min(100%, 1240px);
+  margin: 0 auto;
+  flex-direction: column;
+  padding: 0 28px;
+}
+
+.stern-auth-header {
+  display: flex;
+  min-height: 78px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgb(200 217 230 / 0.72);
+}
+
+.stern-auth-panel-body {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: clamp(48px, 7vw, 116px);
+  padding: 42px clamp(0px, 4vw, 54px) 52px;
+}
+
+.stern-auth-editorial {
+  width: min(34%, 350px);
+  flex: 0 0 auto;
+  color: #2F4156;
+}
+
+.stern-auth-editorial-copy span {
+  color: #567C8D;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .16em;
+}
+
+.stern-auth-editorial-copy p {
+  margin: 14px 0 26px;
+  font-size: clamp(22px, 2.5vw, 31px);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -.035em;
+}
+
+.stern-auth-editorial-figure {
+  overflow: hidden;
+  margin: 0;
+  border-radius: 15px;
+  background: #2F4156;
+  box-shadow: 0 17px 42px rgb(47 65 86 / .13);
+}
+
+.stern-auth-editorial-figure img {
+  display: block;
+  width: 100%;
+  height: 184px;
+  object-fit: cover;
+  filter: saturate(.68) contrast(.96);
+}
+
+.stern-auth-editorial-figure figcaption {
+  padding: 11px 16px;
+  color: rgb(255 255 255 / .78);
+  font-size: 11px;
+}
+
+.stern-auth-card {
+  width: min(100%, 540px);
+  flex: 0 1 540px;
+  border: 1px solid rgb(200 217 230 / 0.75);
+  border-radius: 24px;
+  background: rgb(255 255 255 / 0.94);
+  padding: clamp(28px, 4vw, 44px);
+  box-shadow: 0 24px 70px rgb(47 65 86 / 0.1);
+}
+
+.stern-auth-step { width: min(100%, 480px); }
+
+.stern-google-button,
+.stern-google-connected {
+  display: flex;
+  width: 100%;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  border: 1px solid rgb(47 65 86 / .17);
+  border-radius: 11px;
+  background: #fff;
+  color: #2F4156;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.stern-google-button {
+  cursor: pointer;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.stern-google-button:hover { border-color: #567C8D; box-shadow: 0 8px 22px rgb(47 65 86 / .09); transform: translateY(-1px); }
+.stern-google-button:focus-visible { outline: 2px solid #567C8D; outline-offset: 3px; }
+.stern-google-button:disabled { cursor: wait; opacity: .64; transform: none; }
+.stern-google-connected { justify-content: flex-start; padding: 0 15px; color: #567C8D; }
+.stern-auth-other-methods { display: block; margin: 12px auto 0; color: #567C8D; font-size: 11px; font-weight: 700; text-decoration: underline; text-decoration-color: rgb(86 124 141 / .38); text-underline-offset: 3px; cursor: pointer; }
+.stern-auth-other-methods:hover { color: #2F4156; }
+.stern-auth-other-methods:focus-visible { outline: 2px solid #567C8D; outline-offset: 4px; }
+
+.stern-auth-method-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 0;
+  color: #567C8D;
+  font-size: 11px;
+  font-weight: 600;
+}
+.stern-auth-method-divider::before,
+.stern-auth-method-divider::after { height: 1px; flex: 1; background: rgb(200 217 230 / .9); content: ""; }
+
+.stern-auth-footer {
+  flex: 0 0 auto;
+  padding: 0 0 22px;
+  color: rgb(var(--rgb-ink-faint));
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.stern-auth-icon {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #C8D9E6, #edf4f7);
+  color: #2F4156;
+  box-shadow: inset 0 0 0 1px rgb(47 65 86 / 0.06);
+}
+
+.stern-mfa-input {
+  display: block;
+  width: 100%;
+  height: 58px;
+  margin-top: 10px;
+  border: 1px solid #C8D9E6;
+  border-radius: 14px;
+  background: #FFFFFF;
+  color: #2F4156;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 24px;
+  letter-spacing: 0.34em;
+  text-align: center;
+  outline: none;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.stern-mfa-input:focus {
+  border-color: #567C8D;
+  box-shadow: 0 0 0 3px rgb(86 124 141 / 0.11);
+}
+
+@media (max-width: 900px) {
+  .stern-auth-panel-body { justify-content: center; padding-right: 0; }
+  .stern-auth-editorial { display: none; }
+  .stern-auth-footer { text-align: center; }
+}
+
+@media (max-width: 540px) {
+  .stern-auth-frame { padding: 0 16px; }
+  .stern-auth-header { min-height: 68px; }
+  .stern-auth-panel-body { align-items: flex-start; padding: 26px 0 38px; }
+  .stern-auth-card { border-radius: 18px; padding: 24px 20px; }
+}
+
+@media (max-width: 1023px) {
+  .stern-landing-hero {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Dot leader used by document term rows */

@@ -582,11 +582,11 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
   }[message?.tone || "ok"];
 
   const railBtn =
-    "flex w-full cursor-pointer items-center justify-center gap-2 rounded-full px-3 py-2.5 text-[13px] font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40";
+    "flex w-full cursor-pointer items-center justify-center gap-2 rounded-panel px-3 py-2.5 text-[13px] font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40";
   const btnPrimary =
-    "flex cursor-pointer items-center justify-center rounded-full bg-navy px-6 py-2.5 text-[13px] font-medium text-beige transition-colors duration-150 hover:bg-teal-solid disabled:cursor-not-allowed disabled:opacity-40";
+    "flex cursor-pointer items-center justify-center rounded-panel bg-navy px-6 py-2.5 text-[13px] font-medium text-beige transition-colors duration-150 hover:bg-teal-solid disabled:cursor-not-allowed disabled:opacity-40";
   const btnOutline =
-    "flex cursor-pointer items-center justify-center rounded-full border border-sky bg-surface px-5 py-2.5 text-[13px] font-medium text-navy transition-colors duration-150 hover:border-teal/40 disabled:cursor-not-allowed disabled:opacity-40";
+    "flex cursor-pointer items-center justify-center rounded-panel border border-sky bg-surface px-5 py-2.5 text-[13px] font-medium text-navy transition-colors duration-150 hover:border-teal/40 disabled:cursor-not-allowed disabled:opacity-40";
 
   return (
     <div className="w-full">
@@ -637,7 +637,7 @@ export default function EscrowDetail({ escrow, walletAddress, isOnChainReady, sm
         {/* ---------- The instrument ---------- */}
         <div className="min-w-0">
           <article className="overflow-hidden rounded-doc bg-surface shadow-card">
-            <header className="flex flex-wrap items-end justify-between gap-4 border-b-2 border-navy px-6 py-7 lg:px-9">
+            <header className="flex flex-wrap items-end justify-between gap-4 border-b border-sky px-6 py-7 lg:px-9">
               <div className="min-w-0">
                 <p className="mb-2.5 text-2xs uppercase text-teal">
                   Deed of conditional settlement
@@ -1153,7 +1153,7 @@ function EblCidValue({ cid }) {
 function Panel({ title, tone, children }) {
   return (
     <section
-      className={`overflow-hidden rounded-doc shadow-card ${
+      className={`stern-workspace-card overflow-hidden rounded-doc shadow-card ${
         tone === "pending" ? "bg-state-pending/[0.06]" : "bg-surface"
       }`}
     >

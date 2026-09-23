@@ -1,143 +1,163 @@
-import { ArrowRight } from "lucide-react";
-import PortPlate from "../components/PortPlate.jsx";
-import MarketingShell from "../components/MarketingShell.jsx";
+import { useEffect, useRef, useState } from "react";
+import { ArrowRight, ArrowUpRight, Check, ChevronDown, ClipboardCheck, FileText, History, Landmark, PackageCheck, ScanSearch, Ship, WalletCards } from "lucide-react";
+import sternLogo from "../assets/stern-logo.png";
+import LanguageToggle from "../components/LanguageToggle.jsx";
+import { useLanguage } from "../lib/language.jsx";
 
-const TERMS = [
-  { k: "T+0", v: "Settlement on the last milestone, not on a courier" },
-  { k: "3", v: "Milestones, each gated by a feed and a signature" },
-  { k: "50%", v: "Of a verifier's bond, slashed if they sign falsely" },
-  { k: "0", v: "Issuing banks, correspondent fees or paper originals" }
-];
+const IMAGES = {
+  hero: "https://images.unsplash.com/photo-1494412574643-ff11b0a5c1c3?auto=format&fit=crop&w=1500&q=88",
+  terminal: "https://images.unsplash.com/photo-1566576912321-d58ddd7a6088?auto=format&fit=crop&w=1400&q=86",
+  inspection: "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=88",
+  paperwork: "https://images.unsplash.com/photo-1450101499163-c8848c66ca85?auto=format&fit=crop&w=1200&q=88",
+  warehouse: "https://images.unsplash.com/photo-1553413077-190dd305871c?auto=format&fit=crop&w=1400&q=86"
+};
 
-const STEPS = [
-  {
-    n: "01",
-    t: "Lock",
-    d: "The importer deposits into the escrow and pins the e-BL content hash. Neither party can reach the funds."
+const COPY = {
+  en: {
+    nav: ["Journey", "Evidence", "Ecosystem", "Security"], enter: "Access workspace", request: "Request a pilot",
+    heroKicker: "Trade-finance escrow for physical commerce",
+    heroTitle: <>Evidence-led settlement<br />for <span className="text-teal">international trade.</span></>,
+    heroLead: "STERN gives exporters, importers, and offtakers one dependable record of a shipment—so settlement follows the evidence, not the chase for it.",
+    numbers: [["100%", "Shared trade record"], ["0", "Manual status chasing"], ["CIF / FOB", "Built around real terms"]],
+    valueKicker: "An evidence-led settlement layer for international physical trade", valueTitle: "Trade keeps moving when everyone sees the same truth.",
+    valueLead: "STERN connects trade operations with settlement. Parties work from one shared trade record, collect evidence before a condition is fulfilled, and move funds only according to the agreement.",
+    valuePoints: [["One record, from contract to cargo", "Keep the agreement, shipment milestones, and release conditions together."], ["A clear owner for every action", "Finance and operations see exactly what needs attention—and who has it."], ["Settlement with a reason", "Every release is supported by a readable trail of commercial evidence."]],
+    journeyKicker: "A trade in motion", journeyTitle: "See one shipment move all the way to settlement.", journeyLead: "Follow the literal commercial route—from agreement and funds to cargo, inspection, customs, and release.",
+    journey: [
+      { number: "Agreement", title: "Agree the trade", short: "Terms, counterparties, and release conditions.", copy: "Buyer and seller record the commercial agreement that will govern this consignment before cargo begins to move.", label: "Commercial agreement", image: "paperwork" },
+      { number: "Funds", title: "Lock the funds", short: "Secure the agreed settlement amount.", copy: "The funds for this shipment are held against the agreed conditions, separate from ordinary operating balances.", label: "Escrow confirmed", image: "terminal" },
+      { number: "Shipment", title: "Move the cargo", short: "Track the consignment on its route.", copy: "Shipping events and transport documents build a timely picture of the cargo as it travels between the agreed ports.", label: "Shipment in transit", image: "hero" },
+      { number: "Inspection", title: "Inspect the goods", short: "Submit evidence from the handoff.", copy: "Inspection results and cargo-handling proof are attached to the trade where both parties can review them in context.", label: "Inspection evidence", image: "inspection" },
+      { number: "Customs", title: "Clear the border", short: "Match the documents to the consignment.", copy: "Shipping and customs documents are reviewed against the shipment record before a release decision is ready.", label: "Customs documents", image: "warehouse" },
+      { number: "Settlement", title: "Release settlement", short: "Pay against the agreed outcome.", copy: "Once the conditions are fulfilled, settlement follows with a clear record of what was reviewed and released.", label: "Settlement released", image: "terminal" }
+    ],
+    evidenceKicker: "One record, not a stack of attachments", evidenceTitle: "Evidence before assertion.", evidenceLead: "The release decision should be easy to explain. STERN puts the commercial terms, shipment facts, documents, and review outcome in a single readable record.",
+    recordTitle: "Shipment record · Refined Palm Oil", recordRef: "STN-24-0914", recordStatus: "Ready for release review",
+    recordFields: [["Exporter", "PT Sagara Nusantara"], ["Importer", "Meridian Foods B.V."], ["Route", "Tanjung Priok → Rotterdam"], ["Terms", "CIF Rotterdam · 2026"]],
+    recordProof: [["Commercial agreement", "Accepted"], ["Inspection certificate", "Matched"], ["Bill of lading", "Verified"]],
+    evidenceCaption: "Inspection and container handoff, recorded against the consignment.",
+    ecosystemKicker: "The people and proof around a shipment", ecosystemTitle: "STERN connects the trade without getting in its way.", ecosystemLead: "Evidence arrives from the work already happening around the cargo. STERN gives each party one place to understand it before settlement.",
+    exporter: "Exporter", importer: "Importer / offtaker", stern: "STERN trade record", feeds: ["Inspection", "Shipping", "Documents", "Trade operations"],
+    ecosystemNotes: ["Presents the shipment and supporting documents.", "Reviews the conditions behind a release.", "Coordinates exceptions before they become delays."],
+    productKicker: "Inside the workspace", productTitle: "A focused view of the trade, not another system to chase.", productLead: "When a user enters STERN, they arrive at the active trade record: what is moving, which evidence is in, what needs review, and what happens next.",
+    capabilityGroups: [["Trade & Escrow", "Create trades, agree release conditions, and hold funds against the commercial route."], ["Evidence & Verification", "Collect shipping documents, inspections, and verification activity in one record."], ["Exceptions & Control", "Handle amendments, missing evidence, disputes, and time-bound release decisions."], ["Settlement & Records", "Release on the agreed outcome and keep a clear settlement and activity history."]],
+    trustKicker: "Built for accountable settlement", trustTitle: "Every release follows the conditions agreed by the parties.", trustLead: "STERN keeps the controls understandable for business teams while preserving a dependable record behind each settlement decision.", trustPoints: [["Verified trade evidence", "The trade record collects the documents and events needed for review."], ["Tamper-resistant records", "Important actions and evidence remain connected to the transaction record."], ["Rules-based settlement", "Funds only move when the agreed workflow reaches its release condition."], ["Controlled release & audit trail", "The right people can review activity, decisions, and the reason behind every release."]],
+    securityTitle: "Clear conditions. Confirmed evidence. Confident settlement.", securityLead: "Give the commercial teams on both sides of a shipment a calmer way to move from agreement to payment.",
+    faqKicker: "Questions, answered", faqTitle: "What teams ask before they begin.",
+    faq: [["Who is STERN for?", "STERN is for export-import companies, commodity traders, and offtakers coordinating evidence and settlement around physical shipments."], ["Does STERN replace our existing trade process?", "No. It gives your current process a shared operating record for the conditions, evidence, review, and release steps that matter."], ["How does STERN fit into our existing workflow?", "Your teams keep using the trade, inspection, and shipping processes they know. STERN brings their material outputs together for review and settlement."], ["What happens when required evidence is missing?", "The trade remains clearly marked as awaiting action. The responsible party can see what is outstanding before a release is considered."], ["Who can review or approve evidence?", "The parties set the people and controls that apply to a trade. STERN makes their review activity and the evidence behind it visible in the record."], ["What happens when a shipment or trade condition changes?", "Teams can record an amendment against the trade and keep the changed terms alongside the evidence and decision history."], ["How are disputes or exceptions handled?", "The relevant evidence, timeline, and trade terms stay connected, giving the parties a specific record to review before deciding the next step."], ["How does a company get started with STERN?", "Start with a focused pilot around one live-style corridor, a known counterparty flow, and the evidence your teams already trust."], ["Can STERN be used for a live commercial transaction?", "Talk to the STERN team before using a workflow for a live commercial transaction. A pilot can be shaped around your counterparties, terms, and review process."]],
+    ctaTitle: "Bring certainty to the moments that settle a trade.", ctaLead: "Start with a pilot built around one real trade corridor, one set of terms, and the evidence your teams already trust.", footerLead: "A calmer, clearer way to coordinate international trade settlement.", rights: "© 2026 STERN Protocol. All rights reserved."
   },
-  {
-    n: "02",
-    t: "Attest",
-    d: "Three institutions verify weight, departure and customs. Each needs its feed and its signature to agree."
-  },
-  {
-    n: "03",
-    t: "Release",
-    d: "The contract pays the exporter and transfers the e-BL. No human in the path."
+  id: {
+    nav: ["Perjalanan", "Bukti", "Ekosistem", "Keamanan"], enter: "Masuk ke workspace", request: "Minta pilot",
+    heroKicker: "Escrow trade finance untuk perdagangan fisik",
+    heroTitle: <>Settlement berbasis bukti<br />untuk <span className="text-teal">perdagangan internasional.</span></>,
+    heroLead: "STERN memberi eksportir, importir, dan offtaker satu catatan pengiriman yang dapat diandalkan—agar settlement mengikuti bukti, bukan proses mengejarnya.",
+    numbers: [["100%", "Catatan perdagangan bersama"], ["0", "Mengejar status manual"], ["CIF / FOB", "Berangkat dari terms nyata"]],
+    valueKicker: "Lapisan settlement berbasis bukti untuk perdagangan fisik internasional", valueTitle: "Perdagangan terus bergerak saat semua pihak melihat fakta yang sama.", valueLead: "STERN menghubungkan trade operations dengan settlement. Pihak-pihak bekerja dari satu catatan perdagangan bersama, mengumpulkan bukti sebelum syarat dipenuhi, dan memindahkan dana hanya sesuai kesepakatan.",
+    valuePoints: [["Satu catatan, dari kontrak hingga kargo", "Simpan kesepakatan, milestone pengiriman, dan syarat rilis dalam satu tempat."], ["Pemilik yang jelas untuk setiap tindakan", "Finance dan operations melihat apa yang perlu ditangani—dan oleh siapa."], ["Settlement dengan dasar yang jelas", "Setiap rilis didukung jejak bukti komersial yang mudah dibaca."]],
+    journeyKicker: "Perdagangan yang bergerak", journeyTitle: "Lihat satu pengiriman bergerak hingga settlement.", journeyLead: "Ikuti jalur komersial yang nyata—dari kesepakatan dan dana hingga kargo, inspeksi, bea cukai, dan rilis.",
+    journey: [{ number: "Kesepakatan", title: "Sepakati transaksi", short: "Terms, pihak lawan, dan syarat rilis.", copy: "Pembeli dan penjual mencatat kesepakatan komersial yang akan mengatur konsinyasi ini sebelum kargo mulai bergerak.", label: "Kesepakatan komersial", image: "paperwork" }, { number: "Dana", title: "Amankan dana", short: "Amankan nilai settlement yang disepakati.", copy: "Dana untuk pengiriman ini ditahan terhadap syarat yang disepakati, terpisah dari saldo operasional sehari-hari.", label: "Escrow dikonfirmasi", image: "terminal" }, { number: "Pengiriman", title: "Gerakkan kargo", short: "Ikuti konsinyasi dalam rutenya.", copy: "Kejadian pengiriman dan dokumen transportasi membangun gambaran terkini atas kargo yang bergerak di antara pelabuhan yang disepakati.", label: "Pengiriman dalam perjalanan", image: "hero" }, { number: "Inspeksi", title: "Inspeksi barang", short: "Kirim bukti dari serah-terima.", copy: "Hasil inspeksi dan bukti penanganan kargo terhubung ke transaksi sehingga kedua pihak dapat meninjaunya dalam konteks.", label: "Bukti inspeksi", image: "inspection" }, { number: "Bea cukai", title: "Lintasi perbatasan", short: "Cocokkan dokumen dengan konsinyasi.", copy: "Dokumen pengiriman dan bea cukai ditinjau terhadap catatan pengiriman sebelum keputusan rilis siap.", label: "Dokumen bea cukai", image: "warehouse" }, { number: "Settlement", title: "Rilis settlement", short: "Bayar sesuai hasil yang disepakati.", copy: "Saat syarat terpenuhi, settlement berjalan dengan catatan jelas atas yang ditinjau dan dirilis.", label: "Settlement dirilis", image: "terminal" }],
+    evidenceKicker: "Satu catatan, bukan tumpukan lampiran", evidenceTitle: "Bukti sebelum klaim.", evidenceLead: "Keputusan rilis harus mudah dijelaskan. STERN menyatukan terms komersial, fakta pengiriman, dokumen, dan hasil tinjauan dalam satu catatan yang mudah dibaca.",
+    recordTitle: "Catatan pengiriman · Refined Palm Oil", recordRef: "STN-24-0914", recordStatus: "Siap untuk tinjauan rilis", recordFields: [["Eksportir", "PT Sagara Nusantara"], ["Importir", "Meridian Foods B.V."], ["Rute", "Tanjung Priok → Rotterdam"], ["Terms", "CIF Rotterdam · 2026"]], recordProof: [["Perjanjian komersial", "Diterima"], ["Sertifikat inspeksi", "Cocok"], ["Bill of lading", "Terverifikasi"]], evidenceCaption: "Inspeksi dan serah-terima kontainer, dicatat terhadap konsinyasi.",
+    ecosystemKicker: "Orang dan bukti di sekitar pengiriman", ecosystemTitle: "STERN menghubungkan perdagangan tanpa mengganggu cara kerjanya.", ecosystemLead: "Bukti datang dari pekerjaan yang memang sudah terjadi di sekitar kargo. STERN memberi setiap pihak satu tempat untuk memahaminya sebelum settlement.", exporter: "Eksportir", importer: "Importir / offtaker", stern: "Catatan perdagangan STERN", feeds: ["Inspeksi", "Pengiriman", "Dokumen", "Trade operations"], ecosystemNotes: ["Menyajikan pengiriman dan dokumen pendukung.", "Meninjau syarat di balik sebuah rilis.", "Mengoordinasikan pengecualian sebelum menjadi keterlambatan."],
+    productKicker: "Di dalam workspace", productTitle: "Tampilan terfokus atas transaksi, bukan sistem tambahan untuk dikejar.", productLead: "Saat pengguna masuk ke STERN, mereka tiba di catatan transaksi aktif: apa yang bergerak, bukti yang sudah masuk, apa yang perlu ditinjau, dan langkah berikutnya.", capabilityGroups: [["Trade & Escrow", "Buat transaksi, sepakati syarat rilis, dan tahan dana terhadap jalur komersial."], ["Bukti & Verifikasi", "Kumpulkan dokumen pengiriman, inspeksi, dan aktivitas verifikasi dalam satu catatan."], ["Pengecualian & Kontrol", "Tangani amandemen, bukti yang belum lengkap, sengketa, dan keputusan rilis berbatas waktu."], ["Settlement & Catatan", "Rilis sesuai hasil yang disepakati dan simpan riwayat settlement serta aktivitas yang jelas."]],
+    trustKicker: "Dibangun untuk settlement yang akuntabel", trustTitle: "Setiap rilis mengikuti syarat yang disepakati para pihak.", trustLead: "STERN menjaga kontrol tetap mudah dipahami tim bisnis sekaligus mempertahankan catatan andal di balik setiap keputusan settlement.", trustPoints: [["Bukti perdagangan terverifikasi", "Catatan transaksi mengumpulkan dokumen dan peristiwa yang dibutuhkan untuk tinjauan."], ["Catatan tahan perubahan", "Tindakan penting dan bukti tetap terhubung dengan catatan transaksi."], ["Settlement berbasis aturan", "Dana hanya bergerak saat alur yang disepakati mencapai syarat rilis."], ["Rilis terkendali & jejak audit", "Pihak yang tepat dapat meninjau aktivitas, keputusan, dan alasan di balik setiap rilis."]],
+    securityTitle: "Syarat yang jelas. Bukti terkonfirmasi. Settlement yang yakin.", securityLead: "Beri tim komersial di kedua sisi pengiriman cara yang lebih tenang untuk bergerak dari kesepakatan ke pembayaran.",
+    faqKicker: "Pertanyaan umum", faqTitle: "Yang ditanyakan tim sebelum memulai.", faq: [["Untuk siapa STERN dibuat?", "STERN dibuat untuk perusahaan ekspor-impor, pedagang komoditas, dan offtaker yang mengoordinasikan bukti dan settlement atas pengiriman fisik."], ["Apakah STERN menggantikan proses perdagangan kami?", "Tidak. STERN memberi proses yang ada catatan kerja bersama untuk syarat, bukti, tinjauan, dan rilis yang penting."], ["Bagaimana STERN masuk ke alur kerja kami?", "Tim Anda tetap menggunakan proses trade, inspeksi, dan pengiriman yang mereka kenal. STERN menyatukan keluaran pentingnya untuk tinjauan dan settlement."], ["Bagaimana jika bukti wajib belum lengkap?", "Transaksi tetap ditandai sebagai menunggu tindakan. Pihak yang bertanggung jawab dapat melihat apa yang tertunda sebelum rilis dipertimbangkan."], ["Siapa yang dapat meninjau atau menyetujui bukti?", "Para pihak menetapkan orang dan kontrol yang berlaku pada transaksi. STERN membuat aktivitas tinjauan dan bukti di baliknya terlihat pada catatan."], ["Bagaimana jika pengiriman atau syarat perdagangan berubah?", "Tim dapat mencatat amandemen pada transaksi dan menjaga terms yang berubah bersama bukti dan riwayat keputusan."], ["Bagaimana sengketa atau pengecualian ditangani?", "Bukti, timeline, dan terms yang relevan tetap terhubung sehingga pihak-pihak memiliki catatan spesifik untuk ditinjau sebelum menentukan langkah berikutnya."], ["Bagaimana perusahaan memulai dengan STERN?", "Mulai dari pilot terfokus pada satu koridor, satu alur pihak lawan, dan bukti yang sudah dipercaya tim Anda."], ["Apakah STERN dapat dipakai untuk transaksi komersial langsung?", "Hubungi tim STERN sebelum memakai alur untuk transaksi komersial langsung. Pilot dapat disusun untuk pihak lawan, terms, dan proses tinjauan Anda."]],
+    ctaTitle: "Bawa kepastian ke saat-saat yang menyelesaikan transaksi.", ctaLead: "Mulai dari pilot yang dibangun untuk satu koridor perdagangan, satu set terms, dan bukti yang sudah dipercaya tim Anda.", footerLead: "Cara yang lebih tenang dan jelas untuk mengoordinasikan settlement perdagangan internasional.", rights: "© 2026 STERN Protocol. Seluruh hak cipta dilindungi."
   }
-];
+};
 
-export default function Landing({ onNavigate, onEnter }) {
-  return (
-    <MarketingShell current="landing" onNavigate={onNavigate} onEnter={onEnter}>
-      <section>
-        <div className="mx-auto max-w-[1180px] px-6 lg:px-14">
+const STAGE_ICONS = [FileText, WalletCards, Ship, ScanSearch, PackageCheck, Landmark];
+function scrollTo(id) { document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); }
+function Button({ children, onClick, secondary = false }) { return <button type="button" onClick={onClick} className={`inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-full px-5 text-sm font-semibold transition-colors duration-200 ${secondary ? "border border-navy/15 bg-white text-navy hover:border-teal hover:bg-sky/20" : "bg-navy text-white shadow-card hover:bg-teal-solid"}`}>{children}</button>; }
+function SectionHeading({ eyebrow, title, lead, center = false }) { return <div className={center ? "mx-auto max-w-3xl text-center" : "max-w-3xl"}><p className="text-[11px] font-bold uppercase tracking-[.16em] text-teal">{eyebrow}</p><h2 className="mt-4 text-3xl font-semibold leading-[1.08] tracking-[-.045em] text-navy sm:text-4xl lg:text-5xl">{title}</h2>{lead ? <p className="mt-5 max-w-2xl text-base leading-relaxed text-ink-dim sm:text-lg">{lead}</p> : null}</div>; }
+function BrandMark() { return <span role="img" aria-label="STERN" className="stern-duotone-mark" />; }
 
-          <div className="grid items-center gap-10 py-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,344px)] lg:gap-16 lg:py-[92px]">
-            <div>
-              <span className="rise-in mb-6 block text-2xs uppercase tracking-macro text-teal">
-                Smart escrow for export&ndash;import settlement
-              </span>
-              <h1 style={{ animationDelay: "70ms" }} className="rise-in text-[46px] font-extrabold leading-[1.02] text-alabaster sm:text-[60px] lg:text-[68px]">
-                Verify,
-                <br />
-                Release,Move <span className="text-teal">the port.</span>
-              </h1>
-              <p style={{ animationDelay: "140ms" }} className="rise-in mt-7 max-w-[50ch] text-[19px] leading-[1.62] text-alabaster/90">
-                An Aceh coffee cooperative waits weeks for a letter of credit to clear. STERN locks
-                the buyer&rsquo;s funds on-chain and releases them the instant weight, departure
-                and customs all check out.
-              </p>
-              <div style={{ animationDelay: "210ms" }} className="rise-in mt-8 flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={onEnter}
-                  className="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-panel bg-teal-solid px-6 py-3 text-[13px] font-medium text-white shadow-card transition-[filter] duration-150 hover:brightness-110"
-                >
-                  Access workspace
-                  <ArrowRight size={15} aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onNavigate("settlement")}
-                  className="cursor-pointer whitespace-nowrap rounded-panel border border-alabaster/25 px-6 py-3 text-[13px] font-medium text-alabaster transition-colors duration-150 hover:border-alabaster/50"
-                >
-                  See how settlement works
-                </button>
-              </div>
+export default function Landing({ onEnter }) {
+  const { language } = useLanguage();
+  const t = { ...COPY[language], capabilities: COPY[language].capabilityGroups };
+  const [activeStage, setActiveStage] = useState(0);
+  const [activeNav, setActiveNav] = useState("journey");
+  const [navRaised, setNavRaised] = useState(false);
+  const landingRef = useRef(null);
+  const stage = t.journey[activeStage];
+  const navTargets = ["journey", "evidence", "ecosystem", "security"];
+
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return undefined;
+    const root = document.documentElement;
+    const hero = landingRef.current?.querySelector(".stern-hero-image");
+    const scroller = landingRef.current?.parentElement;
+    const scrollRoot = scroller instanceof HTMLElement ? scroller : window;
+    const revealTargets = [...(landingRef.current?.querySelectorAll("section:not(#top)") ?? [])];
+    let frame;
+    const onScroll = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        const scrollTop = scroller instanceof HTMLElement ? scroller.scrollTop : window.scrollY;
+        hero?.style.setProperty("--hero-parallax", `${Math.min(scrollTop * 0.035, 28)}px`);
+        setNavRaised(scrollTop > 12);
+        frame = undefined;
+      });
+    };
+    root.classList.add("stern-motion-ready");
+    const observer = new IntersectionObserver((entries) => entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add("is-revealed");
+      observer.unobserve(entry.target);
+    }), { root: scroller instanceof HTMLElement ? scroller : null, threshold: 0.12 });
+    revealTargets.forEach((target) => observer.observe(target));
+    const navObserver = new IntersectionObserver((entries) => entries.forEach((entry) => {
+      if (entry.isIntersecting) setActiveNav(entry.target.id);
+    }), { root: scroller instanceof HTMLElement ? scroller : null, rootMargin: "-35% 0px -52% 0px", threshold: 0 });
+    navTargets.map((id) => landingRef.current?.querySelector(`#${id}`)).filter(Boolean).forEach((target) => navObserver.observe(target));
+    onScroll();
+    scrollRoot.addEventListener("scroll", onScroll, { passive: true });
+    return () => { window.cancelAnimationFrame(frame); scrollRoot.removeEventListener("scroll", onScroll); observer.disconnect(); navObserver.disconnect(); root.classList.remove("stern-motion-ready"); };
+  }, []);
+
+  return <main ref={landingRef} className="min-h-full overflow-x-hidden bg-page text-navy">
+    <header className="fixed left-0 right-0 top-4 z-50 px-3 sm:top-5 sm:px-5"><div className={`mx-auto flex max-w-[1240px] items-center justify-between gap-3 rounded-full border border-white/80 bg-white/95 px-3 py-2 backdrop-blur transition-shadow duration-300 sm:px-4 ${navRaised ? "shadow-[0_12px_32px_rgb(47_65_86_/_0.16)]" : "shadow-[0_6px_18px_rgb(47_65_86_/_0.08)]"}`}><button type="button" onClick={() => scrollTo("top")} className="shrink-0 cursor-pointer px-2 py-1" aria-label="STERN home"><BrandMark /></button><nav className="hidden items-center gap-1 xl:flex" aria-label="Public navigation">{t.nav.map((label, index) => <button key={label} type="button" onClick={() => scrollTo(navTargets[index])} aria-current={activeNav === navTargets[index] ? "page" : undefined} className={`cursor-pointer rounded-full px-3 py-2 text-[13px] font-medium transition-colors ${activeNav === navTargets[index] ? "bg-navy text-white" : "text-ink-dim hover:bg-sky/25 hover:text-navy"}`}>{label}</button>)}</nav><div className="flex items-center gap-1.5 sm:gap-2"><div className="hidden lg:block"><LanguageToggle compact /></div><Button onClick={onEnter}>{t.enter}<ArrowUpRight size={15} /></Button></div></div></header>
+
+    <section id="top" className="px-5 pb-14 pt-24 sm:px-8 sm:pb-20 sm:pt-28 lg:pt-32"><div className="mx-auto grid max-w-[1240px] overflow-hidden rounded-[28px] stern-hero-wash lg:min-h-[490px] lg:grid-cols-[1.04fr_.96fr]"><div className="flex flex-col justify-center px-7 py-11 sm:px-12 lg:px-16 lg:py-12"><p className="text-[11px] font-bold uppercase tracking-[.16em] text-teal">{t.heroKicker}</p><h1 className="mt-5 max-w-[13ch] text-[clamp(2.5rem,4.5vw,4.35rem)] font-semibold leading-[.99] tracking-[-.06em] text-navy">{t.heroTitle}</h1><p className="mt-6 max-w-xl text-base leading-relaxed text-ink-dim sm:text-[17px]">{t.heroLead}</p><div className="mt-8 flex flex-wrap gap-3"><Button onClick={onEnter}>{t.enter}<ArrowRight size={16} /></Button><Button secondary onClick={() => scrollTo("journey")}>{t.request}</Button></div><dl className="mt-10 grid max-w-lg grid-cols-3 gap-4 border-t border-navy/10 pt-5">{t.numbers.map(([number, label]) => <div key={label}><dt className="text-xl font-semibold tracking-[-.04em] text-navy sm:text-2xl">{number}</dt><dd className="mt-1 text-[11px] leading-snug text-ink-dim">{label}</dd></div>)}</dl></div><div className="relative min-h-[330px] overflow-hidden sm:min-h-[390px]"><img src={IMAGES.hero} alt="Container terminal beside the water" className="stern-hero-image absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(47,65,86,.08),rgba(47,65,86,.3))]" /></div></div></section>
+
+    <section id="journey" data-reveal className="scroll-mt-24 stern-beige-wash px-5 py-20 sm:px-8 lg:py-28"><div className="mx-auto max-w-[1240px]"><SectionHeading eyebrow={t.valueKicker} title={t.valueTitle} lead={t.valueLead} /><div className="mt-12 grid gap-8 lg:grid-cols-[1.04fr_.96fr]"><div className="relative min-h-[460px] overflow-hidden rounded-[26px] bg-navy"><img key={stage.image} src={IMAGES[stage.image]} alt={stage.title} className="stern-workflow-image absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0 bg-[linear-gradient(0deg,rgba(47,65,86,.94)_4%,rgba(47,65,86,.08)_74%)]" /><div className="absolute bottom-0 left-0 right-0 p-7 text-white sm:p-10"><p className="text-xs font-bold uppercase tracking-[.15em] text-cyan">{stage.label}</p><h3 className="mt-3 text-3xl font-semibold tracking-[-.04em] sm:text-4xl">{stage.title}</h3><p className="mt-3 max-w-md text-sm leading-relaxed text-white/75">{stage.copy}</p></div></div><div className="stern-workflow-route" style={{ "--workflow-progress": `${activeStage * 15}%` }}>{t.journey.map((item, index) => { const Icon = STAGE_ICONS[index]; const active = activeStage === index; return <button key={item.number} type="button" onMouseEnter={() => setActiveStage(index)} onFocus={() => setActiveStage(index)} onClick={() => setActiveStage(index)} className={`stern-workflow-step ${active ? "is-active" : ""}`}><span className="stern-workflow-index">{item.number}</span><span className="stern-workflow-icon"><Icon size={19} /></span><span className="min-w-0"><span className="block text-base font-semibold text-navy">{item.title}</span><span className="mt-1 block text-sm text-ink-dim">{item.short}</span></span><ArrowRight className="ml-auto shrink-0 text-teal opacity-0 transition-opacity duration-200" size={17} /></button>; })}</div></div></div></section>
+
+    <section id="evidence" data-reveal className="scroll-mt-24 stern-sky-wash px-5 py-20 sm:px-8 lg:py-28">
+      <div className="mx-auto grid max-w-[1240px] items-center gap-12 lg:grid-cols-[.76fr_1.24fr]">
+        <div>
+          <SectionHeading eyebrow={t.evidenceKicker} title={t.evidenceTitle} lead={t.evidenceLead} />
+          <div className="stern-evidence-editorial mt-8">
+            <div className="stern-evidence-photo"><img src={IMAGES.inspection} alt="Cargo inspection and handling at a container facility" /></div>
+            <div className="stern-evidence-document">
+              <span>{t.recordRef} / {t.recordProof[1][0]}</span>
+              <strong>{t.recordProof[1][1]}</strong>
+              <small>{t.recordFields[2][1]}</small>
             </div>
-
-            <div style={{ animationDelay: "280ms" }} className="rise-in relative aspect-[3/4] overflow-hidden rounded-doc shadow-plate">
-              <PortPlate />
-              <div style={{ animationDelay: "620ms" }} className="rise-in chrome-dark absolute inset-x-4 bottom-4 flex items-center justify-between gap-3 rounded-panel border border-alabaster/15 bg-onyx/60 px-4 py-3 backdrop-blur-md">
-                <div className="min-w-0">
-                  <div className="truncate text-2xs uppercase text-alabaster/90">
-                    Escrow &#8470;0004 &middot; MSKU 418 337 2
-                  </div>
-                  <div className="mt-0.5 text-[15px] font-medium text-alabaster">
-                    Belawan &rarr; Hamburg
-                  </div>
-                </div>
-                <div
-                  className="seal grid h-[38px] w-[38px] shrink-0 place-items-center rounded-full"
-                  style={{ "--pct": "0.667turn" }}
-                  role="img"
-                  aria-label="Two of three milestones verified"
-                >
-                  <span className="grid h-[29px] w-[29px] place-items-center rounded-full bg-[#131313] text-[8.5px] text-alabaster">
-                    2/3
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid border-t border-alabaster/25 pb-14 sm:grid-cols-2 lg:grid-cols-4 lg:pb-[90px]">
-            {TERMS.map((term) => (
-              <div key={term.k} className="border-r border-alabaster/25 px-6 pt-8 first:pl-0 last:border-r-0 last:pr-0 lg:px-8">
-                <div className="text-[42px] font-bold leading-none text-alabaster">
-                  {term.k}
-                </div>
-                <p className="mt-3 max-w-[23ch] text-[14.5px] leading-[1.5] text-alabaster/90">
-                  {term.v}
-                </p>
-              </div>
-            ))}
+            <p className="stern-evidence-caption">{t.evidenceCaption}</p>
           </div>
         </div>
-      </section>
-
-      <section className="bg-teal-solid py-14 text-white lg:py-[86px]">
-        <div className="mx-auto grid max-w-[1180px] items-center gap-10 px-6 lg:grid-cols-2 lg:gap-[70px] lg:px-14">
-          <div>
-            <h2 className="text-balance text-[32px] font-bold leading-[1.06] lg:text-[46px]">
-              The instrument is 400 years old. The delay is the product.
-            </h2>
-            <p className="mt-5 text-[18px] leading-[1.6] text-white/90">
-              A letter of credit exists because two strangers cannot verify each other. STERN
-              replaces the verifier, not the trust: bonded oracles, slashed if they lie.
-            </p>
-          </div>
-          <div className="flex flex-col">
-            {STEPS.map((step, index) => (
-              <div
-                key={step.n}
-                className={`flex gap-5 border-t border-white/25 py-5 ${
-                  index === STEPS.length - 1 ? "border-b" : ""
-                }`}
-              >
-                <div className="w-[30px] shrink-0 pt-1 text-[11px] tracking-micro text-white/85">
-                  {step.n}
-                </div>
-                <div>
-                  <div className="text-[17px] font-semibold tracking-[-0.012em]">{step.t}</div>
-                  <p className="mt-1 text-[15px] leading-[1.5] text-white/90">{step.d}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+        <div className="rounded-[26px] bg-white p-4 shadow-[0_28px_60px_rgb(47_65_86_/_0.14)] sm:p-7">
+          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-navy/10 pb-6"><div><p className="text-[10px] font-bold uppercase tracking-[.15em] text-teal">{t.recordRef}</p><h3 className="mt-2 text-xl font-semibold tracking-[-.03em] text-navy">{t.recordTitle}</h3></div><span className="rounded-full bg-[#e0f1ed] px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] text-teal">{t.recordStatus}</span></div>
+          <dl className="grid gap-x-8 gap-y-6 py-7 sm:grid-cols-2">{t.recordFields.map(([label, value]) => <div key={label}><dt className="text-[10px] font-bold uppercase tracking-[.12em] text-ink-faint">{label}</dt><dd className="mt-1 text-sm font-semibold text-navy">{value}</dd></div>)}</dl>
+          <div className="border-t border-navy/10 pt-6"><div className="flex items-center justify-between"><h4 className="text-sm font-semibold text-navy">Supporting evidence</h4><span className="text-xs font-semibold text-teal">3 items matched</span></div><div className="mt-4 grid divide-y divide-navy/10 rounded-xl bg-page px-4">{t.recordProof.map(([name, status]) => <div key={name} className="flex items-center justify-between gap-4 py-3.5"><span className="text-sm text-navy">{name}</span><span className="inline-flex items-center gap-1.5 text-xs font-semibold text-teal"><Check size={14} />{status}</span></div>)}</div></div>
         </div>
-      </section>
-    </MarketingShell>
-  );
+      </div>
+    </section>
+
+    <section id="ecosystem" data-reveal className="scroll-mt-24 bg-white px-5 py-20 sm:px-8 lg:py-28"><div className="mx-auto max-w-[1240px]"><SectionHeading eyebrow={t.ecosystemKicker} title={t.ecosystemTitle} lead={t.ecosystemLead} center /><div className="stern-ecosystem-map mt-12 overflow-hidden rounded-[28px] p-6 sm:p-10"><img src={IMAGES.warehouse} alt="Warehouse and cargo operations" className="absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0 bg-[linear-gradient(110deg,rgba(47,65,86,.93),rgba(47,65,86,.76))]" /><div className="relative grid items-center gap-7 lg:grid-cols-[1fr_1.2fr_1fr]"><div className="stern-party stern-party-left"><span className="text-[11px] font-bold uppercase tracking-[.14em] text-cyan">{t.exporter}</span><p>{t.ecosystemNotes[0]}</p></div><div className="relative flex min-h-[350px] items-center justify-center"><span className="stern-route-line stern-route-left" /><span className="stern-route-line stern-route-right" /><div className="stern-trade-core"><Ship size={28} /><p>{t.stern}</p><span>Agreement · evidence · release</span></div><div className="absolute bottom-0 grid w-full grid-cols-2 gap-3 sm:grid-cols-4">{t.feeds.map((feed) => <div key={feed} className="stern-evidence-feed">{feed}</div>)}</div></div><div className="stern-party stern-party-right"><span className="text-[11px] font-bold uppercase tracking-[.14em] text-cyan">{t.importer}</span><p>{t.ecosystemNotes[1]}</p><p className="mt-5 border-t border-white/20 pt-5 text-white/65">{t.ecosystemNotes[2]}</p></div></div></div></div></section>
+
+    <section id="product" data-reveal className="scroll-mt-24 stern-beige-wash px-5 py-20 sm:px-8 lg:py-28"><div className="mx-auto max-w-[1240px]"><SectionHeading eyebrow={t.productKicker} title={t.productTitle} lead={t.productLead} /><div className="mt-12 grid items-center gap-10 lg:grid-cols-[1.1fr_.9fr]"><div className="overflow-hidden rounded-[26px] bg-navy p-4 shadow-[0_28px_60px_rgb(47_65_86_/_0.18)] sm:p-6"><div className="rounded-[18px] bg-white p-5 sm:p-6"><div className="flex items-start justify-between gap-4 border-b border-navy/10 pb-5"><div><p className="text-[10px] font-bold uppercase tracking-[.14em] text-teal">Active trade · STN-24-0914</p><h3 className="mt-2 text-lg font-semibold text-navy">Refined Palm Oil · Jakarta → Rotterdam</h3></div><span className="text-xs font-semibold text-teal">Evidence review</span></div><div className="mt-6 grid gap-5 sm:grid-cols-[1fr_.72fr]"><div><p className="text-xs font-semibold text-navy">Release conditions</p><div className="mt-4 grid gap-3">{t.recordProof.map(([name, status]) => <div key={name} className="flex items-center justify-between gap-4 rounded-lg bg-page px-3 py-3"><span className="text-xs text-navy">{name}</span><span className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal"><Check size={13} />{status}</span></div>)}</div></div><div className="bg-sky/35 p-4"><p className="text-[10px] font-bold uppercase tracking-[.12em] text-teal">Next action</p><p className="mt-2 text-sm font-semibold leading-snug text-navy">Review shipment evidence before release.</p><p className="mt-4 text-xs leading-relaxed text-ink-dim">The workspace keeps the decision, its owner, and the evidence together.</p></div></div><div className="mt-6 grid grid-cols-4 gap-2 border-t border-navy/10 pt-5 text-center">{t.journey.slice(0, 4).map((item, index) => <div key={item.number} className={index < 3 ? "text-teal" : "text-navy"}><span className="block text-[10px] font-bold">{item.number}</span><span className="mt-1 block text-[10px] leading-tight">{item.title}</span></div>)}</div></div></div><div className="grid gap-0 sm:grid-cols-2">{t.capabilities.map(([title, copy], index) => { const Icon = [ScanSearch, WalletCards, PackageCheck, FileText, ClipboardCheck, History][index]; return <div key={title} className="border-b border-navy/10 py-5 sm:pr-7 sm:odd:mr-7"><div className="flex gap-3"><Icon size={19} className="mt-0.5 shrink-0 text-teal" /><div><h3 className="text-sm font-semibold text-navy">{title}</h3><p className="mt-1 text-sm leading-relaxed text-ink-dim">{copy}</p></div></div></div>; })}</div></div></div></section>
+
+    <section id="security" data-reveal className="scroll-mt-24 bg-white px-5 py-20 sm:px-8 lg:py-28"><div className="mx-auto grid max-w-[1240px] items-center gap-12 lg:grid-cols-[.85fr_1.15fr]"><div className="overflow-hidden rounded-[24px]"><img src={IMAGES.paperwork} alt="Trade documents being reviewed" className="stern-editorial-image h-[310px] w-full object-cover sm:h-[430px]" /></div><div><SectionHeading eyebrow={t.trustKicker} title={t.trustTitle} lead={t.trustLead} /><div className="stern-trust-route mt-10">{t.trustPoints.map(([title, copy], index) => <div key={title} className="stern-trust-point"><span>{String(index + 1).padStart(2, "0")}</span><div><h3>{title}</h3><p>{copy}</p></div></div>)}</div></div></div></section>
+
+    <section data-reveal className="px-5 py-5 sm:px-8 sm:py-8"><div className="mx-auto grid max-w-[1240px] overflow-hidden rounded-[26px] stern-navy-teal lg:grid-cols-[1fr_.93fr]"><div className="flex flex-col justify-center px-7 py-14 text-white sm:px-12 lg:px-16"><p className="text-[11px] font-bold uppercase tracking-[.16em] text-cyan">Settlement, made legible</p><h2 className="mt-5 max-w-[12ch] text-4xl font-semibold leading-[1.02] tracking-[-.05em] sm:text-5xl">{t.securityTitle}</h2><p className="mt-6 max-w-lg text-base leading-relaxed text-white/70">{t.securityLead}</p><div className="mt-9"><Button onClick={onEnter} secondary>{t.enter}<ArrowRight size={16} /></Button></div></div><div className="relative min-h-[330px]"><img src={IMAGES.hero} alt="Cargo vessel at a working port" className="stern-editorial-image absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0 bg-navy/30" /></div></div></section>
+
+    <section data-reveal className="bg-white px-5 py-20 sm:px-8 lg:py-28"><div className="mx-auto grid max-w-[1120px] gap-10 lg:grid-cols-[.78fr_1.22fr]"><SectionHeading eyebrow={t.faqKicker} title={t.faqTitle} /><div className="border-y border-navy/10">{t.faq.map(([question, answer]) => <details key={question} className="group border-b border-navy/10 last:border-0"><summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-5 text-left text-base font-semibold text-navy transition-colors hover:text-teal"><span>{question}</span><ChevronDown size={18} className="shrink-0 text-teal transition-transform duration-200 group-open:rotate-180" /></summary><p className="max-w-xl pb-6 text-sm leading-relaxed text-ink-dim">{answer}</p></details>)}</div></div></section>
+
+    <section data-reveal className="stern-beige-wash px-5 py-8 sm:px-8 sm:py-12"><div className="mx-auto max-w-[1240px] rounded-[26px] stern-sky-wash px-7 py-14 text-center sm:px-12 lg:py-20"><div className="mx-auto max-w-3xl"><h2 className="text-4xl font-semibold leading-[1.05] tracking-[-.05em] text-navy sm:text-5xl">{t.ctaTitle}</h2><p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-ink-dim">{t.ctaLead}</p><div className="mt-9 flex flex-wrap justify-center gap-3"><Button onClick={onEnter}>{t.enter}<ArrowUpRight size={16} /></Button><Button secondary onClick={() => scrollTo("journey")}>{t.request}</Button></div></div></div></section>
+
+    <footer className="bg-white px-5 pt-14 sm:px-8"><div className="mx-auto grid max-w-[1240px] gap-10 pb-12 sm:grid-cols-2 lg:grid-cols-[1.35fr_1fr_1fr_1fr]"><div><img src={sternLogo} alt="STERN" className="h-7 w-auto brightness-0" /><p className="mt-4 max-w-xs text-sm leading-relaxed text-ink-dim">{t.footerLead}</p></div><div><p className="text-[10px] font-bold uppercase tracking-[.15em] text-teal">Explore</p><div className="mt-4 grid gap-3 text-sm text-ink-dim"><button type="button" onClick={() => scrollTo("journey")} className="cursor-pointer text-left hover:text-navy">{t.nav[0]}</button><button type="button" onClick={() => scrollTo("evidence")} className="cursor-pointer text-left hover:text-navy">{t.nav[1]}</button><button type="button" onClick={() => scrollTo("ecosystem")} className="cursor-pointer text-left hover:text-navy">{t.nav[2]}</button></div></div><div><p className="text-[10px] font-bold uppercase tracking-[.15em] text-teal">For teams</p><div className="mt-4 grid gap-3 text-sm text-ink-dim"><span>Exporters</span><span>Importers & offtakers</span><span>Trade operations</span></div></div><div><p className="text-[10px] font-bold uppercase tracking-[.15em] text-teal">Workspace</p><button type="button" onClick={onEnter} className="mt-4 inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-navy transition-colors hover:text-teal">{t.enter}<ArrowUpRight size={15} /></button><p className="mt-4 text-sm text-ink-dim">Talk to the STERN team</p></div></div><div className="mx-auto flex max-w-[1240px] flex-wrap items-center justify-between gap-3 border-t border-navy/10 py-5 text-[11px] text-ink-faint"><span>{t.rights}</span><span>Privacy · Terms · System status</span></div></footer>
+  </main>;
 }

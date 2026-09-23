@@ -3,8 +3,11 @@ import { lifecycleStep } from "../lib/escrowState.js";
 
 const MAIN_STEPS = [
   { key: "Pending", label: "Funds locked", detail: "Importer deposit held by the contract" },
-  { key: "Verified", label: "Oracle verified", detail: "All three milestones verified on-chain" },
-  { key: "Completed", label: "Settled", detail: "Funds to exporter · e-BL to importer" }
+  { key: "Inspected", label: "Inspection verified", detail: "Quality and VGM evidence accepted" },
+  { key: "Shipped", label: "Shipment confirmed", detail: "Vessel departure evidence recorded" },
+  { key: "ArrivedCleared", label: "Customs cleared", detail: "Arrival and clearance conditions met" },
+  { key: "TimelockActive", label: "Release control", detail: "Final challenge and timelock window" },
+  { key: "Completed", label: "Settlement released", detail: "Funds paid to the exporter" }
 ];
 
 export default function Timeline({ state }) {
@@ -43,7 +46,7 @@ export default function Timeline({ state }) {
                     // text-beige, not text-white: `beige` is --rgb-page, so it
                     // flips to onyx in dark mode. White on the dark theme's
                     // lighter ochre fill is only 2.4:1.
-                    ? "border-state-pending bg-state-pending text-beige"
+                    ? "border-teal bg-teal-solid text-white shadow-[0_0_0_4px_rgba(86,124,141,0.12)]"
                     : "border-sky bg-surface text-ink-faint"
               }`}
             >

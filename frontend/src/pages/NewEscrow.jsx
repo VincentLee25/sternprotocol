@@ -178,6 +178,12 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
         Back to escrows
       </Button>
 
+      <header className="mb-6 max-w-2xl">
+        <p className="text-2xs uppercase text-ink-faint">New settlement instruction</p>
+        <h1 className="mt-1.5 text-[30px] font-semibold leading-none tracking-[-0.035em] text-navy">Create an escrow</h1>
+        <p className="mt-2 text-[14px] leading-relaxed text-ink-dim">Set counterparties, shipment terms and the source document in one clear instruction.</p>
+      </header>
+
       <Notice tone="teal" className="mb-5">
         Creating an escrow makes you its <strong className="font-semibold">importer</strong> &mdash;
         the party whose funds are locked. The transaction is gasless and sponsored by the paymaster.

@@ -147,7 +147,8 @@ function OpsDashboard({ session, onClose, onExit }) {
   const disputed = mine.filter((e) => e.state === "Disputed" || e.disputeOpen);
 
   return (
-    <div className="min-h-dvh bg-beige p-6 lg:p-10">
+    <div className="stern-workspace-shell min-h-dvh p-5 sm:p-6 lg:p-10">
+      <div className="stern-workspace-page mx-auto max-w-[1480px]">
       <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-2xs uppercase text-ink-faint">Operations console</p>
@@ -160,14 +161,14 @@ function OpsDashboard({ session, onClose, onExit }) {
           <button
             type="button"
             onClick={onExit}
-            className="cursor-pointer rounded-full border border-sky bg-surface px-5 py-2.5 text-[13px] font-medium text-navy transition-colors duration-150 hover:border-teal/40"
+            className="cursor-pointer rounded-panel border border-sky bg-surface px-5 py-2.5 text-[13px] font-medium text-navy transition-colors duration-150 hover:border-teal/40"
           >
             Back to STERN
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="flex cursor-pointer items-center gap-2 rounded-full bg-navy px-5 py-2.5 text-[13px] font-medium text-beige transition-colors duration-150 hover:bg-teal-solid"
+            className="flex cursor-pointer items-center gap-2 rounded-panel bg-navy px-5 py-2.5 text-[13px] font-medium text-beige transition-colors duration-150 hover:bg-teal-solid"
           >
             <LogOut size={13} aria-hidden="true" />
             End session
@@ -195,7 +196,7 @@ function OpsDashboard({ session, onClose, onExit }) {
       ) : null}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <section className="rounded-doc bg-surface p-6 shadow-card">
+        <section className="stern-workspace-card rounded-doc bg-surface p-6 shadow-card">
           <h2 className="text-2xs uppercase text-ink-faint">
             Escrows you arbitrate ({mine.length})
           </h2>
@@ -250,7 +251,7 @@ function OpsDashboard({ session, onClose, onExit }) {
         </section>
 
         <aside className="flex flex-col gap-5">
-          <section className="rounded-doc bg-surface p-6 shadow-card">
+          <section className="stern-workspace-card rounded-doc bg-surface p-6 shadow-card">
             <h2 className="text-2xs uppercase text-ink-faint">Your roles</h2>
             <ul className="mt-3 space-y-2 text-sm">
               <Row label="Contract admin" ok={session.isAdmin} />
@@ -259,7 +260,7 @@ function OpsDashboard({ session, onClose, onExit }) {
           </section>
 
           {status ? (
-            <section className="rounded-doc bg-surface p-6 shadow-card">
+            <section className="stern-workspace-card rounded-doc bg-surface p-6 shadow-card">
               <h2 className="text-2xs uppercase text-ink-faint">Oracle health</h2>
               <dl className="mt-3 space-y-1.5 text-2xs">
                 {status.chainId != null ? <Term label="Chain" value={String(status.chainId)} /> : null}
@@ -278,6 +279,7 @@ function OpsDashboard({ session, onClose, onExit }) {
             </section>
           ) : null}
         </aside>
+      </div>
       </div>
     </div>
   );
@@ -354,7 +356,7 @@ function ResolveCard({ escrow, onResolved }) {
               key={String(opt.v)}
               type="button"
               onClick={() => setReleaseToExporter(opt.v)}
-              className={`cursor-pointer rounded-full border px-3 py-2 text-xs font-medium transition-colors duration-150 ${
+              className={`cursor-pointer rounded-panel border px-3 py-2 text-xs font-medium transition-colors duration-150 ${
                 releaseToExporter === opt.v
                   ? "border-navy bg-navy text-beige"
                   : "border-sky bg-surface text-navy hover:border-teal/40"
@@ -415,7 +417,7 @@ function ResolveCard({ escrow, onResolved }) {
         type="button"
         onClick={submit}
         disabled={busy || !reasoningCid.trim()}
-        className="mt-3.5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-navy py-2.5 text-xs font-medium text-beige transition-colors duration-150 hover:bg-teal-solid disabled:cursor-not-allowed disabled:opacity-50"
+        className="mt-3.5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-panel bg-navy py-2.5 text-xs font-medium text-beige transition-colors duration-150 hover:bg-teal-solid disabled:cursor-not-allowed disabled:opacity-50"
       >
         {busy ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : null}
         {busy ? "Signing with your key…" : "Sign decision"}

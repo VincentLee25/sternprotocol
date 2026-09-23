@@ -18,9 +18,9 @@ import { Loader2 } from "lucide-react";
 const BUTTON_TONES = {
   // Solid teal. White on #176B73 is 6.2:1, and that fill is constant across
   // themes so the label never has to be re-tuned.
-  primary: "bg-teal-solid text-white shadow-card hover:brightness-110",
+  primary: "bg-navy text-white shadow-card hover:-translate-y-0.5 hover:bg-teal-solid hover:shadow-elevated",
   // White surface with a slate hairline. The workhorse.
-  secondary: "border border-sky bg-surface text-navy hover:border-teal/50 hover:bg-surface-soft",
+  secondary: "border border-sky bg-surface text-navy hover:-translate-y-0.5 hover:border-teal/50 hover:bg-surface-soft hover:shadow-card",
   // No chrome until hover. For tertiary actions inside dense panels.
   ghost: "text-ink-dim hover:bg-surface-soft hover:text-navy",
   // Reserved for actions that move money against the pressing party.
@@ -54,7 +54,7 @@ export function Button({
     <button
       type={type}
       disabled={disabled || busy}
-      className={`inline-flex shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-panel font-medium transition-[background-color,border-color,color,filter,opacity] duration-150 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:brightness-100 ${
+      className={`inline-flex shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-panel font-medium transition-[background-color,border-color,color,filter,opacity,transform,box-shadow] duration-200 disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-45 disabled:hover:brightness-100 ${
         BUTTON_SIZES[size]
       } ${BUTTON_TONES[tone]} ${full ? "w-full" : ""} ${className}`}
       {...rest}
@@ -79,7 +79,7 @@ export function Button({
 export function Card({ as: Tag = "section", className = "", inset = true, children, ...rest }) {
   return (
     <Tag
-      className={`rounded-doc bg-surface shadow-card ${inset ? "p-5 lg:p-6" : ""} ${className}`}
+      className={`stern-workspace-card rounded-doc bg-surface shadow-card ${inset ? "p-5 lg:p-6" : ""} ${className}`}
       {...rest}
     >
       {children}
@@ -204,7 +204,7 @@ export function Metric({ label, value, unit, tone = "default", children, classNa
           : "text-navy";
 
   return (
-    <div className={`rounded-doc bg-surface p-5 shadow-card ${className}`}>
+    <div className={`stern-workspace-card rounded-doc bg-surface p-5 shadow-card ${className}`}>
       <p className="text-[13px] font-medium text-ink-dim">{label}</p>
       <p className={`mt-2 text-[28px] font-bold leading-none tabular-nums ${valueTone}`}>
         {value}

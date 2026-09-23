@@ -46,16 +46,17 @@ export const STATE_LABEL = {
   Verified: "Verified"
 };
 
-// Where each state sits on the three-step lifecycle rail.
+// Where each state sits on the workspace lifecycle rail. This remains display
+// metadata only; the contract enum above is still the state source of truth.
 const STEP_OF = {
   Created: 0,
   Pending: 0,
-  Inspected: 0,
-  Shipped: 0,
-  ArrivedCleared: 1,
-  Verified: 1,
-  TimelockActive: 1,
-  Completed: 2
+  Inspected: 1,
+  Shipped: 2,
+  ArrivedCleared: 3,
+  Verified: 3,
+  TimelockActive: 4,
+  Completed: 5
 };
 
 export function lifecycleStep(state) {

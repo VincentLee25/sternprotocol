@@ -129,6 +129,12 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
     const locked = Object.values(byBucket).reduce((a, b) => a + b, 0);
     const settled = rows.filter((e) => e.state === "Completed");
     const disputes = rows.filter((e) => e.state === "Disputed");
+    const now = Date.now();
+    const soon = active.filter((e) => {
+      const deadline = new Date(e.deadline || 0).getTime();
+      return deadline >= now && deadline - now <= 72 * 60 * 60 * 1000;
+    });
+    const awaitingEvidence = active.filter((e) => (e.verified ?? verifiedFromState(e.state)) < MILESTONES.length);
     const bondAtRisk = disputes.reduce((sum, e) => sum + (Number(e.value) || 0) * 0.02, 0);
     const perMilestone = MILESTONES.map((m, i) => ({
       label: m.label,
@@ -142,6 +148,8 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
       settledCount: settled.length,
       settledValue: settled.reduce((s, e) => s + (Number(e.value) || 0), 0),
       disputeCount: disputes.length,
+      awaitingEvidenceCount: awaitingEvidence.length,
+      deadlineSoonCount: soon.length,
       bondAtRisk,
       perMilestone
     };
@@ -162,18 +170,16 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
 
   return (
     <div className="w-full">
-      <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-2xs uppercase text-ink-faint">
-            {sourceIsLive ? "Settlement registry" : "Mock session"}
-          </p>
-          <h1 className="mt-1.5 text-[30px] font-bold leading-none tracking-display text-navy">
-            Escrows
+          <p className="text-2xs uppercase text-ink-faint">{sourceIsLive ? "Settlement registry" : "Mock session"}</p>
+          <h1 className="mt-1.5 text-[28px] font-semibold leading-none tracking-[-0.035em] text-navy sm:text-[30px]">
+            Workspace overview
           </h1>
-          <p className="mt-2 font-serif text-[15px] text-teal">
+          <p className="mt-2 text-[14px] text-ink-dim">
             {sourceIsLive
               ? sourceLabel
-              : "Demo data. Set VITE_ORACLE_API to read escrows from the gateway."}
+              : "Monitor escrow value, evidence readiness, and upcoming operational deadlines."}
           </p>
         </div>
         <div className="flex gap-2.5">
@@ -182,7 +188,7 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
               type="button"
               onClick={() => load()}
               disabled={loading}
-              className="flex cursor-pointer items-center gap-2 rounded-full border border-sky bg-surface px-5 py-2.5 text-[13px] font-medium text-navy transition-colors duration-150 hover:border-teal/40 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex cursor-pointer items-center gap-2 rounded-panel border border-sky bg-surface px-5 py-2.5 text-[13px] font-medium text-navy shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:border-teal/40 disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-40"
             >
               <RefreshCcw size={13} aria-hidden="true" />
               Refresh
@@ -191,57 +197,34 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
           <button
             type="button"
             onClick={onCreate}
-            className="cursor-pointer rounded-full bg-navy px-6 py-2.5 text-[13px] font-medium text-beige transition-colors duration-150 hover:bg-teal-solid"
+            className="cursor-pointer rounded-panel bg-navy px-6 py-2.5 text-[13px] font-medium text-white shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:bg-teal-solid hover:shadow-elevated"
           >
             New escrow
           </button>
         </div>
       </header>
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_336px]">
-        <div className="min-w-0">
+      <div className="min-w-0">
           {/* ---------- KPI row ---------- */}
-          <section className="mb-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-doc bg-surface p-5 shadow-card xl:col-span-2">
-              <p className="text-2xs uppercase text-ink-faint">Value locked</p>
+          <section className="stern-workspace-summary mb-5">
+            <div className="stern-workspace-summary-cell">
+              <p className="text-2xs uppercase text-ink-faint">Active escrow value</p>
               <p className="mt-2 text-[28px] font-medium leading-none tabular-nums tracking-display text-navy">
                 {stats.locked.toLocaleString()}
                 <span className="ml-2 align-middle text-2xs uppercase text-ink-faint">
                   {CURRENCY_LABEL}
                 </span>
               </p>
-              <CompositionBar total={stats.locked} byBucket={stats.byBucket} />
+              <p className="mt-4 text-[12px] text-ink-dim">Across {stats.activeCount} active escrow{stats.activeCount === 1 ? "" : "s"}</p>
             </div>
 
-            <div className="rounded-doc bg-surface p-5 shadow-card">
-              <p className="text-2xs uppercase text-ink-faint">Milestones verified</p>
-              <p className="mt-2 text-[28px] font-medium leading-none tabular-nums tracking-display text-navy">
-                {stats.perMilestone.reduce((s, m) => s + m.done, 0)}
-                <span className="text-ink-faint">
-                  /{stats.activeCount * MILESTONES.length}
-                </span>
-              </p>
-              <div className="mt-4 space-y-2">
-                {stats.perMilestone.map((m) => (
-                  <div key={m.label} className="flex items-center gap-2.5">
-                    <span className="w-[86px] shrink-0 truncate text-[12px] text-ink-dim">
-                      {m.label}
-                    </span>
-                    <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-sky/50">
-                      <span
-                        className="block h-full rounded-full bg-state-attested"
-                        style={{ width: `${m.of ? (m.done / m.of) * 100 : 0}%` }}
-                      />
-                    </span>
-                    <span className="w-9 shrink-0 text-right text-[12px] tabular-nums text-navy">
-                      {m.done}/{m.of}
-                    </span>
-                  </div>
-                ))}
-              </div>
+            <div className="stern-workspace-summary-cell">
+              <p className="text-2xs uppercase text-ink-faint">Awaiting evidence</p>
+              <p className="mt-2 text-[28px] font-medium leading-none tabular-nums tracking-display text-state-pending">{stats.awaitingEvidenceCount}</p>
+              <p className="mt-4 text-[12px] text-ink-dim">Escrows still moving through a milestone check</p>
             </div>
 
-            <div className="rounded-doc bg-surface p-5 shadow-card">
+            <div className="stern-workspace-summary-cell">
               <p className="text-2xs uppercase text-ink-faint">Open disputes</p>
               <p
                 className={`mt-2 text-[28px] font-medium leading-none tabular-nums tracking-display ${
@@ -250,11 +233,13 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
               >
                 {stats.disputeCount}
               </p>
-              <div className="mt-4 space-y-1.5 border-t border-sky pt-3">
-                <Row label="Bond locked" value={`${Math.round(stats.bondAtRisk).toLocaleString()}`} />
-                <Row label="Settled" value={String(stats.settledCount)} />
-                <Row label="Settled value" value={stats.settledValue.toLocaleString()} />
-              </div>
+              <p className="mt-4 text-[12px] text-ink-dim">{stats.disputeCount ? `${Math.round(stats.bondAtRisk).toLocaleString()} ${CURRENCY_LABEL} bond at risk` : "No intervention required"}</p>
+            </div>
+
+            <div className="stern-workspace-summary-cell">
+              <p className="text-2xs uppercase text-ink-faint">Deadline · next 72h</p>
+              <p className={`mt-2 text-[28px] font-medium leading-none tabular-nums tracking-display ${stats.deadlineSoonCount ? "text-state-pending" : "text-navy"}`}>{stats.deadlineSoonCount}</p>
+              <p className="mt-4 text-[12px] text-ink-dim">Time-sensitive escrow window{stats.deadlineSoonCount === 1 ? "" : "s"}</p>
             </div>
           </section>
 
@@ -296,10 +281,10 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search commodity or container"
-                  className="w-full rounded-full border border-sky bg-surface py-2 pl-8 pr-3.5 text-[13px] text-navy placeholder:text-ink-faint focus:border-teal focus:outline-none sm:w-[240px]"
+                  className="w-full rounded-panel border border-sky bg-surface py-2 pl-8 pr-3.5 text-[13px] text-navy placeholder:text-ink-faint focus:border-teal focus:outline-none sm:w-[240px]"
                 />
               </label>
-              <label className="flex shrink-0 items-center gap-1.5 rounded-full border border-sky bg-surface py-2 pl-3 pr-2 text-[13px] text-ink-dim">
+              <label className="flex shrink-0 items-center gap-1.5 rounded-panel border border-sky bg-surface py-2 pl-3 pr-2 text-[13px] text-ink-dim">
                 <ArrowUpDown size={13} aria-hidden="true" />
                 <span className="sr-only">Sort by</span>
                 <select
@@ -335,9 +320,9 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
           ) : null}
 
           {/* ---------- table ---------- */}
-          <div className="overflow-hidden rounded-doc bg-surface shadow-card">
+          <div className="stern-workspace-card overflow-hidden rounded-doc bg-surface shadow-card">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[860px] border-collapse text-left">
+              <table className="stern-operational-table w-full min-w-[860px] border-collapse text-left">
                 <thead>
                   <tr className="border-b border-sky">
                     <Th className="w-10 pl-5">
@@ -364,7 +349,7 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                         <tr
                           key={`${e.source}-${e.id}`}
                           onClick={() => onOpen(e.id)}
-                          className="cursor-pointer border-b border-sky/60 transition-colors duration-150 last:border-b-0 hover:bg-beige"
+                          className="cursor-pointer border-b border-sky/60 last:border-b-0"
                         >
                           <td className="pl-5" onClick={(ev) => ev.stopPropagation()}>
                             <input
@@ -435,7 +420,7 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                   <button
                     type="button"
                     onClick={onCreate}
-                    className="mt-5 cursor-pointer rounded-full bg-navy px-6 py-2.5 text-[13px] font-medium text-beige transition-colors duration-150 hover:bg-teal-solid"
+                    className="mt-5 cursor-pointer rounded-panel bg-teal-solid px-6 py-2.5 text-[13px] font-medium text-white shadow-card transition-colors duration-150 hover:bg-teal"
                   >
                     Create escrow
                   </button>
@@ -478,11 +463,13 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
               </div>
             ) : null}
           </div>
-        </div>
 
-        <ActivityRail onOpen={onOpen} escrows={rows} />
+          <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+            <CriticalDeadlines escrows={rows} onOpen={onOpen} />
+            <ActivityRail onOpen={onOpen} escrows={rows} compact />
+          </section>
+        </div>
       </div>
-    </div>
   );
 }
 
@@ -502,6 +489,50 @@ function Row({ label, value }) {
       <span className="text-ink-dim">{label}</span>
       <span className="tabular-nums text-navy">{value}</span>
     </div>
+  );
+}
+
+function CriticalDeadlines({ escrows, onOpen }) {
+  const upcoming = [...escrows]
+    .filter((escrow) => escrow.deadline && escrow.state !== "settled" && escrow.state !== "refunded")
+    .sort((a, b) => new Date(a.deadline) - new Date(b.deadline))
+    .slice(0, 4);
+
+  return (
+    <section className="stern-workspace-card rounded-doc bg-surface p-5 shadow-card">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-2xs uppercase text-ink-faint">Critical operational deadlines</p>
+          <h2 className="mt-1 text-[17px] font-semibold tracking-[-0.02em] text-navy">Evidence and release windows</h2>
+        </div>
+        <span className="inline-flex items-center gap-2 text-2xs font-semibold uppercase text-state-pending"><span className="h-1.5 w-1.5 rounded-full bg-state-pending" aria-hidden="true" />{upcoming.length} upcoming</span>
+      </div>
+
+      {upcoming.length ? (
+        <ol className="mt-4 space-y-2.5">
+          {upcoming.map((escrow) => (
+            <li key={escrow.id}>
+              <button
+                type="button"
+                onClick={() => onOpen(escrow.id)}
+                className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-panel bg-beige/75 px-3.5 py-3 text-left transition-colors duration-150 hover:bg-sky/35"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-[13.5px] font-medium text-navy">{escrow.commodity}</span>
+                  <span className="mt-0.5 block text-2xs uppercase text-ink-faint">&#8470;&thinsp;{formatEscrowId(escrow.id)} · {escrow.containerRef}</span>
+                </span>
+                <span className="shrink-0 text-right">
+                  <span className="block text-[13px] font-medium text-navy">{new Date(escrow.deadline).toLocaleDateString(undefined, { day: "numeric", month: "short" })}</span>
+                  <span className="mt-0.5 block text-2xs uppercase text-state-pending">{relativeDays(escrow.deadline)}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="mt-5 font-serif text-sm leading-relaxed text-ink-dim">There are no open escrow deadlines to review.</p>
+      )}
+    </section>
   );
 }
 
@@ -527,7 +558,7 @@ function MilestoneMeter({ verified, total }) {
         {Array.from({ length: total }).map((_, i) => (
           <span
             key={i}
-            className={`h-1.5 flex-1 rounded-full ${i < verified ? "bg-state-attested" : "bg-sky/60"}`}
+            className={`stern-milestone-segment h-1.5 flex-1 rounded-full ${i < verified ? "is-complete bg-state-attested" : "bg-sky/60"}`}
           />
         ))}
       </span>

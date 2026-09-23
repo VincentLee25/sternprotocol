@@ -55,7 +55,7 @@ function dayLabel(iso) {
 // gateway exposes events per escrow rather than as one global feed. Reading the
 // mock feed while the list is live showed invented events beside a real (and
 // possibly empty) registry — the worst of both.
-export default function ActivityRail({ onOpen, escrows }) {
+export default function ActivityRail({ onOpen, escrows, compact = false }) {
   const [rows, setRows] = useState([]);
 
   useEffect(() => {
@@ -98,13 +98,13 @@ export default function ActivityRail({ onOpen, escrows }) {
   }, {});
 
   return (
-    <aside className="rounded-doc bg-surface shadow-card">
+    <aside className="stern-workspace-card rounded-doc bg-surface shadow-card">
       <div className="flex items-center justify-between border-b border-sky px-5 py-3.5">
         <h2 className="text-2xs uppercase text-ink-faint">Activity</h2>
         <span className="text-2xs uppercase text-ink-faint">{rows.length}</span>
       </div>
 
-      <div className="max-h-[560px] overflow-y-auto px-5 pb-5">
+      <div className={`${compact ? "max-h-[382px]" : "max-h-[560px]"} overflow-y-auto px-5 pb-5`}>
         {pending && rows.length === 0 ? (
           // The scan runs after the table renders, so this window really is
           // still filling. Saying "nothing has happened yet" during it is a

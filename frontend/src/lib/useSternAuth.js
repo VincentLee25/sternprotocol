@@ -5,7 +5,7 @@
 // EscrowDetail — is untouched by the Particle migration. They only ever needed
 // an address.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAccount, useDisconnect, useModal, useWallets } from "@particle-network/connectkit";
+import { useAccount, useConnect, useConnectors, useDisconnect, useModal, useWallets } from "@particle-network/connectkit";
 import { particleEnabled } from "./particle.js";
 import { createSternSmartAccount, gaslessConfigured } from "./smartAccount.js";
 import { postAuthSession, signOut as mockSignOut } from "./mockBackend.js";
@@ -26,6 +26,8 @@ function useParticleAuth() {
   const account = useAccount();
   const [primaryWallet] = useWallets();
   const { setOpen } = useModal();
+  const { connectAsync } = useConnect();
+  const connectors = useConnectors();
   const { disconnectAsync } = useDisconnect();
 
   const [user, setUser] = useState(null);
@@ -98,6 +100,20 @@ function useParticleAuth() {
     setOpen(true);
   }, [setOpen]);
 
+  const connectGoogle = useCallback(async () => {
+    setError("");
+    try {
+      // Use the same configured Particle connector as the existing modal. This
+      // selects its Google provider directly; company credentials/MFA remain
+      // the backend authority for workspace access.
+      const connector = connectors.find((item) => item.id === "particleEVM");
+      if (!connector) throw new Error("Google sign-in is not available right now.");
+      await connectAsync({ connector, authParams: { socialType: "google", prompt: "select_account" } });
+    } catch (err) {
+      setError(err?.message || "Google sign-in could not be completed.");
+    }
+  }, [connectAsync, connectors]);
+
   const disconnect = useCallback(async () => {
     try {
       await disconnectAsync();
@@ -124,6 +140,7 @@ function useParticleAuth() {
     user,
     error,
     connect,
+    connectGoogle,
     disconnect,
     setUser,
     smartAccountClient,
@@ -166,6 +183,7 @@ function useMockAuth() {
     user,
     error,
     connect,
+    connectGoogle: null,
     disconnect,
     setUser,
     smartAccountClient: null,

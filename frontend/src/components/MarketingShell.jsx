@@ -1,6 +1,6 @@
 import CredentialsFooter from "./CredentialsFooter.jsx";
-import ThemeToggle from "./ThemeToggle.jsx";
 import sternLogo from "../assets/stern-logo.png";
+import LanguageToggle from "./LanguageToggle.jsx";
 
 const NAV = [
   { id: "instrument", label: "Instrument" },
@@ -10,16 +10,16 @@ const NAV = [
 
 export default function MarketingShell({ current, onNavigate, onEnter, children }) {
   return (
-    <div className="min-h-full bg-onyx text-alabaster">
+    <div className="min-h-full bg-page text-navy">
       <div className="mx-auto max-w-[1180px] px-6 lg:px-14">
-        <nav className="flex items-center justify-between gap-6 border-b border-alabaster/10 py-5">
+        <nav className="flex items-center justify-between gap-6 border-b border-sky/70 py-5">
           <button
             type="button"
             onClick={() => onNavigate("landing")}
             className="cursor-pointer"
             aria-label="STERN home"
           >
-            <img src={sternLogo} alt="STERN" className="h-6 w-auto invert dark:invert-0" />
+            <img src={sternLogo} alt="STERN" className="h-7 w-auto brightness-0" />
           </button>
           <div className="hidden items-center gap-1 text-sm md:flex">
             {NAV.map((item) => (
@@ -30,8 +30,8 @@ export default function MarketingShell({ current, onNavigate, onEnter, children 
                 aria-current={current === item.id ? "page" : undefined}
                 className={`cursor-pointer whitespace-nowrap rounded-panel px-4 py-2 font-medium transition-colors duration-150 ${
                   current === item.id
-                    ? "bg-teal/15 text-teal"
-                    : "text-alabaster/80 hover:bg-alabaster/10 hover:text-alabaster"
+                    ? "bg-teal/10 text-teal"
+                    : "text-ink-dim hover:bg-surface-soft hover:text-navy"
                 }`}
               >
                 {item.label}
@@ -39,11 +39,11 @@ export default function MarketingShell({ current, onNavigate, onEnter, children 
             ))}
           </div>
           <div className="flex items-center gap-3">
-            <ThemeToggle />
+            <LanguageToggle compact />
             <button
               type="button"
               onClick={onEnter}
-              className="cursor-pointer whitespace-nowrap rounded-panel bg-teal-solid px-5 py-2.5 text-[13px] font-medium text-white shadow-card transition-[filter] duration-150 hover:brightness-110"
+              className="cursor-pointer whitespace-nowrap rounded-lg bg-teal-solid px-5 py-2.5 text-[13px] font-medium text-white shadow-card transition-colors duration-150 hover:bg-teal"
             >
               Access workspace
             </button>
@@ -64,10 +64,10 @@ export function PageHeader({ eyebrow, title, lede }) {
   return (
     <header className="mx-auto max-w-[1180px] px-6 py-12 lg:px-14 lg:py-[76px]">
       <p className="text-2xs uppercase tracking-macro text-teal">{eyebrow}</p>
-      <h1 className="mt-6 max-w-[18ch] text-balance text-[38px] font-bold leading-[1.04] lg:text-[60px]">
+      <h1 className="mt-6 max-w-[18ch] text-balance text-[38px] font-bold leading-[1.04] text-navy lg:text-[60px]">
         {title}
       </h1>
-      <p className="mt-6 max-w-[62ch] text-[19px] leading-[1.62] text-alabaster/90">
+      <p className="mt-6 max-w-[62ch] text-[19px] leading-[1.62] text-ink-dim">
         {lede}
       </p>
     </header>
@@ -77,13 +77,13 @@ export function PageHeader({ eyebrow, title, lede }) {
 export function Section({ eyebrow, title, intro, children, tone, wide }) {
   return (
     <section
-      className={`border-t border-alabaster/10 ${tone === "teal" ? "bg-teal-solid text-white" : ""}`}
+      className={`border-t border-sky/70 ${tone === "teal" ? "bg-teal-solid text-white" : ""}`}
     >
       <div className="mx-auto max-w-[1180px] px-6 py-12 lg:px-14 lg:py-[72px]">
         {eyebrow ? (
           <p
             className={`text-2xs uppercase tracking-macro ${
-              tone === "teal" ? "text-white/85" : "text-alabaster/90"
+              tone === "teal" ? "text-white/85" : "text-ink-dim"
             }`}
           >
             {eyebrow}
@@ -101,7 +101,7 @@ export function Section({ eyebrow, title, intro, children, tone, wide }) {
         {intro ? (
           <p
             className={`mt-5 max-w-[64ch] text-[17px] leading-[1.6] ${
-              tone === "teal" ? "text-white/90" : "text-alabaster/90"
+              tone === "teal" ? "text-white/90" : "text-ink-dim"
             }`}
           >
             {intro}

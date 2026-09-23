@@ -12,15 +12,11 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        // DESIGN.md v2.0: Poppins is the primary and ONLY UI typeface.
-        // `serif` is deliberately aliased to it rather than removed — several
-        // hundred existing `font-serif` classNames mark narrative copy, and
-        // pointing the alias at Poppins retires the second typeface without a
-        // mechanical sweep that could only introduce noise.
+        // Stitch uses Poppins throughout the product; mono stays limited to
+        // CIDs, addresses and transaction references.
         sans: ["Poppins", "system-ui", "sans-serif"],
         serif: ["Poppins", "system-ui", "sans-serif"],
-        // Kept for hashes, CIDs and wallet addresses only.
-        mono: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"]
+        mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"]
       },
       colors: {
         // Primary ramp. navy/beige are the light-mode identities of
@@ -63,24 +59,20 @@ export default {
         data: ["0.75rem", { lineHeight: "1rem", letterSpacing: "0.04em" }]
       },
       borderRadius: {
-        // DESIGN.md radius scale: control 12, document 16, card 18, panel 22,
-        // hero 30. `panel` and `doc` keep their names (they are referenced
-        // widely) and are re-tuned to the control and card steps.
-        panel: "12px",
-        doc: "18px",
-        document: "16px",
-        surface: "22px",
-        hero: "30px"
+        // Workspace controls stay compact; operational surfaces use one calm,
+        // recognisable STERN radius rather than sharp dashboard boxes.
+        panel: "10px",
+        doc: "14px",
+        document: "18px",
+        surface: "14px",
+        hero: "20px"
       },
       boxShadow: {
         card: "var(--shadow-card)",
         elevated: "var(--shadow-elevated)",
         plate: "0 40px 90px -34px rgba(0,0,0,.92)"
       },
-      // DESIGN.md: "Never use negative letter spacing." The old `display`
-      // token (-0.034em) is gone rather than zeroed - every call site has been
-      // removed, and leaving a no-op class around would invite it back.
-      letterSpacing: { micro: "0.1em", macro: "0.14em" },
+      letterSpacing: { micro: "0.12em", macro: "0.14em", display: "0" },
       maxWidth: { workspace: "1440px" },
       spacing: { sidebar: "260px" },
       backgroundImage: {

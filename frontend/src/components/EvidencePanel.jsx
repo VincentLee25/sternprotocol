@@ -282,15 +282,16 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
                   ) : null}
                 </span>
                 <span
-                  className={`shrink-0 rounded-full px-2.5 py-1 font-mono uppercase ${
+                  className={`inline-flex shrink-0 items-center gap-1.5 font-mono uppercase ${
                     {
-                      ok: "bg-state-attested/10 text-state-attested",
-                      wait: "bg-state-pending/10 text-state-pending",
-                      fail: "bg-state-disputed/10 text-state-disputed",
-                      muted: "bg-sky/30 text-ink-dim"
+                      ok: "text-state-attested",
+                      wait: "text-state-pending",
+                      fail: "text-state-disputed",
+                      muted: "text-ink-dim"
                     }[r.tone]
                   }`}
                 >
+                  <span className={`h-1.5 w-1.5 rounded-full ${{ ok: "bg-state-attested", wait: "bg-state-pending", fail: "bg-state-disputed", muted: "bg-ink-faint" }[r.tone]}`} aria-hidden="true" />
                   {r.status}
                 </span>
               </li>
@@ -456,10 +457,10 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
                 {checks.map((c) => (
                   <li
                     key={c.key}
-                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-2xs uppercase ${
+                    className={`inline-flex items-center gap-1.5 text-2xs uppercase ${
                       c.passed
-                        ? "bg-state-attested/10 text-state-attested"
-                        : "bg-state-disputed/10 text-state-disputed"
+                        ? "text-state-attested"
+                        : "text-state-disputed"
                     }`}
                   >
                     {c.passed ? <Check size={10} aria-hidden="true" /> : <X size={10} aria-hidden="true" />}
@@ -633,12 +634,13 @@ function EblCard({ ebl }) {
       <div className="flex items-start justify-between gap-3">
         <p className="font-mono text-2xs uppercase text-ink-faint">e-BL document on IPFS</p>
         <span
-          className={`shrink-0 rounded-full px-2.5 py-1 font-mono text-2xs uppercase ${
+          className={`inline-flex shrink-0 items-center gap-1.5 font-mono text-2xs uppercase ${
             tone === "attested"
-              ? "bg-state-attested/10 text-state-attested"
-              : "bg-state-disputed/10 text-state-disputed"
+              ? "text-state-attested"
+              : "text-state-disputed"
           }`}
         >
+          <span className={`h-1.5 w-1.5 rounded-full ${tone === "attested" ? "bg-state-attested" : "bg-state-disputed"}`} aria-hidden="true" />
           {ebl.simulatedFault ? "Simulated fail" : ebl.valid ? "Verified" : "Unverified"}
         </span>
       </div>
@@ -662,10 +664,10 @@ function EblCard({ ebl }) {
           {checkRows.map((row) => (
             <li
               key={row.key}
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-2xs uppercase ${
+              className={`inline-flex items-center gap-1.5 text-2xs uppercase ${
                 row.passed
-                  ? "bg-state-attested/10 text-state-attested"
-                  : "bg-state-disputed/10 text-state-disputed"
+                  ? "text-state-attested"
+                  : "text-state-disputed"
               }`}
             >
               {row.passed ? <Check size={10} aria-hidden="true" /> : <X size={10} aria-hidden="true" />}
@@ -705,7 +707,7 @@ function countdown(seconds) {
 }
 
 function Panel({ children }) {
-  return <section className="rounded-doc bg-surface p-6 shadow-card">{children}</section>;
+  return <section className="stern-workspace-card rounded-doc bg-surface p-5 shadow-card lg:p-6">{children}</section>;
 }
 
 function Head({ title }) {
@@ -735,11 +737,16 @@ function Badge({ row }) {
 
 function Chip({ tone, children }) {
   const cls = {
-    disputed: "bg-state-disputed/10 text-state-disputed",
-    attested: "bg-state-attested/10 text-state-attested",
-    muted: "bg-sky/30 text-ink-dim"
+    disputed: "text-state-disputed",
+    attested: "text-state-attested",
+    muted: "text-ink-dim"
+  }[tone];
+  const dot = {
+    disputed: "bg-state-disputed",
+    attested: "bg-state-attested",
+    muted: "bg-ink-faint"
   }[tone];
   return (
-    <span className={`shrink-0 rounded-full px-2.5 py-1 font-mono text-2xs uppercase ${cls}`}>{children}</span>
+    <span className={`inline-flex shrink-0 items-center gap-1.5 font-mono text-2xs uppercase ${cls}`}><span className={`h-1.5 w-1.5 rounded-full ${dot}`} aria-hidden="true" />{children}</span>
   );
 }
