@@ -2,7 +2,6 @@ const fs = require("fs");
 const path = require("path");
 const { ethers } = require("ethers");
 const { config, requireConfig } = require("./config");
-const { createRpcProvider } = require("./rpcProvider");
 
 const MILESTONES = {
   none: 0,
@@ -36,8 +35,6 @@ function loadAbi() {
   return JSON.parse(fs.readFileSync(artifactPath, "utf8")).abi;
 }
 
-let providerCache;
-
 // A seam for the request-count test, and only for that.
 //
 // scripts/test-activity-scan.js measures how many eth_getLogs a refresh costs,
@@ -53,12 +50,14 @@ function __setTestProviders({ provider = null, contract = null } = {}) {
   testContract = contract;
   resetScanCaches();
 }
-
 function getProvider() {
   if (testProvider) return testProvider;
   requireConfig(["rpcUrl", "contractAddress"]);
-  if (!providerCache) providerCache = createRpcProvider([config.rpcUrl, ...config.rpcFallbackUrls], config.rpcChainId);
-  return providerCache;
+  // Keep contract reads on the exact provider construction used before the
+  // PostgreSQL and RPC-provider changes. This deliberately avoids
+  // FetchRequest, FallbackProvider and stall timing while isolating the
+  // deployed escrow read regression against the existing RPC_URL.
+  return new ethers.JsonRpcProvider(config.rpcUrl);
 }
 
 function getVerifierWallets(provider) {
