@@ -8,7 +8,11 @@ import particleWasmPlugin from "@particle-network/vite-plugin-wasm";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
-  base: "./",
+  // Workspace routes are opened directly after a browser refresh. Relative
+  // asset URLs resolve below /workspace/escrows and Railway then returns the
+  // HTML app shell in place of JavaScript. Serve build assets from the site
+  // root so every route requests /assets/... instead.
+  base: "/",
   plugins: [
     react(),
     // REQUIRED by the Particle SDK. Its MPC-TSS module ships as WebAssembly
