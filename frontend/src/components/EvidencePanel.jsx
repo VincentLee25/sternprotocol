@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, Check, Clock, FileCheck2, Loader2, Paperclip, PenLine, RefreshCcw, ShieldAlert, X } from "lucide-react";
 import { getEvidence, simulateFault, verifyMilestones, apiConfigured, eblDocumentUrl } from "../lib/sternApi.js";
 import { chainClock, customsSummary, disputeOpportunity, disputeRehearsal, eblSummary, faultOptions, activeFault, milestoneRows, sourceEvidence, verificationChecks, verifyResultRows } from "../lib/evidence.js";
@@ -23,7 +24,7 @@ import { useLanguage } from "../lib/language.jsx";
 //
 // No verification logic lives here. The gateway has already done the comparison
 // (docs/FRONTEND_HANDOFF_UPDATED.md closing note); this only renders its answer.
-export default function EvidencePanel({ escrowId, smartAccountClient, onStateChanged, onBusyChange }) {
+export default function EvidencePanel({ escrowId, smartAccountClient, onStateChanged, onBusyChange, canRaiseDispute = true, faultInRail = false, faultTarget = null }) {
   const { t } = useLanguage();
   const [evidence, setEvidence] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -71,7 +72,7 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
   // Trust the gateway's answer, but stop trusting it once its own deadline has
   // passed — measured on the chain's clock, so this withdraws the offer at the
   // same moment the contract would. The contract still has the final say.
-  const stillOpen = opportunity.actionable && (secondsLeft == null || secondsLeft > 0);
+  const stillOpen = canRaiseDispute && opportunity.actionable && (secondsLeft == null || secondsLeft > 0);
 
   // Which milestone a rehearsal should contest, and the fault that will make
   // it disagree. Recomputed each tick so its countdown stays live.
@@ -110,6 +111,26 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
   // it looks like a failure, and the order is easy to get backwards — so say it
   // before the button is pressed rather than after.
   const faultBeforeAnyProof = currentFault !== "none" && !rows.some((r) => r.submitted);
+
+  const faultControl = faults.length ? (
+    <Disclosure title={t("Fault simulation")} summary={t("Demo-only source controls")}>
+      <label htmlFor="fault" className="block text-xs font-medium text-navy">
+        {t("Fault simulation — demo only")}
+      </label>
+      <select
+        id="fault"
+        value={currentFault}
+        onChange={onFaultChange}
+        disabled={busy === "fault"}
+        className="mt-1.5 w-full rounded-panel border border-sky bg-surface px-3 py-2 text-xs text-navy disabled:opacity-50"
+      >
+        {faults.map((f) => <option key={f.value} value={f.value}>{t(f.label)}</option>)}
+      </select>
+      <p className="mt-1.5 text-xs leading-relaxed text-ink-dim">
+        {t("Changes the mock source data in memory. It never writes a false proof on chain — a discrepancy only appears where a proof was already committed.")}
+      </p>
+    </Disclosure>
+  ) : null;
 
   // A dispute becomes possible only after a fault makes a committed proof
   // disagree with its source, so re-read evidence rather than patching state.
@@ -247,6 +268,7 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
   }
 
   return (
+    <>
     <Panel>
       <div className="flex items-start justify-between gap-3">
         <Head title="Evidence & verification" />
@@ -349,6 +371,15 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
 
       {evidence ? (
         <>
+          {evidence.exception?.flagged ? (
+            <div className="mt-4 bg-beige px-3.5 py-3 font-serif text-xs leading-relaxed text-navy">
+              <strong>{t("Verification exception")}</strong>
+              <p className="mt-1 text-ink-dim">{t("The issue is flagged for review. It does not open a dispute automatically. The importer can use Open dispute in Actions while the window is active.")}</p>
+              <ul className="mt-2 list-disc pl-4 text-ink-dim">
+                {evidence.exception.reasons.map((reason, index) => <li key={index}>{t(reason)}</li>)}
+              </ul>
+            </div>
+          ) : null}
           {/* Committed proof vs current source, per milestone. */}
           <ol className="mt-4 divide-y divide-sky/70 border-y border-sky/70">
             {rows.map((row) => (
@@ -427,14 +458,7 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
               window the third runs out while you work out the first two. The
               only feedback was the dispute CTA never appearing. */}
           {faults.length ? (
-            <div
-              className={`mt-4 rounded-panel border px-3.5 py-3 ${
-                rehearsal.possible
-                  ? "border-teal/40 bg-teal/[0.06]"
-                  : "border-sky bg-sky/20"
-              }`}
-            >
-              <p className="font-mono text-2xs uppercase text-ink-faint">{t("Rehearse a dispute — demo only")}</p>
+            <Disclosure title={t("Rehearse a dispute — demo only")} summary={t("Demo-only source controls")} className="mt-4">
 
               {rehearsal.possible ? (
                 <>
@@ -473,14 +497,23 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
               ) : (
                 <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">{t(rehearsal.reason)}</p>
               )}
-            </div>
+            </Disclosure>
           ) : null}
 
           {/* The e-BL, separately from the four data feeds.
               The other sources are readings — a weight, a departure status.
               This one is a document, and the interesting part is that anyone
               can fetch it from the address on chain and get the same bytes. */}
-          {ebl ? <EblCard ebl={ebl} /> : null}
+          {ebl ? (
+            <Disclosure
+              title={t("e-BL document on IPFS")}
+              summary={t(ebl.simulatedFault ? "Simulated fail" : ebl.valid ? "Verified" : "Unverified")}
+              defaultOpen={ebl.configured && !ebl.valid}
+              className="mt-4"
+            >
+              <EblCard ebl={ebl} />
+            </Disclosure>
+          ) : null}
 
           {/* Customs, for milestone 3. Separate from the e-BL because it is a
               different moment: a PEB is issued at export and a PIB at import,
@@ -488,11 +521,13 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
               at `documentCid`, which is written once. Their manifest's address
               becomes milestone 3's proof CID instead. */}
           {customs ? (
-            <CustomsCard
-              customs={customs}
-              busy={busy === "customs"}
-              onAttach={apiConfigured ? onAttachCustoms : null}
-            />
+            <Disclosure title={t("Customs documents")} summary={t(customs.attached ? "Attached" : "Not attached")} className="mt-3">
+              <CustomsCard
+                customs={customs}
+                busy={busy === "customs"}
+                onAttach={apiConfigured ? onAttachCustoms : null}
+              />
+            </Disclosure>
           ) : null}
 
           {(checks.length || failing.length) ? <Disclosure title={t("Source check details")} summary={failing.length ? t("{count} source discrepancies", { count: failing.length }) : t("{count} checks recorded", { count: checks.length })} className="mt-4" contentClassName="!py-3">
@@ -625,32 +660,12 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
 
           {/* Demo-only. It rewrites the mock source; it does NOT write a bad
               proof on chain (handoff §7, "Critical rule"). */}
-          {faults.length ? (
-            <Disclosure title={t("Fault simulation")} summary={t("Demo-only source controls")} className="mt-4">
-              <label htmlFor="fault" className="font-mono text-2xs uppercase text-ink-faint">
-                {t("Fault simulation — demo only")}
-              </label>
-              <select
-                id="fault"
-                value={currentFault}
-                onChange={onFaultChange}
-                disabled={busy === "fault"}
-                className="mt-1.5 w-full rounded-panel border border-sky bg-surface px-3 py-2 text-xs text-navy disabled:opacity-50"
-              >
-                {faults.map((f) => (
-                  <option key={f.value} value={f.value}>
-                    {t(f.label)}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">
-                {t("Changes the mock source data in memory. It never writes a false proof on chain — a discrepancy only appears where a proof was already committed.")}
-              </p>
-            </Disclosure>
-          ) : null}
+          {!faultInRail ? <div className="mt-4">{faultControl}</div> : null}
         </>
       ) : null}
     </Panel>
+    {faultInRail && faultTarget && faultControl ? createPortal(faultControl, faultTarget) : null}
+    </>
   );
 }
 
@@ -667,7 +682,7 @@ function EblCard({ ebl }) {
   const { t } = useLanguage();
   if (!ebl.configured) {
     return (
-      <div className="mt-4 rounded-panel border border-state-pending/40 bg-state-pending/[0.07] px-3.5 py-2.5">
+      <div className="mt-4 rounded-panel bg-state-pending/[0.07] px-3.5 py-2.5">
         <p className="font-mono text-2xs uppercase text-state-pending">{t("e-BL document")}</p>
         <p className="mt-1.5 font-serif text-xs leading-relaxed text-ink-dim">
           {t(ebl.note || "This gateway has no IPFS pinning service configured, so the e-BL check is a placeholder rather than a document verification.")}
@@ -683,8 +698,8 @@ function EblCard({ ebl }) {
 
   return (
     <div
-      className={`mt-4 rounded-panel border px-3.5 py-3 ${
-        ebl.valid ? "border-state-attested/40 bg-state-attested/[0.05]" : "border-state-disputed/45 bg-state-disputed/[0.06]"
+      className={`mt-4 rounded-panel px-3.5 py-3 ${
+        ebl.valid ? "bg-state-attested/[0.05]" : "bg-state-disputed/[0.06]"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
@@ -863,7 +878,7 @@ function CustomsCard({ customs, busy, onAttach }) {
 
   if (!customs.attached) {
     return (
-      <div className="mt-4 rounded-panel border border-state-pending/40 bg-state-pending/[0.07] px-3.5 py-2.5">
+      <div className="mt-4 rounded-panel bg-state-pending/[0.07] px-3.5 py-2.5">
         <div className="flex items-start justify-between gap-3">
           <p className="font-mono text-2xs uppercase text-state-pending">{t("Customs documents")}</p>
           {/* Dot and text, not a tinted pill: this rail states every verdict
@@ -890,10 +905,10 @@ function CustomsCard({ customs, busy, onAttach }) {
 
   return (
     <div
-      className={`mt-4 rounded-panel border px-3.5 py-3 ${
+      className={`mt-4 rounded-panel px-3.5 py-3 ${
         customs.valid
-          ? "border-state-attested/40 bg-state-attested/[0.05]"
-          : "border-state-disputed/45 bg-state-disputed/[0.06]"
+          ? "bg-state-attested/[0.05]"
+          : "bg-state-disputed/[0.06]"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
@@ -996,7 +1011,7 @@ function Panel({ children }) {
 
 function Head({ title }) {
   const { t } = useLanguage();
-  return <h2 className="font-mono text-2xs uppercase text-ink-faint">{t(title)}</h2>;
+  return <h2 className="text-[15px] font-semibold text-navy">{t(title)}</h2>;
 }
 
 function Row({ label, value, mono, truncate }) {

@@ -46,6 +46,8 @@ export default function HandleCard({ address }) {
 
     const controller = new AbortController();
     let cancelled = false;
+    setLoading(true);
+    setEntry(null);
 
     (async () => {
       try {

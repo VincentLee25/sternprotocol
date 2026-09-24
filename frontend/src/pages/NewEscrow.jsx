@@ -327,7 +327,7 @@ export default function NewEscrow({ balance, onCreated, onBack, smartAccountClie
       </div>
 
       <form onSubmit={onSubmit} noValidate className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="space-y-5">
+        <div className="new-escrow-workflow">
           <Card className="new-escrow-surface new-escrow-counterparties">
             <CardTitle hint={t("Both addresses are checked for format, and for being distinct from each other and from you.")}>
               {t("Counterparties")}

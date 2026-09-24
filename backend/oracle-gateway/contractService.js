@@ -24,8 +24,11 @@ const ORACLE_ROLES = [
   { index: 2, key: "customs", roleName: "ROLE_CUSTOMS", milestone: 3, verifierName: "Customs" }
 ];
 
-function loadAbi() {
-  const artifactPath = path.resolve(__dirname, "../../artifacts/contracts/SternEscrow.sol/SternEscrow.json");
+function loadAbi(generation = CONTRACT_GENERATION.LEGACY) {
+  const file = generation === CONTRACT_GENERATION.V3
+    ? "SternEscrowV3.sol/SternEscrowV3.json"
+    : "SternEscrow.sol/SternEscrow.json";
+  const artifactPath = path.resolve(__dirname, "../../artifacts/contracts", file);
   if (!fs.existsSync(artifactPath)) {
     const error = new Error("Contract artifact not found. Run `npm run compile` first.");
     error.statusCode = 400;
@@ -45,14 +48,15 @@ function loadAbi() {
 let testProvider = null;
 let testContract = null;
 
-const CONTRACT_GENERATION = Object.freeze({ LEGACY: "legacy", V2: "v2" });
+const CONTRACT_GENERATION = Object.freeze({ LEGACY: "legacy", V2: "v2", V3: "v3" });
 
 function contractAddressFor(generation) {
-  const address = generation === CONTRACT_GENERATION.V2
-    ? config.v2ContractAddress
-    : config.legacyContractAddress;
+  const address = generation === CONTRACT_GENERATION.V3 ? config.v3ContractAddress
+    : generation === CONTRACT_GENERATION.V2 ? config.v2ContractAddress : config.legacyContractAddress;
   if (!ethers.isAddress(address || "")) {
-    const error = new Error(`Missing ${generation === CONTRACT_GENERATION.V2 ? "V2_CONTRACT_ADDRESS" : "LEGACY_CONTRACT_ADDRESS or CONTRACT_ADDRESS"}.`);
+    const variable = generation === CONTRACT_GENERATION.V3 ? "V3_CONTRACT_ADDRESS"
+      : generation === CONTRACT_GENERATION.V2 ? "V2_CONTRACT_ADDRESS" : "LEGACY_CONTRACT_ADDRESS or CONTRACT_ADDRESS";
+    const error = new Error(`Missing ${variable}.`);
     error.statusCode = 400;
     error.code = "CONTRACT_ADDRESS_MISSING";
     throw error;
@@ -66,20 +70,21 @@ function contractAddressFor(generation) {
 function parseEscrowRef(value) {
   const raw = String(value ?? "").trim();
   const v2 = /^v2:(\d+)$/.exec(raw);
+  const v3 = /^v3:(\d+)$/.exec(raw);
   const legacy = /^(\d+)$/.exec(raw);
-  const match = v2 || legacy;
+  const match = v3 || v2 || legacy;
   if (!match || !Number.isSafeInteger(Number(match[1]))) {
-    const error = new Error("escrowId must be a legacy numeric id or a V2 id in the form v2:<id>.");
+    const error = new Error("escrowId must be numeric, v2:<id>, or v3:<id>.");
     error.statusCode = 400;
     error.code = "INVALID_ESCROW_ID";
     throw error;
   }
-  const generation = v2 ? CONTRACT_GENERATION.V2 : CONTRACT_GENERATION.LEGACY;
+  const generation = v3 ? CONTRACT_GENERATION.V3 : v2 ? CONTRACT_GENERATION.V2 : CONTRACT_GENERATION.LEGACY;
   const id = Number(match[1]);
   return {
     generation,
     id,
-    escrowId: generation === CONTRACT_GENERATION.V2 ? `v2:${id}` : String(id),
+    escrowId: generation === CONTRACT_GENERATION.LEGACY ? String(id) : `${generation}:${id}`,
     contractAddress: contractAddressFor(generation)
   };
 }
@@ -129,7 +134,7 @@ async function chainNow(provider) {
 
 function getContract(signerOrProvider, generation = CONTRACT_GENERATION.LEGACY) {
   if (testContract) return testContract;
-  return new ethers.Contract(contractAddressFor(generation), loadAbi(), signerOrProvider);
+  return new ethers.Contract(contractAddressFor(generation), loadAbi(generation), signerOrProvider);
 }
 
 // Does the contract at the configured address have resolveDisputeByAgreement?
@@ -146,7 +151,7 @@ async function supportsAgreementSettlement(contractId) {
   // The V2 deployment was compiled with viaIR, which does not guarantee that a
   // selector appears as a raw byte sequence in the dispatcher. Its configured
   // generation is therefore the reliable contract capability boundary.
-  return parseEscrowRef(contractId).generation === CONTRACT_GENERATION.V2;
+  return parseEscrowRef(contractId).generation !== CONTRACT_GENERATION.LEGACY;
 }
 
 function normalizeMilestone(milestone) {
@@ -384,7 +389,8 @@ async function getOracleStatus() {
       contracts: {
         legacy: contractAddressFor(CONTRACT_GENERATION.LEGACY),
         v2: contractAddressFor(CONTRACT_GENERATION.V2),
-        newEscrowContract: contractAddressFor(CONTRACT_GENERATION.V2)
+        ...(config.v3ContractAddress ? { v3: contractAddressFor(CONTRACT_GENERATION.V3) } : {}),
+        newEscrowContract: contractAddressFor(config.v3ContractAddress ? CONTRACT_GENERATION.V3 : CONTRACT_GENERATION.V2)
       },
       rpcConfigured: Boolean(config.rpcUrl)
     },
@@ -445,9 +451,9 @@ async function getEscrow(contractId) {
   return { escrowId: target.escrowId, contractGeneration: target.generation, contractAddress: target.contractAddress, ...escrow, milestones, dispute, releaseEligible };
 }
 
-async function getV2Readiness() {
+async function getContractReadiness(generation) {
   const provider = getProvider();
-  const contract = getContract(provider, CONTRACT_GENERATION.V2);
+  const contract = getContract(provider, generation);
   const wallets = getVerifierWallets(provider);
   const minimumBond = await contract.MIN_VERIFIER_BOND();
   const verifiers = await Promise.all(ORACLE_ROLES.map(async (role) => {
@@ -459,11 +465,24 @@ async function getV2Readiness() {
     ]);
     return { milestone: milestoneName(role.milestone), ready: hasRole && bond >= minimumBond };
   }));
-  return { contractAddress: contractAddressFor(CONTRACT_GENERATION.V2),
+  return { contractAddress: contractAddressFor(generation), generation,
     ready: verifiers.every(item => item.ready), verifiers };
 }
+const getV2Readiness = () => getContractReadiness(CONTRACT_GENERATION.V2);
+async function getNewEscrowReadiness() {
+  const generation = config.v3ContractAddress ? CONTRACT_GENERATION.V3 : CONTRACT_GENERATION.V2;
+  const readiness = await getContractReadiness(generation);
+  if (generation !== CONTRACT_GENERATION.V3) return readiness;
+  if (!config.arbiterPrivateKey) return { ...readiness, ready: false, reason: "V3 settlement keeper key is not configured." };
+  const provider = getProvider();
+  const balance = await provider.getBalance(getArbiterWallet(provider).address);
+  if (balance < config.nativeGasWarningWei) {
+    return { ...readiness, ready: false, reason: "V3 settlement keeper needs Amoy gas." };
+  }
+  return readiness;
+}
 
-async function listEscrows({ address, role, state } = {}) {
+async function listEscrows({ address, role, state, includeArchived } = {}) {
   const provider = getProvider();
   const normalizedAddress = address ? ethers.getAddress(address) : null;
   const normalizedRole = role ? String(role).toLowerCase() : null;
@@ -492,7 +511,7 @@ async function listEscrows({ address, role, state } = {}) {
       if (normalizedAddress && !matchesAddress) continue;
       if (normalizedRole && !matchesRole) continue;
       if (state && String(state).toLowerCase() !== stateLabel.toLowerCase()) continue;
-      const target = parseEscrowRef(generation === CONTRACT_GENERATION.V2 ? `v2:${id}` : id);
+      const target = parseEscrowRef(generation === CONTRACT_GENERATION.LEGACY ? id : `${generation}:${id}`);
       rows.push({ escrowId: target.escrowId, contractGeneration: generation, contractAddress: target.contractAddress, ...serializeEscrow({
         contractValue: raw[0], importer: raw[1], exporter: raw[2], arbiter: raw[3],
         documentCid: raw[4], commodity: raw[5], containerRef: raw[6], globalDeadline: raw[7],
@@ -502,13 +521,28 @@ async function listEscrows({ address, role, state } = {}) {
     return { rows, total };
   }
 
-  const [legacy, v2] = await Promise.all([rowsFor(CONTRACT_GENERATION.LEGACY), rowsFor(CONTRACT_GENERATION.V2)]);
-  const rows = [...legacy.rows, ...v2.rows].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  // V3 is the single active book once configured. Older deployments remain
+  // addressable by their explicit escrow references and can be listed with
+  // includeArchived=true, without mixing historical IDs into the active book.
+  const generations = config.v3ContractAddress && includeArchived !== "true"
+    ? [CONTRACT_GENERATION.V3]
+    : [CONTRACT_GENERATION.LEGACY, CONTRACT_GENERATION.V2,
+      ...(config.v3ContractAddress ? [CONTRACT_GENERATION.V3] : [])];
+  const books = await Promise.all(generations.map(async generation => ({
+    generation, ...(await rowsFor(generation))
+  })));
+  const rows = books.flatMap(book => book.rows).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const totals = Object.fromEntries(books.map(book => [book.generation, book.total]));
+  const activeGeneration = config.v3ContractAddress ? CONTRACT_GENERATION.V3 : CONTRACT_GENERATION.V2;
   return {
     escrows: rows,
     total: rows.length,
-    nextEscrowId: String(legacy.total),
-    nextEscrowIds: { legacy: String(legacy.total), v2: String(v2.total) }
+    nextEscrowId: String(totals[activeGeneration] ?? 0),
+    nextEscrowIds: {
+      legacy: String(totals.legacy ?? 0),
+      v2: String(totals.v2 ?? 0),
+      v3: String(totals.v3 ?? 0)
+    }
   };
 }
 
@@ -522,11 +556,18 @@ async function getTimelock(contractId) {
   const now = await chainNow(provider);
   const releaseAt = Number(raw[10]);
   const challengeWindow = await contract.challengeWindowSeconds();
+  const timelockDuration = await contract.timelockDurationSeconds();
   const dispute = await contract.getDispute(target.id);
   const disputeMilestoneId = Math.min(Math.max(Number(raw[9]), 1), 3);
   const relevantProof = await contract.getMilestoneProof(target.id, disputeMilestoneId);
-  const canDisputeMilestone = relevantProof[0] && BigInt(now) <= relevantProof[4];
-  const canDisputeGeneral = Number(raw[9]) === 4 && BigInt(now) < raw[10];
+  const finalDisputeDeadline = target.generation === CONTRACT_GENERATION.V3
+    ? await contract.finalDisputeDeadline(target.id) : 0n;
+  const canDisputeMilestone = target.generation === CONTRACT_GENERATION.V3
+    ? Number(raw[9]) <= 2 && BigInt(now) <= raw[7]
+    : relevantProof[0] && BigInt(now) <= relevantProof[4];
+  const canDisputeGeneral = target.generation === CONTRACT_GENERATION.V3
+    ? Number(raw[9]) === 3 && BigInt(now) <= finalDisputeDeadline
+    : Number(raw[9]) === 4 && BigInt(now) < raw[10];
   const canRelease = await contract.isReleaseEligible(target.id);
   return {
     escrowId: target.escrowId,
@@ -536,7 +577,17 @@ async function getTimelock(contractId) {
     secondsRemaining: Math.max(0, releaseAt - now),
     canRelease,
     canDispute: !dispute.open && (canDisputeMilestone || canDisputeGeneral),
-    challengeWindowSeconds: challengeWindow.toString()
+    ...(target.generation === CONTRACT_GENERATION.V3 ? {
+      finalDisputeDeadline: toIso(finalDisputeDeadline),
+      finalDisputeDeadlineUnix: finalDisputeDeadline.toString(),
+      disputeDeadline: toIso(Number(raw[9]) === 3 ? finalDisputeDeadline : raw[7]),
+      disputeDeadlineUnix: (Number(raw[9]) === 3 ? finalDisputeDeadline : raw[7]).toString(),
+      disputeSecondsRemaining: Math.max(0, Number(finalDisputeDeadline) - now),
+      disputeWindowSeconds: (await contract.disputeWindowSeconds()).toString(),
+      autoSettlementEnabled: Boolean(config.v3ContractAddress && config.arbiterPrivateKey)
+    } : {}),
+    challengeWindowSeconds: challengeWindow.toString(),
+    timelockDurationSeconds: timelockDuration.toString()
   };
 }
 
@@ -559,7 +610,8 @@ async function getDispute(contractId) {
     // false both for "everything back to the importer" and for "85% to the
     // exporter". Anything reading the outcome has to check this first.
     settledToExporter: d.length > 7 ? d[7].toString() : "0",
-    settledByAgreement: d.length > 7 && d[7] > 0n,
+    settledByAgreement: target.generation === CONTRACT_GENERATION.V3
+      ? Boolean(d[8]) : d.length > 7 && d[7] > 0n,
     resolved: !d[0] && (d[5] !== "" || d[4] !== ethers.ZeroAddress)
   };
 }
@@ -576,7 +628,15 @@ async function prepareDispute(contractId, contestedMilestone = "none") {
   const now = BigInt(await chainNow(provider));
   let windowStillOpen = false;
   let challengeDeadline = 0n;
-  if (normalized === 0) {
+  if (target.generation === CONTRACT_GENERATION.V3) {
+    if (Number(raw[9]) === 3) {
+      challengeDeadline = await contract.finalDisputeDeadline(target.id);
+      windowStillOpen = now <= challengeDeadline;
+    } else if (Number(raw[9]) <= 2) {
+      challengeDeadline = raw[7];
+      windowStillOpen = now <= challengeDeadline;
+    }
+  } else if (normalized === 0) {
     windowStillOpen = Number(raw[9]) === 4 && now < raw[10];
     challengeDeadline = raw[10];
   } else {
@@ -584,7 +644,7 @@ async function prepareDispute(contractId, contestedMilestone = "none") {
     challengeDeadline = proof[4];
     windowStillOpen = proof[0] && now <= proof[4];
   }
-  const iface = new ethers.Interface(loadAbi());
+  const iface = new ethers.Interface(loadAbi(target.generation));
   const raiseDisputeData = iface.encodeFunctionData("raiseDispute", [target.id, normalized]);
   const tokenAddress = await contract.idrtToken();
   const tokenIface = new ethers.Interface(["function approve(address,uint256) returns (bool)"]);
@@ -610,7 +670,9 @@ async function prepareDispute(contractId, contestedMilestone = "none") {
       amount: bondAmount.toString(),
       calldata: tokenIface.encodeFunctionData("approve", [target.contractAddress, bondAmount])
     },
-    note: "Backend only prepares data. The importer/exporter must submit the approval and raiseDispute transactions from their own Particle Smart Account."
+    note: target.generation === CONTRACT_GENERATION.V3
+      ? "Only the importer may raise this dispute from their Particle Smart Account."
+      : "The importer/exporter submits the dispute from their Particle Smart Account."
   };
 }
 
@@ -873,6 +935,7 @@ async function getActivity(contractId) {
     ["DisputeRaised", "dispute_raised"],
     ["DisputeResolved", "dispute_resolved"],
     ["DisputeSettledByAgreement", "dispute_settled_by_agreement"],
+    ["DisputeSettledByArbiter", "dispute_settled_by_arbiter"],
     ["VerifierSlashed", "verifier_slashed"]
   ];
   const { from, to } = await activityWindow(provider, contract, target);
@@ -1226,7 +1289,7 @@ async function resolveDispute(contractId, options = {}) {
   return { transactionHash: receipt.hash, blockNumber: receipt.blockNumber, arbiter: wallet.address };
 }
 
-// Executes the split the two parties agreed on in negotiationService.
+// Executes exactly what both parties signed in negotiationService.
 //
 // The amount is not taken from the request. It is recomputed here from the
 // accepted agreement the gateway itself pinned, because a caller who could name
@@ -1234,8 +1297,8 @@ async function resolveDispute(contractId, options = {}) {
 // what got paid out.
 async function resolveDisputeByAgreement(contractId, options = {}) {
   const target = parseEscrowRef(contractId);
-  if (target.generation !== CONTRACT_GENERATION.V2) {
-    const error = new Error("Negotiated split settlement is available only for V2 escrows.");
+  if (target.generation === CONTRACT_GENERATION.LEGACY) {
+    const error = new Error("Negotiated split settlement is available on V2 and V3 escrows.");
     error.statusCode = 422;
     error.code = "AGREEMENT_SETTLEMENT_V2_REQUIRED";
     throw error;
@@ -1250,7 +1313,7 @@ async function resolveDisputeByAgreement(contractId, options = {}) {
 
   const negotiation = require("./negotiationService");
   const agreement = await negotiation.acceptedAgreement(target.escrowId, agreementId);
-  if (agreement.outcome !== "split") {
+  if (target.generation === CONTRACT_GENERATION.V2 && agreement.outcome !== "split") {
     const error = new Error(
       "Only a negotiated split goes through this call. A full release or full refund is resolveDispute, which also decides slashing and the frivolous bond."
     );
@@ -1285,9 +1348,12 @@ async function resolveDisputeByAgreement(contractId, options = {}) {
     throw error;
   }
 
+  const amountToExporter = agreement.outcome === "release_to_exporter"
+    ? BigInt(agreement.contractValue)
+    : agreement.outcome === "refund_to_importer" ? 0n : BigInt(agreement.amountToExporter);
   const tx = await contract.resolveDisputeByAgreement(
     target.id,
-    BigInt(agreement.amountToExporter),
+    amountToExporter,
     agreement.agreementCid
   );
   const receipt = await tx.wait();
@@ -1295,10 +1361,40 @@ async function resolveDisputeByAgreement(contractId, options = {}) {
     transactionHash: receipt.hash,
     blockNumber: receipt.blockNumber,
     arbiter: wallet.address,
-    amountToExporter: agreement.amountToExporter,
-    amountToImporter: (BigInt(agreement.contractValue) - BigInt(agreement.amountToExporter)).toString(),
+    amountToExporter: amountToExporter.toString(),
+    amountToImporter: (BigInt(agreement.contractValue) - amountToExporter).toString(),
     agreementCid: agreement.agreementCid
   };
+}
+
+// A chain transaction is required to move time-based state. Scan only V3:
+// legacy and V2 keep their original manual settlement behavior.
+async function advanceReadyV3Settlements() {
+  if (!config.v3ContractAddress || !config.arbiterPrivateKey) return [];
+  const provider = getProvider();
+  if ((await provider.getNetwork()).chainId !== BigInt(config.rpcChainId)) {
+    throw new Error("V3 settlement keeper RPC chain does not match RPC_CHAIN_ID.");
+  }
+  const contract = getContract(getArbiterWallet(provider), CONTRACT_GENERATION.V3);
+  const now = await chainNow(provider);
+  const total = Number(await contract.nextEscrowId());
+  const advanced = [];
+  for (let id = 0; id < total; id += 1) {
+    const escrow = await contract.getEscrow(id);
+    const state = Number(escrow.state);
+    const due = state === 3
+      ? now > Number(await contract.finalDisputeDeadline(id))
+      : state === 4 && now >= Number(escrow.timelockReleaseAt);
+    if (!due) continue;
+    try {
+      const receipt = await (await contract.advanceSettlement(id)).wait();
+      advanced.push({ escrowId: `v3:${id}`, transactionHash: receipt.hash });
+    } catch (error) {
+      // One failed escrow must not prevent a later, valid escrow from settling.
+      console.error(`V3 settlement keeper could not advance escrow ${id}: ${error.shortMessage || error.message}`);
+    }
+  }
+  return advanced;
 }
 
 module.exports = {
@@ -1331,6 +1427,8 @@ module.exports = {
   getActivity,
   getVerifiers,
   getV2Readiness,
+  getNewEscrowReadiness,
+  advanceReadyV3Settlements,
   stateName,
   milestoneName
 };

@@ -41,6 +41,8 @@ const id = {
   "Progress": "Progres",
   "Refresh": "Muat ulang",
   "Username": "Nama pengguna",
+  "Your STERN username belongs to this profile. It is not recreated when you sign in, and it does not need to match your Particle email.": "Nama pengguna STERN melekat pada profil ini. Nama ini tidak dibuat ulang saat Anda masuk dan tidak harus sama dengan email Particle.",
+  "Your trade directory handle is a separate public alias for finding this settlement account. Claim it once, then change it only when you want to. Your STERN username above remains your profile name.": "Handle direktori perdagangan adalah alias publik terpisah untuk menemukan akun settlement ini. Klaim sekali dan ubah hanya bila perlu. Nama pengguna STERN di atas tetap menjadi nama profil Anda.",
   "The local gateway did not respond. Please try again.": "Gateway lokal tidak merespons. Silakan coba lagi.",
   "Active escrow value": "Nilai escrow aktif",
   "Milestone checks remaining": "Pemeriksaan tahap yang tersisa",
@@ -145,6 +147,9 @@ const id = {
   "Work email": "Email kerja",
   "Company role": "Peran perusahaan",
   "Save handle": "Simpan handle",
+  "Save username": "Simpan nama pengguna",
+  "Username saved.": "Nama pengguna tersimpan.",
+  "Could not update your STERN username.": "Nama pengguna STERN tidak dapat diperbarui.",
   "Saving…": "Menyimpan…",
   "Handle saved.": "Handle tersimpan.",
   "Trade directory": "Direktori perdagangan",
@@ -190,6 +195,7 @@ const id = {
   "Switch to dark theme": "Beralih ke tema gelap"
   ,"Connected to the gateway. No escrows have been created yet.": "Terhubung ke gateway. Belum ada escrow yang dibuat."
   ,"Live — STERN gateway": "Langsung — gateway STERN"
+  ,"Connected to STERN gateway": "Terhubung ke gateway STERN"
   ,"Monitor escrow value, evidence readiness, and upcoming operational deadlines.": "Pantau nilai escrow, kesiapan bukti, dan batas waktu operasional."
   ,"Across {count} active escrows": "Di {count} escrow aktif"
   ,"{value} bond at risk": "Jaminan {value} berisiko"
@@ -547,6 +553,7 @@ const id = {
   ,"Attach PEB, PIB and proof of payment": "Lampirkan PEB, PIB, dan bukti pembayaran"
   ,"Customs documents": "Dokumen bea cukai"
   ,"Not attached": "Belum dilampirkan"
+  ,"Attached": "Terlampir"
   ,"Milestone 3 claims the goods are legally through both borders. What evidences that is the PEB from the origin, the PIB at the destination, and proof the import duty was paid — none of which exists when the escrow is created, so they are attached here. The CID of the manifest naming them becomes milestone 3's proof on chain.": "Tahap 3 menyatakan barang telah melalui kedua perbatasan secara sah. Buktinya ialah PEB di asal, PIB di tujuan, dan bukti pelunasan bea masuk — dokumen yang belum ada ketika escrow dibuat, sehingga dilampirkan di sini. CID manifes yang mencantumkannya menjadi bukti tahap 3 di blockchain."
   ,"Nothing is blocked while they are missing: every escrow created before this existed has none. Attached and failing verification is what stops Cleared.": "Ketidakhadiran dokumen ini tidak otomatis menahan escrow lama yang dibuat sebelumnya. Dokumen yang terlampir tetapi gagal diverifikasi akan menahan status lolos bea cukai."
   ,"Customs documents on IPFS": "Dokumen bea cukai di IPFS"
@@ -692,6 +699,7 @@ const id = {
   // --- negotiated settlement ---------------------------------------------------
   ,"Negotiated settlement · before the arbiter decides": "Penyelesaian hasil negosiasi · sebelum arbiter memutus"
   ,"Reading the settlement thread…": "Membaca utas penyelesaian…"
+  ,"This dispute is closed. The conversation remains available as a read-only record.": "Sengketa ini sudah ditutup. Percakapan tetap tersedia sebagai catatan yang dapat dibaca."
   ,"A dispute leaves the arbiter one binary choice — the whole value to the exporter, or the whole value back to the importer. Most quality claims are not worth either. Agree on the figure here and the arbiter executes your agreement instead of deciding for you.": "Sengketa hanya memberi arbiter satu pilihan biner — seluruh nilai ke eksportir, atau seluruh nilai kembali ke importir. Sebagian besar klaim mutu tidak bernilai salah satunya. Sepakati angkanya di sini, dan arbiter mengeksekusi kesepakatan Anda alih-alih memutuskan untuk Anda."
   ,"The contract at this address can only release or refund in full, so a partial split cannot be executed on chain here. You can still record one — it is a real agreement and it is pinned — but settling it needs a deployment that has": "Kontrak di alamat ini hanya bisa melepas atau mengembalikan seluruhnya, jadi pembagian sebagian tidak bisa dieksekusi on-chain di sini. Kesepakatannya tetap bisa dicatat — itu kesepakatan sungguhan dan tetap di-pin — tapi penyelesaiannya butuh deployment yang punya"
   ,"Release to the exporter": "Dilepas ke eksportir"
@@ -747,6 +755,13 @@ const id = {
   ,"You signed in as": "Anda masuk sebagai"
   ,"Updating activity…": "Memperbarui aktivitas…"
   ,"Reading the event log from the chain…": "Membaca log event dari chain…"
+  ,"Arbiter console": "Konsol arbiter"
+  ,"Open the escrows appointed to your institutional key, review interpretive clauses, and sign an accountable decision.": "Buka escrow yang menunjuk kunci institusional Anda, tinjau klausul interpretatif, lalu tandatangani keputusan yang dapat dipertanggungjawabkan."
+  ,"Appointed cases": "Kasus yang ditunjuk"
+  ,"Open escrow": "Buka escrow"
+  ,"Action required": "Perlu tindakan"
+  ,"Live service": "Layanan aktif"
+  ,"Review context": "Konteks peninjauan"
 
 };
 

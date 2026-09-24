@@ -35,7 +35,7 @@ export default function Account({ session, onSessionChange }) {
       onSessionChange({ ...session, user: result.user, company: result.company || session.company });
       setSaved(true);
     } catch (cause) {
-      setError(t(cause?.message || "Could not update your STERN handle."));
+      setError(t(cause?.message || "Could not update your STERN username."));
     } finally {
       setBusy(false);
     }
@@ -56,10 +56,10 @@ export default function Account({ session, onSessionChange }) {
             <div className="mt-2 flex max-w-md items-center rounded-xl border border-sky bg-white px-3 transition-colors focus-within:border-teal">
               <input id="stern-username" value={username} onChange={(event) => { setUsername(event.target.value.toLowerCase().replace(/^@/, "")); setSaved(false); }} autoComplete="username" spellCheck="false" maxLength={32} className="h-11 min-w-0 flex-1 bg-transparent px-1 text-sm text-navy outline-none" />
             </div>
-            <p className="mt-2 text-xs leading-relaxed text-ink-dim">{t("This is your STERN handle. It does not need to match your Particle email.")}</p>
+            <p className="mt-2 text-xs leading-relaxed text-ink-dim">{t("Your STERN username belongs to this profile. It is not recreated when you sign in, and it does not need to match your Particle email.")}</p>
             {error ? <p role="alert" className="mt-3 text-xs text-state-disputed">{error}</p> : null}
-            {saved ? <p role="status" className="mt-3 text-xs text-teal">{t("Handle saved.")}</p> : null}
-            <button type="submit" disabled={busy || !changed} className="mt-5 rounded-xl bg-navy px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-teal disabled:cursor-not-allowed disabled:opacity-45">{t(busy ? "Saving…" : "Save handle")}</button>
+            {saved ? <p role="status" className="mt-3 text-xs text-teal">{t("Username saved.")}</p> : null}
+            <button type="submit" disabled={busy || !changed} className="mt-5 rounded-xl bg-navy px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-teal disabled:cursor-not-allowed disabled:opacity-45">{t(busy ? "Saving…" : "Save username")}</button>
           </form>
           <div className="mt-8 border-t border-sky/70 pt-5">
             <AccountDetail icon={Mail} label={t("Work email")} value={session?.user?.email || "—"} />
@@ -69,7 +69,7 @@ export default function Account({ session, onSessionChange }) {
         </section>
         <section className="stern-workspace-card rounded-doc bg-surface p-5 shadow-card sm:p-6" aria-labelledby="directory-title">
           <h2 id="directory-title" className="text-lg font-semibold text-navy">{t("Trade directory")}</h2>
-          <p className="mt-2 text-xs leading-relaxed text-ink-dim">{t("This separate directory alias helps counterparties find your settlement account when preparing a trade. Your STERN username above remains your account identity.")}</p>
+          <p className="mt-2 text-xs leading-relaxed text-ink-dim">{t("Your trade directory handle is a separate public alias for finding this settlement account. Claim it once, then change it only when you want to. Your STERN username above remains your profile name.")}</p>
           <HandleCard address={session?.user?.walletAddress} />
         </section>
       </div>

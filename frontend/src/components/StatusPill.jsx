@@ -5,10 +5,10 @@ import { useLanguage } from "../lib/language.jsx";
 // exist purely to encode escrow state.
 //
 const TONE_STYLES = {
-  pending: "text-state-pending",
-  attested: "text-state-attested",
-  disputed: "text-state-disputed",
-  neutral: "text-ink-dim"
+  pending: "bg-state-pending/10 text-state-pending",
+  attested: "bg-state-attested/10 text-state-attested",
+  disputed: "bg-state-disputed/10 text-state-disputed",
+  neutral: "bg-sky/35 text-ink-dim"
 };
 
 export default function StatusPill({ state, size = "md", children }) {
@@ -18,7 +18,7 @@ export default function StatusPill({ state, size = "md", children }) {
 
   return (
     <span
-      className={`inline-flex items-center whitespace-nowrap font-medium ${cls} ${
+      className={`inline-flex items-center whitespace-nowrap rounded-md px-2.5 py-1 font-medium ${cls} ${
         size === "sm" ? "text-2xs" : "text-[12.5px]"
       }`}
     >

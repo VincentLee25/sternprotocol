@@ -36,7 +36,7 @@ const SORTS = {
 };
 
 export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, onRegistryLoad, user, balance, canClaim, claiming, claimError, onClaim }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [chainStatus, setChainStatus] = useState("");
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
@@ -318,12 +318,19 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
           {/* ---------- table ---------- */}
           <div className="stern-workspace-card overflow-hidden rounded-doc bg-surface shadow-card">
             <div className="overflow-x-auto">
-              <table className="stern-operational-table w-full min-w-[760px] border-collapse text-left">
+              <table className="stern-operational-table w-full min-w-[820px] table-fixed border-collapse text-left">
+                <colgroup>
+                  <col className="w-[31%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[21%]" />
+                  <col className="w-[18%]" />
+                  <col className="w-[15%]" />
+                </colgroup>
                 <thead>
                   <tr className="border-b border-sky">
                     <Th className="pl-5">{t("Escrow")}</Th>
-                    <Th className="text-right">{t("Value")}</Th>
-                    <Th className="w-[190px]">{t("Milestones")}</Th>
+                    <Th>{t("Value")}</Th>
+                    <Th>{t("Milestones")}</Th>
                     <Th>{t("Deadline")}</Th>
                     <Th>{t("Status")}</Th>
                   </tr>
@@ -340,11 +347,11 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                           aria-label={t("Open escrow {id} for {commodity}", { id: formatEscrowId(e.id), commodity: e.commodity })}
                           className="cursor-pointer border-b border-sky/50 last:border-b-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-teal"
                         >
-                          <td className="py-3.5 pl-5 pr-4">
-                            <p className="text-[15px] font-medium tracking-[-0.012em] text-navy">
+                          <td className="py-3 pl-5 pr-4">
+                            <p className="truncate text-[14px] font-semibold tracking-[-0.012em] text-navy" title={e.commodity}>
                               {e.commodity}
                             </p>
-                            <p className="mt-0.5 text-[12.5px] text-ink-dim">
+                            <p className="mt-0.5 truncate text-xs text-ink-dim">
                               &#8470;&thinsp;{formatEscrowId(e.id)} · {e.containerRef}
                               {/* Stated on the row, not as a page banner: the
                                   other escrows on this screen loaded fine. */}
@@ -355,26 +362,24 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
                               ) : null}
                             </p>
                           </td>
-                          <td className="py-3.5 pr-4 text-right">
-                            <p className="text-[14px] font-medium tabular-nums text-navy">
-                              {Number(e.value).toLocaleString()}
-                            </p>
-                            <p className="mt-0.5 text-2xs uppercase text-ink-faint">
-                              {CURRENCY_LABEL}
+                          <td className="py-3 pr-4 text-left">
+                            <p className="whitespace-nowrap text-[13.5px] font-semibold tabular-nums text-navy">
+                              {Number(e.value).toLocaleString(language === "id" ? "id-ID" : "en-GB")}
+                              <span className="ml-1.5 text-[11px] font-normal text-ink-dim">{CURRENCY_LABEL}</span>
                             </p>
                           </td>
-                          <td className="py-3.5 pr-4">
+                          <td className="py-3 pr-5">
                             <MilestoneMeter verified={e.verified ?? 0} total={e.total ?? 3} />
                           </td>
-                          <td className="py-3.5 pr-4">
-                            <p className="text-[13.5px] text-navy">
-                              {e.deadline ? new Date(e.deadline).toLocaleDateString() : "—"}
+                          <td className="py-3 pr-4">
+                            <p className="whitespace-nowrap text-[13px] font-medium text-navy">
+                              {e.deadline ? new Date(e.deadline).toLocaleDateString(language === "id" ? "id-ID" : "en-GB", { day: "numeric", month: "short", year: "numeric" }) : "-"}
                             </p>
-                            <p className="mt-0.5 text-2xs uppercase text-ink-faint">
+                            <p className="mt-0.5 text-xs text-ink-dim">
                               {relativeDays(e.deadline, t)}
                             </p>
                           </td>
-                          <td className="py-3.5 pr-4">
+                          <td className="py-3 pr-4">
                             <StatusPill state={e.state} />
                           </td>
                         </tr>
@@ -442,7 +447,7 @@ export default function Overview({ walletAddress, refreshKey, onOpen, onCreate, 
             ) : null}
           </div>
 
-          <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+          <section className="mt-5 grid items-start gap-5 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
             <CriticalDeadlines escrows={rows} onOpen={onOpen} />
             <ActivityRail onOpen={onOpen} escrows={rows} compact />
           </section>

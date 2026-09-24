@@ -106,7 +106,7 @@ export default function ActivityRail({ onOpen, escrows, compact = false }) {
         <span className="text-2xs uppercase text-ink-faint">{rows.length}</span>
       </div>
 
-      <div className={`${compact ? "max-h-[382px]" : "max-h-[560px]"} overflow-y-auto px-5 pb-5`}>
+      <div className={`${compact ? "" : "max-h-[560px] overflow-y-auto"} px-5 pb-5`}>
         {pending && rows.length === 0 ? (
           // The scan runs after the table renders, so this window really is
           // still filling. Saying "nothing has happened yet" during it is a

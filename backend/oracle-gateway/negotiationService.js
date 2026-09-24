@@ -92,14 +92,17 @@ async function transaction(callback) {
   finally { client.release(); }
 }
 async function splitSupport(id) {
-  const supported = await require("./contractService").supportsAgreementSettlement(id);
-  return { supported, reason: supported ? null : "Partial settlement is available only on V2 escrows." };
+  const contracts = require("./contractService");
+  const supported = await contracts.supportsAgreementSettlement(id);
+  return { supported, generation: contracts.parseEscrowRef(id).generation,
+    reason: supported ? null : "Partial settlement requires a V2 or V3 escrow." };
 }
 function execution(agreement, split) {
   if (!agreement) return null;
   const executable = Boolean(agreement.signatures?.proposer?.signature && agreement.signatures?.accepter?.signature && agreement.cid) &&
     (agreement.outcome !== "split" || split.supported);
-  return { ...agreement, executable, contractCall: OUTCOMES[agreement.outcome].contractCall,
+  return { ...agreement, executable,
+    contractCall: split.generation === "v3" ? "resolveDisputeByAgreement" : OUTCOMES[agreement.outcome].contractCall,
     ...(!executable ? { blockedReason: agreement.signatures ? split.reason : "Earlier agreement requires fresh signed approval from both parties." } : {}) };
 }
 async function prepareProposal(escrowId, input, identity) {

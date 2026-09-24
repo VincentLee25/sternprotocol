@@ -402,8 +402,8 @@ function Card({ children }) {
 function Head() {
   const { t } = useLanguage();
   return (
-    <h2 className="flex items-center gap-2 font-mono text-2xs uppercase text-ink-faint">
-      <ScrollText size={12} aria-hidden="true" />
+    <h2 className="flex items-center gap-2 text-[15px] font-semibold text-navy">
+      <ScrollText size={15} aria-hidden="true" />
       {t("Interpretive clauses · human review")}
     </h2>
   );

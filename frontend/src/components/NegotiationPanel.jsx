@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useWallets } from "@particle-network/connectkit";
 import { Handshake, Loader2 } from "lucide-react";
 import {
   acceptSettlement,
   apiConfigured,
+  directoryForAddress,
   eblDocumentUrl,
   getNegotiation,
   prepareSettlement,
@@ -17,6 +18,7 @@ import { inputClass } from "./Field.jsx";
 import { CURRENCY_LABEL } from "../lib/currency.js";
 import { shortCid } from "../lib/ebl.js";
 import { useLanguage } from "../lib/language.jsx";
+import Disclosure from "./Disclosure.jsx";
 
 // What the two parties can do after a dispute is raised, and before the arbiter
 // has to impose an answer.
@@ -63,8 +65,8 @@ function money(units, decimals = 2) {
   }
 }
 
-export default function NegotiationPanel({ escrowId, walletAddress, accessToken, escrow, onStateChanged }) {
-  const { t } = useLanguage();
+export default function NegotiationPanel({ escrowId, walletAddress, accessToken, escrow, currentUsername }) {
+  const { t, language } = useLanguage();
   const [primaryWallet] = useWallets();
   const decimals = Number(escrow?.decimals ?? 2);
   const [thread, setThread] = useState(null);
@@ -76,6 +78,9 @@ export default function NegotiationPanel({ escrowId, walletAddress, accessToken,
   const [composing, setComposing] = useState(false);
   const [messageText, setMessageText] = useState("");
   const [inspection, setInspection] = useState({ provider: "", reason: "", requestedEvidence: "" });
+  const [directoryNames, setDirectoryNames] = useState({});
+  const requestInFlight = useRef(false);
+  const active = escrow?.state === "Disputed";
 
   async function sign(message) {
     const walletClient = primaryWallet?.getWalletClient();
@@ -85,8 +90,10 @@ export default function NegotiationPanel({ escrowId, walletAddress, accessToken,
   }
 
   const load = useCallback(
-    async (signal) => {
-      setError("");
+    async (signal, quiet = false) => {
+      if (requestInFlight.current) return;
+      requestInFlight.current = true;
+      if (!quiet) setError("");
       try {
         setThread(await getNegotiation(escrowId, { signal, token: accessToken }));
       } catch (err) {
@@ -97,9 +104,10 @@ export default function NegotiationPanel({ escrowId, walletAddress, accessToken,
         // not a failure to report on every escrow page; the panel simply has
         // nothing to say, exactly as for an escrow that declared nothing.
         if (err.status === 404) setUnsupported(true);
-        else setError(err.message);
+        else if (!quiet) setError(err.message);
       } finally {
-        setLoading(false);
+        requestInFlight.current = false;
+        if (!quiet) setLoading(false);
       }
     },
     [escrowId, accessToken]
@@ -107,15 +115,50 @@ export default function NegotiationPanel({ escrowId, walletAddress, accessToken,
 
   useEffect(() => {
     const controller = new AbortController();
+    requestInFlight.current = false;
     setLoading(true);
     load(controller.signal);
     return () => controller.abort();
   }, [load]);
 
+  useEffect(() => {
+    if (!active) return undefined;
+    const controller = new AbortController();
+    // The gateway remains the source of truth. A short, visibility-aware poll
+    // makes the persisted thread update for both parties without a new socket
+    // protocol or a full escrow/blockchain refresh after every message.
+    const timer = window.setInterval(() => {
+      if (!document.hidden) load(controller.signal, true);
+    }, 2500);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, [active, load]);
+
   const isImporter = same(escrow?.importer, walletAddress);
   const isExporter = same(escrow?.exporter, walletAddress);
   const isParty = isImporter || isExporter;
   const isArbiter = same(escrow?.arbiter, walletAddress);
+
+  useEffect(() => {
+    const addresses = [...new Set((thread?.messages || []).map((item) => item.sender?.toLowerCase()).filter(Boolean))];
+    const unknown = addresses.filter((address) => !same(address, walletAddress) && !Object.prototype.hasOwnProperty.call(directoryNames, address));
+    if (!unknown.length) return undefined;
+    const controller = new AbortController();
+    Promise.allSettled(unknown.map((address) => directoryForAddress(address, { signal: controller.signal })))
+      .then((results) => {
+        if (controller.signal.aborted) return;
+        setDirectoryNames((current) => {
+          const next = { ...current };
+          results.forEach((result, index) => {
+            next[unknown[index]] = result.status === "fulfilled" ? result.value?.entry?.handle || null : null;
+          });
+          return next;
+        });
+      });
+    return () => controller.abort();
+  }, [thread?.messages, walletAddress, directoryNames]);
 
   async function act(key, fn) {
     setBusy(key);
@@ -124,7 +167,8 @@ export default function NegotiationPanel({ escrowId, walletAddress, accessToken,
       await fn();
       setComposing(false);
       await load();
-      onStateChanged?.();
+      // Negotiation writes change the thread, not the on-chain escrow state.
+      // Avoid a slow chain/history refresh for each chat message.
     } catch (err) {
       setError(err.message);
     } finally {
@@ -154,12 +198,11 @@ export default function NegotiationPanel({ escrowId, walletAddress, accessToken,
   return (
     <Card>
       <Head />
-      <details open className="mt-3">
-        <summary className="cursor-pointer font-serif text-sm font-semibold text-navy">{t("Dispute overview")}</summary>
+      <Disclosure title={t("Dispute overview")} plain defaultOpen className="mt-3">
         <p className="mt-2 font-serif text-sm leading-relaxed text-ink-dim">
           {t("The escrow remains frozen while the parties negotiate. The arbiter can resolve it under the capabilities of this escrow's contract.")}
         </p>
-      </details>
+      </Disclosure>
 
       {error ? (
         <p className="mt-3 border-l-2 border-state-disputed pl-3 font-serif text-sm leading-relaxed text-state-disputed">
@@ -170,18 +213,66 @@ export default function NegotiationPanel({ escrowId, walletAddress, accessToken,
       {!splitExecutable ? (
         // Said before anyone proposes a split, not after both have signed one.
         <p className="mt-3 border-l-2 border-state-pending pl-3 font-serif text-sm leading-relaxed text-state-pending">
-          {t("This legacy escrow can only release or refund in full. A partial split is available on V2 escrows.")}{" "}
+          {t("This legacy escrow can only release or refund in full. A partial split is available on V2 and V3 escrows.")}{" "}
           <code className="font-mono text-xs">resolveDisputeByAgreement()</code>.
         </p>
       ) : null}
 
-      <details open className="mt-5 border-t border-sky/70 pt-3">
-        <summary className="cursor-pointer font-serif text-sm font-semibold text-navy">{t("Settlement proposal")}</summary>
+      <Disclosure title={t("Negotiation / chat")} plain defaultOpen className="mt-3">
+        {!active ? <p className="mt-2 text-xs text-ink-dim">{t("This dispute is closed. The conversation remains available as a read-only record.")}</p> : null}
+        <div className="stern-chat-thread mt-3 space-y-4" role="log" aria-live="polite" aria-label={t("Negotiation / chat")}>
+          {(thread?.messages || []).map((item) => {
+            const mine = same(item.sender, walletAddress);
+            const name = mine && currentUsername
+              ? currentUsername
+              : directoryNames[item.sender?.toLowerCase()]
+                ? `@${directoryNames[item.sender.toLowerCase()]}`
+                : null;
+            return (
+              <div key={item.id} className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
+                <div className={`stern-chat-message ${mine ? "is-mine" : ""}`}>
+                  <p className="text-xs font-semibold text-teal">
+                    {name || t(item.role)}
+                    {name ? <span className="ml-1 font-normal text-ink-dim">· {t(item.role)}</span> : null}
+                  </p>
+                  <p className="mt-1.5 whitespace-pre-wrap break-words text-sm leading-relaxed text-navy">{item.content}</p>
+                </div>
+                <time dateTime={item.createdAt} className="mt-1 px-1 text-[11px] text-ink-dim">
+                  {new Date(item.createdAt).toLocaleString(language === "id" ? "id-ID" : "en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                </time>
+              </div>
+            );
+          })}
+          {!thread?.messages?.length ? <p className="text-sm text-ink-dim">{t("No messages yet.")}</p> : null}
+        </div>
+        {active && isParty ? (
+          <form className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end" onSubmit={event => {
+            event.preventDefault();
+            act("message", async () => {
+              const posted = await sendDisputeMessage(escrowId, messageText, accessToken);
+              setThread(current => current ? {
+                ...current,
+                messages: (current.messages || []).some(item => item.id === posted.id)
+                  ? current.messages
+                  : [...(current.messages || []), posted]
+              } : current);
+              setMessageText("");
+            });
+          }}>
+            <textarea value={messageText} onChange={event => setMessageText(event.target.value)}
+              maxLength={4000} rows={2} className={`${inputClass(false)} min-w-0 flex-1 resize-y`} aria-label={t("Message")} />
+            <button type="submit" disabled={!messageText.trim() || Boolean(busy)}
+              className="min-h-10 shrink-0 cursor-pointer rounded-lg bg-navy px-4 py-2 text-xs font-medium text-white transition-colors duration-200 hover:bg-teal-solid disabled:cursor-not-allowed disabled:opacity-50">{t("Send message")}</button>
+          </form>
+        ) : null}
+      </Disclosure>
+
+      <Disclosure title={t("Settlement proposal")} plain defaultOpen className="mt-3">
       {agreement ? (
         <Agreement
           agreement={agreement}
           decimals={decimals}
-          canWithdraw={isParty && !busy}
+          canWithdraw={active && isParty && !busy}
           busy={busy === "withdraw"}
           onWithdraw={() => act("withdraw", () => withdrawSettlement(escrowId, accessToken))}
         />
@@ -195,7 +286,7 @@ export default function NegotiationPanel({ escrowId, walletAddress, accessToken,
               proposal={proposal}
               decimals={decimals}
               mine={same(proposal.by, walletAddress)}
-              canAccept={isParty && !same(proposal.by, walletAddress) && !proposal.superseded && !agreement}
+              canAccept={active && isParty && !same(proposal.by, walletAddress) && !proposal.superseded && !agreement}
               busy={busy === proposal.id}
               onAccept={() =>
                 act(proposal.id, async () => {
@@ -212,7 +303,7 @@ export default function NegotiationPanel({ escrowId, walletAddress, accessToken,
         </p>
       )}
 
-      {isParty && !agreement ? (
+      {active && isParty && !agreement ? (
         composing ? (
           <ProposalForm
             contractValue={escrow?.contractValue}
@@ -239,44 +330,13 @@ export default function NegotiationPanel({ escrowId, walletAddress, accessToken,
           </button>
         )
       ) : null}
-      </details>
+      </Disclosure>
 
-      <details className="mt-5 border-t border-sky/70 pt-3">
-        <summary className="cursor-pointer font-serif text-sm font-semibold text-navy">{t("Evidence")}</summary>
+      <Disclosure title={t("Evidence")} plain className="mt-3">
         <p className="mt-2 font-serif text-sm text-ink-dim">{t("Shipment evidence remains in the evidence section above. Additional inspection results appear below with their document reference.")}</p>
-      </details>
+      </Disclosure>
 
-      <details className="mt-5 border-t border-sky/70 pt-3">
-        <summary className="cursor-pointer font-serif text-sm font-semibold text-navy">{t("Negotiation / chat")}</summary>
-        <div className="mt-3 space-y-3">
-          {(thread?.messages || []).map(item => (
-            <div key={item.id} className="bg-sky/25 px-3 py-2">
-              <p className="font-mono text-2xs text-ink-faint">
-                {t(item.role)} · <AddressLink address={item.sender} /> · {new Date(item.createdAt).toLocaleString()}
-              </p>
-              <p className="font-serif text-sm text-navy">{item.content}</p>
-            </div>
-          ))}
-          {!thread?.messages?.length ? <p className="font-serif text-sm text-ink-dim">{t("No messages yet.")}</p> : null}
-          {isParty ? (
-            <form onSubmit={event => {
-              event.preventDefault();
-              act("message", async () => {
-                await sendDisputeMessage(escrowId, messageText, accessToken);
-                setMessageText("");
-              });
-            }}>
-              <textarea value={messageText} onChange={event => setMessageText(event.target.value)}
-                maxLength={4000} rows={2} className={inputClass(false)} aria-label={t("Message")} />
-              <button type="submit" disabled={!messageText.trim() || Boolean(busy)}
-                className="mt-2 rounded-full bg-navy px-4 py-2 text-xs text-white disabled:opacity-50">{t("Send message")}</button>
-            </form>
-          ) : null}
-        </div>
-      </details>
-
-      <details className="mt-5 border-t border-sky/70 pt-3">
-        <summary className="cursor-pointer font-serif text-sm font-semibold text-navy">{t("Additional inspection")}</summary>
+      <Disclosure title={t("Additional inspection")} plain className="mt-3">
         <div className="mt-3 space-y-3">
           {(thread?.inspections || []).map(item => (
             <div key={item.id} className="bg-sky/25 px-3 py-2 font-serif text-sm text-navy">
@@ -286,7 +346,7 @@ export default function NegotiationPanel({ escrowId, walletAddress, accessToken,
               {item.evidence_cid ? <a href={eblDocumentUrl(item.evidence_cid)} target="_blank" rel="noreferrer" className="text-teal">{shortCid(item.evidence_cid)}</a> : null}
             </div>
           ))}
-          {isArbiter ? (
+          {active && isArbiter ? (
             <form className="space-y-2" onSubmit={event => {
               event.preventDefault();
               act("inspection", async () => {
@@ -304,10 +364,9 @@ export default function NegotiationPanel({ escrowId, walletAddress, accessToken,
           ) : null}
           <p className="font-serif text-xs text-ink-dim">{t("Provider submissions use the existing manual evidence adapter, not a live external integration.")}</p>
         </div>
-      </details>
+      </Disclosure>
 
-      <details className="mt-5 border-t border-sky/70 pt-3">
-        <summary className="cursor-pointer font-serif text-sm font-semibold text-navy">{t("Resolution")}</summary>
+      <Disclosure title={t("Resolution")} plain className="mt-3">
       {isArbiter ? (
         <p className="mt-4 border-t border-sky/70 pt-3 font-serif text-xs leading-relaxed text-ink-dim">
           {t("You are the arbiter on this escrow. If the parties agree, execute their agreement from the ops console, where your own key signs — the gateway never holds a key that can settle a dispute.")}
@@ -319,7 +378,7 @@ export default function NegotiationPanel({ escrowId, walletAddress, accessToken,
           {t("Only the importer and the exporter can propose or accept a settlement. You can read the thread in full.")}
         </p>
       ) : null}
-      </details>
+      </Disclosure>
     </Card>
   );
 }
@@ -610,8 +669,8 @@ function Card({ children }) {
 function Head() {
   const { t } = useLanguage();
   return (
-    <h2 className="flex items-center gap-2 font-mono text-2xs uppercase text-ink-faint">
-      <Handshake size={12} aria-hidden="true" />
+    <h2 className="flex items-center gap-2 text-[15px] font-semibold text-navy">
+      <Handshake size={15} aria-hidden="true" />
       {t("Negotiated settlement · before the arbiter decides")}
     </h2>
   );

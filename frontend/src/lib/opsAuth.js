@@ -256,7 +256,7 @@ export async function settleByAgreementAsArbiter(escrowId, { amountToExporter, a
     throw new Error("VITE_CONTRACT_ADDRESS is not set, so there is no contract to call.");
   }
   const target = escrowTarget(escrowId);
-  if (target.generation !== "v2") throw new Error("Split settlement is only available on V2 escrows.");
+  if (target.generation === "legacy") throw new Error("Split settlement is available on V2 and V3 escrows.");
 
   const cid = String(agreementCid || "").trim();
   if (!cid) {
@@ -271,7 +271,7 @@ export async function settleByAgreementAsArbiter(escrowId, { amountToExporter, a
   } catch {
     throw new Error("The agreed amount is not a whole number of token units.");
   }
-  if (amount <= 0n) {
+  if (amount < 0n || (target.generation === "v2" && amount === 0n)) {
     throw new Error(
       "A zero share is not a split. Use Refund importer, which also decides the bond and any slashing."
     );
@@ -292,6 +292,32 @@ export async function settleByAgreementAsArbiter(escrowId, { amountToExporter, a
         "resolveDisputeByAgreement and cannot settle a split at all."
     );
   }
+  return { transactionHash: hash };
+}
+
+const ARBITER_SPLIT_ABI = [{
+  type: "function", name: "resolveDisputeSplit", stateMutability: "nonpayable",
+  inputs: [
+    { name: "escrowId", type: "uint256" },
+    { name: "amountToExporter", type: "uint256" },
+    { name: "reasoningCid", type: "string" }
+  ], outputs: []
+}];
+
+export async function resolveDisputeSplitAsArbiter(escrowId, amountToExporter, reasoningCid) {
+  if (!session?.walletClient) throw new Error("The ops session is closed. Enter the arbiter key again.");
+  const target = escrowTarget(escrowId);
+  if (target.generation !== "v3") throw new Error("Arbiter-ordered splits require a V3 escrow.");
+  const amount = BigInt(amountToExporter);
+  if (amount <= 0n || !String(reasoningCid || "").trim()) {
+    throw new Error("A positive exporter share and reasoning CID are required.");
+  }
+  const hash = await session.walletClient.writeContract({
+    address: target.address, abi: ARBITER_SPLIT_ABI, functionName: "resolveDisputeSplit",
+    args: [target.id, amount, reasoningCid.trim()]
+  });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error("The arbiter split transaction reverted.");
   return { transactionHash: hash };
 }
 

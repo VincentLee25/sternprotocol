@@ -521,6 +521,7 @@ function SternApp() {
             walletAddress={address}
             particleOwnerAddress={user?.eoaOwnerAddress}
             companyAccessToken={companySession?.accessToken}
+            sternUsername={companySession?.user?.username}
             isOnChainReady={sourceIsLive}
             smartAccountClient={smartAccountClient}
             onRefresh={refresh}

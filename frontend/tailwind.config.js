@@ -12,11 +12,12 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        // Stitch uses Poppins throughout the product; mono stays limited to
-        // CIDs, addresses and transaction references.
+        // Poppins is the single product typeface. Tabular numerals still
+        // distinguish addresses and transaction references without a second
+        // display font appearing across operational panels.
         sans: ["Poppins", "system-ui", "sans-serif"],
         serif: ["Poppins", "system-ui", "sans-serif"],
-        mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"]
+        mono: ["Poppins", "system-ui", "sans-serif"]
       },
       colors: {
         // Primary ramp. navy/beige are the light-mode identities of

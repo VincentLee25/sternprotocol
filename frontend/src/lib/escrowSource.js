@@ -15,7 +15,7 @@ import { MILESTONES } from "./milestones.js";
 
 export const sourceIsLive = api.apiConfigured;
 
-export const sourceLabel = sourceIsLive ? "Live — STERN gateway" : "Demo data";
+export const sourceLabel = sourceIsLive ? "Connected to STERN gateway" : "Demo data";
 const activityCache = new Map();
 const ACTIVITY_CACHE_MS = 120000;
 
@@ -70,6 +70,8 @@ const EVENT_SENTENCE = {
   Refunded: "Funds refunded to the importer",
   DisputeRaised: "Dispute opened, bond locked",
   DisputeResolved: "Arbiter resolved the dispute",
+  DisputeSettledByAgreement: "Trade settled on the parties' agreement",
+  DisputeSettledByArbiter: "Arbiter resolved the dispute with a split",
   VerifierSlashed: "Verifier bond slashed"
 };
 
@@ -128,7 +130,10 @@ function toRow(detail, activity, source) {
     activity: normaliseActivity(activity),
     verified: source === "mock" ? countVerified(detail.milestones) : countCommitted(detail.milestones),
     total: MILESTONES.length,
-    disputeOpen: Boolean(detail.dispute?.open)
+    disputeOpen: Boolean(detail.dispute?.open),
+    // Keep the on-chain dispute record after settlement so its negotiation
+    // thread remains available as a read-only part of the trade history.
+    dispute: detail.dispute || null
   };
 }
 

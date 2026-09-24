@@ -313,6 +313,7 @@ export const requestDisputeInspection = (escrowId, body, token) =>
   identityRequest(`/negotiation/${escrowId}/inspections`, { method: "POST", body, token });
 
 export const getV2Readiness = () => request("/contracts/v2/readiness");
+export const getNewEscrowReadiness = () => request("/contracts/new/readiness");
 
 /** The verdict on a CID: does it resolve, do the bytes hash back to it, is it this e-BL. */
 export const verifyEblCid = (cid, { containerRef, signal } = {}) =>

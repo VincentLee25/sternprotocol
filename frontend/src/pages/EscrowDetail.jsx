@@ -70,7 +70,7 @@ const PERMISSIONS = {
   observer: { release: false, refund: false, dispute: false, vote: false, amend: false }
 };
 
-export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddress, companyAccessToken, isOnChainReady, smartAccountClient, onRefresh, onUpdate, onBack }) {
+export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddress, companyAccessToken, sternUsername, isOnChainReady, smartAccountClient, onRefresh, onUpdate, onBack }) {
   const { t } = useLanguage();
   // Which party you are is read off the escrow, not chosen in the sidebar.
   // The same wallet can be the importer here and the exporter on the next one.
@@ -78,6 +78,7 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
   const [extensionInput, setExtensionInput] = useState("");
+  const [faultTarget, setFaultTarget] = useState(null);
   const [chainMeta, setChainMeta] = useState(null);
   const [chainOracles, setChainOracles] = useState(null);
   const [timelock, setTimelock] = useState(null);
@@ -91,6 +92,7 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
   // fell through to the mock branch and reported settlements that never
   // happened.
   const isChain = isOnChainReady && (escrow.source === "gateway" || escrow.source === "chain");
+  const isV3 = String(escrow.id).startsWith("v3:");
   const verification = escrow.verification;
   const deadlinePassed = escrow.deadline ? Date.now() > new Date(escrow.deadline).getTime() : false;
   const consortium = isChain ? chainOracles || [] : escrow.consortium || defaultConsortium();
@@ -316,6 +318,7 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
         timelock: fresh.timelock,
         releaseEligible: fresh.releaseEligible,
         disputeOpen: fresh.disputeOpen,
+        dispute: fresh.dispute,
         verified: fresh.verified,
         value: fresh.value,
         deadline: fresh.deadline,
@@ -468,6 +471,16 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
 
   async function openDispute() {
     if (isChain) {
+      if (isV3) {
+        if (role !== ROLE.IMPORTER) {
+          fail("Only the importer can open a dispute on this escrow.");
+          return;
+        }
+        const { transactionHash, bond } = await raiseDisputeAsUser(smartAccountClient, escrow.id, "none");
+        await reload();
+        ok(`Dispute opened. ${Number(bond).toLocaleString("id-ID")} bond locked while the parties negotiate.`, transactionHash);
+        return;
+      }
       // A dispute against the escrow as a whole — Milestone.None — which the
       // contract accepts in exactly one state:
       //
@@ -711,7 +724,9 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
                 <TermRow
                   label={t("Timelock")}
                   value={
-                    chainMeta ? `${Math.round(chainMeta.timelock / 3600)}h` : "24h"
+                    timelock?.timelockDurationSeconds
+                      ? formatRemaining(Number(timelock.timelockDurationSeconds))
+                      : t("Loading…")
                   }
                 />
                 {/* Printed as a link, because an address nobody can follow is
@@ -838,70 +853,74 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
             </div>
           ) : null}
 
+          {isOnChainReady ? (
+            <div className="mt-5">
+              <EvidencePanel
+                escrowId={escrow.id}
+                faultInRail
+                faultTarget={faultTarget}
+                smartAccountClient={smartAccountClient}
+                onStateChanged={reload}
+                onBusyChange={setVerifying}
+                canRaiseDispute={!isV3 || role === ROLE.IMPORTER}
+              />
+            </div>
+          ) : null}
+
           {/* While a dispute is open, the two parties can settle it themselves
               instead of waiting for the arbiter's binary call. Placed in this
               column rather than the rail because it is a conversation, not a
               button. */}
-          {isOnChainReady && (escrow.state === "Disputed" || escrow.disputeOpen) ? (
+          {isOnChainReady && (escrow.state === "Disputed" || escrow.disputeOpen || escrow.dispute?.resolved) ? (
             <div className="mt-5">
               <NegotiationPanel
                 escrowId={escrow.id}
                 walletAddress={walletAddress}
                 accessToken={companyAccessToken}
                 escrow={escrow}
-                onStateChanged={reload}
+                currentUsername={sternUsername}
               />
             </div>
           ) : null}
 
           {/* Oracle consortium */}
           <div className="mt-5 overflow-hidden rounded-doc bg-surface shadow-card">
-            <div className="flex items-center justify-between gap-2 border-b border-sky px-6 py-3.5 lg:px-9">
-              <p className="text-2xs uppercase text-ink-faint">
+            <div className="flex items-center justify-between gap-2 px-6 pb-1 pt-5 lg:px-9">
+              <p className="text-[15px] font-semibold text-navy">
                 {t("Verifier institutions")} &nbsp;·&nbsp; {t("one role each")}
               </p>
-              <span className="text-2xs text-ink-faint">{t("bond-secured")}</span>
+              <span className="text-xs text-ink-dim">{t("bond-secured")}</span>
             </div>
-            <ul className="grid gap-px bg-sky/60 sm:grid-cols-3">
+            <ul className="space-y-1 px-5 pb-5 pt-3 lg:px-9">
               {consortium.map((member) => (
                 <li
                   key={member.address || member.name}
-                  className={`px-5 py-4 ${member.revoked ? "bg-state-disputed/5" : "bg-surface"}`}
+                  className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 rounded-lg px-4 py-3 transition-colors duration-200 hover:bg-sky/30 ${member.revoked ? "bg-state-disputed/5" : "odd:bg-sky/15"}`}
                 >
-                  <p className="text-sm font-medium text-navy">{member.name}</p>
+                  <p className="text-[13.5px] font-semibold text-navy">{member.name}</p>
+                  <span
+                    className={`row-span-2 self-start pt-0.5 text-xs font-medium ${
+                      member.revoked ? "text-state-disputed" : member.attested ? "text-state-attested" : "text-ink-dim"
+                    }`}
+                  >
+                    {t(member.revoked ? "revoked" : member.attested ? "attested" : "pending")}
+                  </span>
                   {/* Linked, because "is the verifier actually working?" is a
                       fair question and this is where it gets answered: the
                       explorer shows the wallet's real transactions, its balance,
                       and whether it has been signing proofs at all. */}
-                  {member.address ? (
-                    <AddressLink address={member.address} label={shortAddress(member.address)} />
-                  ) : (
-                    <p className="truncate text-2xs text-ink-faint">{member.descr}</p>
-                  )}
+                  <div className="min-w-0 text-xs text-ink-dim">
+                    {member.address ? <AddressLink address={member.address} label={shortAddress(member.address)} /> : member.descr}
+                    <span className="ml-3 whitespace-nowrap tabular-nums text-teal">{t("bond")} {Number(member.bond).toFixed(2)}</span>
+                  </div>
                   {/* Two different facts, and collapsing them was wrong.
                       `slashCount` is a lifetime figure that never resets, so
                       showing it as the status made a verifier read "SLASHED" on
                       a brand-new escrow it had not touched — as though the first
                       milestone had already failed. The status is about THIS
                       escrow; the strikes are the verifier's own history. */}
-                  <div className="mt-2 flex items-center justify-between gap-2">
-                    <span className="text-2xs tabular-nums text-teal">
-                      {t("bond")} {Number(member.bond).toFixed(2)}
-                    </span>
-                    <span
-                      className={`text-2xs uppercase ${
-                        member.revoked
-                          ? "text-state-disputed"
-                          : member.attested
-                            ? "text-state-attested"
-                            : "text-ink-faint"
-                      }`}
-                    >
-                      {t(member.revoked ? "revoked" : member.attested ? "attested" : "pending")}
-                    </span>
-                  </div>
                   {member.slashes > 0 && !member.revoked ? (
-                    <p className="mt-1.5 text-2xs uppercase text-state-pending">
+                    <p className="col-span-2 mt-1 text-xs text-state-pending">
                       {t("{count} of 3 strikes", { count: member.slashes })}
                       <span className="ml-1 normal-case text-ink-faint">· {t("earlier escrow")}</span>
                     </p>
@@ -917,7 +936,7 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
               panels. Both of these are read-only reference; the rail is for
               things you act on, so they were also in the wrong place by meaning,
               not only by height. */}
-          <div className="mt-5 grid gap-5 md:grid-cols-2">
+          <div className="mt-5 grid items-start gap-5 md:grid-cols-2">
             <Panel title={t("Lifecycle")}>
               <Timeline state={escrow.state} />
               <p className="mt-4 border-t border-sky pt-3 font-serif text-xs leading-relaxed text-ink-dim">
@@ -938,21 +957,20 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
         </div>
 
         {/* ---------- Rail ---------- */}
-        <aside className="flex flex-col gap-5 lg:sticky lg:top-0">
-          {isOnChainReady ? (
-            <EvidencePanel
-              escrowId={escrow.id}
-              smartAccountClient={smartAccountClient}
-              onStateChanged={reload}
-              onBusyChange={setVerifying}
-            />
-          ) : null}
-
+        <aside className="stern-action-rail flex flex-col gap-5 self-start lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto lg:overscroll-contain">
           <Panel title={`${t("Actions")} · ${t(role)}`}>
+            {isV3 && escrow.state === "ArrivedCleared" && timelock?.finalDisputeDeadline ? (
+              <p className="mb-3 bg-sky/30 px-3 py-2.5 font-serif text-xs leading-relaxed text-navy">
+                {t("Importer dispute window closes")}: {new Date(timelock.finalDisputeDeadline).toLocaleString("id-ID")}.
+                {" "}{t(timelock.autoSettlementEnabled
+                  ? "If no dispute is opened, settlement continues automatically."
+                  : "If no dispute is opened, Start timelock becomes available after this window.")}
+              </p>
+            ) : null}
             {/* The contract's own isReleaseEligible, surfaced. Saying "not yet"
                 with the time is the difference between a disabled button and a
                 raw "timelock not elapsed" revert. */}
-            {timelock && !timelock.canRelease ? (
+            {escrow.state === "TimelockActive" && timelock && !timelock.canRelease ? (
               <p className="mb-3 rounded-panel border border-state-pending/40 bg-state-pending/[0.08] px-3 py-2.5 font-serif text-xs leading-relaxed text-state-pending">
                 {t("Timelock running. Release opens")}{" "}
                 {new Date(timelock.timelockReleaseAt).toLocaleString("id-ID")}
@@ -969,7 +987,7 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
               {escrow.state === "ArrivedCleared" ? (
                 <button
                   type="button"
-                  disabled={busy || !permissions.release}
+                  disabled={busy || !permissions.release || (isV3 && Number(timelock?.disputeSecondsRemaining) > 0)}
                   onClick={() => run(startTimelock)}
                   className={`${railBtn} bg-teal/10 text-teal hover:bg-teal/20`}
                 >
@@ -1008,7 +1026,7 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
                   grants, from the party whose funds are frozen. */}
               <button
                 type="button"
-                disabled={busy || terminal || !permissions.refund || !deadlinePassed}
+                disabled={busy || terminal || !permissions.refund || !deadlinePassed || (isV3 && escrow.state === "Disputed")}
                 title={
                   !permissions.refund
                     ? t("Only the importer can claim a refund")
@@ -1024,7 +1042,8 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
               </button>
               <button
                 type="button"
-                disabled={busy || terminal || escrow.state === "Disputed" || !permissions.dispute}
+                disabled={busy || terminal || escrow.state === "Disputed" || !permissions.dispute ||
+                  (isV3 && (role !== ROLE.IMPORTER || !timelock?.canDispute))}
                 onClick={() => run(openDispute)}
                 className={`${railBtn} bg-state-pending/10 text-state-pending hover:bg-state-pending/20`}
               >
@@ -1045,6 +1064,40 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
               </p>
             )}
           </Panel>
+
+          {!terminal ? (
+            <Disclosure title={t("Amendment")} summary={t(escrow.pendingExtension ? "Deadline change awaiting approval" : "Propose or approve a deadline change")}>
+              <p className="text-xs leading-relaxed text-ink-dim">
+                {t("Vessel delayed? The importer or exporter proposes a later deadline and the counterparty approves.")}
+              </p>
+              {escrow.pendingExtension ? (
+                <p className="mt-2.5 rounded-panel bg-teal/10 px-3 py-2 text-xs text-teal">
+                  <span className="capitalize">{t(escrow.pendingExtension.proposer)}</span> {t("proposed")}{" "}
+                  {new Date(escrow.pendingExtension.newDeadline).toLocaleString()}
+                </p>
+              ) : null}
+              <input
+                type="datetime-local"
+                value={extensionInput}
+                onChange={(event) => setExtensionInput(event.target.value)}
+                aria-label={t("New deadline")}
+                className={`${inputClass(false)} mt-2.5 py-2 text-xs`}
+              />
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button type="button" disabled={busy || !permissions.amend}
+                  title={permissions.amend ? undefined : t("Only importer or exporter can amend")}
+                  onClick={() => run(proposeExtension)} className={`${railBtn} bg-beige text-navy hover:bg-sky/50`}>
+                  {t("Propose")}
+                </button>
+                <button type="button" disabled={busy || !permissions.amend}
+                  title={permissions.amend ? undefined : t("Only importer or exporter can amend")}
+                  onClick={() => run(approveExtension)} className={`${railBtn} bg-teal/10 text-teal hover:bg-teal/20`}>
+                  {t("Approve")}
+                </button>
+              </div>
+            </Disclosure>
+          ) : null}
+          <div ref={setFaultTarget} className="empty:hidden" />
 
           {escrow.state === "Disputed" ? (
             <Panel title={t("Dispute · arbiter decision")} tone="pending">
@@ -1097,47 +1150,6 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
                 </button>
               </div>
             </Panel>
-          ) : null}
-
-          {!terminal ? (
-            <Disclosure title={t("Amendment")} summary={t(escrow.pendingExtension ? "Deadline change awaiting approval" : "Propose or approve a deadline change")}>
-              <p className="font-serif text-xs leading-relaxed text-ink-dim">
-                {t("Vessel delayed? The importer or exporter proposes a later deadline and the counterparty approves.")}
-              </p>
-              {escrow.pendingExtension ? (
-                <p className="mt-2.5 rounded-panel bg-teal/10 px-3 py-2 font-serif text-xs text-teal">
-                  <span className="capitalize">{t(escrow.pendingExtension.proposer)}</span> {t("proposed")}{" "}
-                  {new Date(escrow.pendingExtension.newDeadline).toLocaleString()}
-                </p>
-              ) : null}
-              <input
-                type="datetime-local"
-                value={extensionInput}
-                onChange={(event) => setExtensionInput(event.target.value)}
-                aria-label={t("New deadline")}
-                className={`${inputClass(false)} mt-2.5 py-2 text-xs`}
-              />
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  disabled={busy || !permissions.amend}
-                  title={permissions.amend ? undefined : t("Only importer or exporter can amend")}
-                  onClick={() => run(proposeExtension)}
-                  className={`${railBtn} bg-beige text-navy hover:bg-sky/50`}
-                >
-                  {t("Propose")}
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || !permissions.amend}
-                  title={permissions.amend ? undefined : t("Only importer or exporter can amend")}
-                  onClick={() => run(approveExtension)}
-                  className={`${railBtn} bg-teal/10 text-teal hover:bg-teal/20`}
-                >
-                  {t("Approve")}
-                </button>
-              </div>
-            </Disclosure>
           ) : null}
 
         </aside>
@@ -1208,10 +1220,10 @@ function Panel({ title, tone, children }) {
         tone === "pending" ? "bg-state-pending/[0.06]" : "bg-surface"
       }`}
     >
-      <h2 className="border-b border-sky px-5 py-3 text-2xs uppercase text-ink-faint">
+      <h2 className="px-5 pb-1 pt-5 text-[15px] font-semibold text-navy">
         {title}
       </h2>
-      <div className="px-5 py-4">{children}</div>
+      <div className="px-5 pb-5 pt-3">{children}</div>
     </section>
   );
 }
