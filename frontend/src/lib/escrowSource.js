@@ -70,8 +70,6 @@ const EVENT_SENTENCE = {
   Refunded: "Funds refunded to the importer",
   DisputeRaised: "Dispute opened, bond locked",
   DisputeResolved: "Arbiter resolved the dispute",
-  DisputeSettledByAgreement: "Trade settled on the parties' agreement",
-  DisputeSettledByArbiter: "Arbiter resolved the dispute with a split",
   VerifierSlashed: "Verifier bond slashed"
 };
 

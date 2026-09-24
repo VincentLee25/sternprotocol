@@ -24,7 +24,7 @@ import { useLanguage } from "../lib/language.jsx";
 //
 // No verification logic lives here. The gateway has already done the comparison
 // (docs/FRONTEND_HANDOFF_UPDATED.md closing note); this only renders its answer.
-export default function EvidencePanel({ escrowId, smartAccountClient, onStateChanged, onBusyChange, canRaiseDispute = true, faultInRail = false, faultTarget = null }) {
+export default function EvidencePanel({ escrowId, smartAccountClient, onStateChanged, onBusyChange, faultInRail = false, faultTarget = null }) {
   const { t } = useLanguage();
   const [evidence, setEvidence] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -72,7 +72,7 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
   // Trust the gateway's answer, but stop trusting it once its own deadline has
   // passed — measured on the chain's clock, so this withdraws the offer at the
   // same moment the contract would. The contract still has the final say.
-  const stillOpen = canRaiseDispute && opportunity.actionable && (secondsLeft == null || secondsLeft > 0);
+  const stillOpen = opportunity.actionable && (secondsLeft == null || secondsLeft > 0);
 
   // Which milestone a rehearsal should contest, and the fault that will make
   // it disagree. Recomputed each tick so its countdown stays live.
@@ -371,15 +371,6 @@ export default function EvidencePanel({ escrowId, smartAccountClient, onStateCha
 
       {evidence ? (
         <>
-          {evidence.exception?.flagged ? (
-            <div className="mt-4 bg-beige px-3.5 py-3 font-serif text-xs leading-relaxed text-navy">
-              <strong>{t("Verification exception")}</strong>
-              <p className="mt-1 text-ink-dim">{t("The issue is flagged for review. It does not open a dispute automatically. The importer can use Open dispute in Actions while the window is active.")}</p>
-              <ul className="mt-2 list-disc pl-4 text-ink-dim">
-                {evidence.exception.reasons.map((reason, index) => <li key={index}>{t(reason)}</li>)}
-              </ul>
-            </div>
-          ) : null}
           {/* Committed proof vs current source, per milestone. */}
           <ol className="mt-4 divide-y divide-sky/70 border-y border-sky/70">
             {rows.map((row) => (

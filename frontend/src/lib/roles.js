@@ -58,11 +58,8 @@ export function permissionsFor(escrow, address) {
     // showing it to a stranger is noise.
     canRelease: role !== ROLE.OBSERVER && state === "TimelockActive",
     canInitiateTimelock: role !== ROLE.OBSERVER && state === "ArrivedCleared",
-    // V3 gives the importer the formal right to dispute. Earlier contracts
-    // retain their deployed two-party rule for existing escrow records.
-    canRaiseDispute: (String(escrow?.id || "").startsWith("v3:")
-      ? role === ROLE.IMPORTER
-      : [ROLE.IMPORTER, ROLE.EXPORTER].includes(role)) && !escrow?.disputeOpen,
+    // Either side can contest a milestone they believe was signed falsely.
+    canRaiseDispute: [ROLE.IMPORTER, ROLE.EXPORTER].includes(role) && !escrow?.disputeOpen,
     // Resolution belongs to the arbiter, and the arbiter works from the ops
     // surface rather than this one.
     canResolve: false

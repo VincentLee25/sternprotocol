@@ -196,6 +196,7 @@ const id = {
   ,"Connected to the gateway. No escrows have been created yet.": "Terhubung ke gateway. Belum ada escrow yang dibuat."
   ,"Live — STERN gateway": "Langsung — gateway STERN"
   ,"Connected to STERN gateway": "Terhubung ke gateway STERN"
+  ,"This legacy escrow can only release or refund in full. A partial split is available on V2 escrows.": "Escrow lama ini hanya dapat mencairkan atau mengembalikan seluruh dana. Pembagian sebagian tersedia pada escrow V2."
   ,"Monitor escrow value, evidence readiness, and upcoming operational deadlines.": "Pantau nilai escrow, kesiapan bukti, dan batas waktu operasional."
   ,"Across {count} active escrows": "Di {count} escrow aktif"
   ,"{value} bond at risk": "Jaminan {value} berisiko"

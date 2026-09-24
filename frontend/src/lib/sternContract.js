@@ -7,22 +7,18 @@
 import { encodeFunctionData, parseUnits, parseEventLogs, isAddress } from "viem";
 import { publicClient } from "./smartAccount.js";
 import { particleEnabled } from "./particle.js";
-import { getNewEscrowReadiness } from "./sternApi.js";
+import { getV2Readiness } from "./sternApi.js";
 
 export const ESCROW_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "";
 export const V2_ESCROW_ADDRESS = import.meta.env.VITE_V2_CONTRACT_ADDRESS || "0x31a1EbDEaA206ef060747550a235E0B45c99980c";
-export const V3_ESCROW_ADDRESS = import.meta.env.VITE_V3_CONTRACT_ADDRESS || "";
 export const IDRT_ADDRESS = import.meta.env.VITE_IDRT_TOKEN_ADDRESS || "";
 
 export function escrowTarget(reference) {
   const raw = String(reference);
   const v2 = /^v2:(\d+)$/.exec(raw);
-  const v3 = /^v3:(\d+)$/.exec(raw);
   const legacy = /^(\d+)$/.exec(raw);
-  if (!v3 && !v2 && !legacy) throw new Error("Invalid escrow reference.");
-  const address = v3 ? V3_ESCROW_ADDRESS : v2 ? V2_ESCROW_ADDRESS : ESCROW_ADDRESS;
-  if (!isAddress(address)) throw new Error("The escrow contract address for this generation is not configured.");
-  return { address, id: BigInt((v3 || v2 || legacy)[1]), generation: v3 ? "v3" : v2 ? "v2" : "legacy" };
+  if (!v2 && !legacy) throw new Error("Invalid escrow reference.");
+  return { address: v2 ? V2_ESCROW_ADDRESS : ESCROW_ADDRESS, id: BigInt((v2 || legacy)[1]), generation: v2 ? "v2" : "legacy" };
 }
 
 // IDRTDemo.DECIMALS is a compile-time constant of 2 — IDR has no sub-rupiah
@@ -128,12 +124,10 @@ export async function createEscrowOnChain(smartAccountClient, form) {
   }
 
   const value = parseUnits(String(form.value), IDRT_DECIMALS);
-  const readiness = await getNewEscrowReadiness();
-  const generation = readiness.generation || "v2";
-  const destination = generation === "v3" ? V3_ESCROW_ADDRESS : V2_ESCROW_ADDRESS;
-  if (!isAddress(destination)) throw new Error("VITE_V3_CONTRACT_ADDRESS is required for V3 escrow creation.");
+  const destination = V2_ESCROW_ADDRESS;
+  const readiness = await getV2Readiness();
   if (!readiness.ready || readiness.contractAddress.toLowerCase() !== destination.toLowerCase()) {
-    throw new Error(readiness.reason || "New escrow verifiers and bonds are not ready. No funds were locked.");
+    throw new Error("V2 verifiers and bonds are not ready. No funds were locked.");
   }
   const deadlineSeconds = BigInt(Math.floor(new Date(form.globalDeadline).getTime() / 1000));
 
@@ -192,7 +186,7 @@ export async function createEscrowOnChain(smartAccountClient, form) {
   }
 
   return {
-    escrowId: `${generation}:${created.args.escrowId.toString()}`,
+    escrowId: `v2:${created.args.escrowId.toString()}`,
     transactionHash: receipt.receipt.transactionHash
   };
 }

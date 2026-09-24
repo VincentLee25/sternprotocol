@@ -92,7 +92,6 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
   // fell through to the mock branch and reported settlements that never
   // happened.
   const isChain = isOnChainReady && (escrow.source === "gateway" || escrow.source === "chain");
-  const isV3 = String(escrow.id).startsWith("v3:");
   const verification = escrow.verification;
   const deadlinePassed = escrow.deadline ? Date.now() > new Date(escrow.deadline).getTime() : false;
   const consortium = isChain ? chainOracles || [] : escrow.consortium || defaultConsortium();
@@ -318,7 +317,6 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
         timelock: fresh.timelock,
         releaseEligible: fresh.releaseEligible,
         disputeOpen: fresh.disputeOpen,
-        dispute: fresh.dispute,
         verified: fresh.verified,
         value: fresh.value,
         deadline: fresh.deadline,
@@ -471,16 +469,6 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
 
   async function openDispute() {
     if (isChain) {
-      if (isV3) {
-        if (role !== ROLE.IMPORTER) {
-          fail("Only the importer can open a dispute on this escrow.");
-          return;
-        }
-        const { transactionHash, bond } = await raiseDisputeAsUser(smartAccountClient, escrow.id, "none");
-        await reload();
-        ok(`Dispute opened. ${Number(bond).toLocaleString("id-ID")} bond locked while the parties negotiate.`, transactionHash);
-        return;
-      }
       // A dispute against the escrow as a whole — Milestone.None — which the
       // contract accepts in exactly one state:
       //
@@ -723,11 +711,7 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
                 />
                 <TermRow
                   label={t("Timelock")}
-                  value={
-                    timelock?.timelockDurationSeconds
-                      ? formatRemaining(Number(timelock.timelockDurationSeconds))
-                      : t("Loading…")
-                  }
+                  value={chainMeta ? formatRemaining(Number(chainMeta.timelock)) : t("Loading…")}
                 />
                 {/* Printed as a link, because an address nobody can follow is
                     just a long string. The gateway serves the bytes from the
@@ -862,7 +846,6 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
                 smartAccountClient={smartAccountClient}
                 onStateChanged={reload}
                 onBusyChange={setVerifying}
-                canRaiseDispute={!isV3 || role === ROLE.IMPORTER}
               />
             </div>
           ) : null}
@@ -959,14 +942,6 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
         {/* ---------- Rail ---------- */}
         <aside className="stern-action-rail flex flex-col gap-5 self-start lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto lg:overscroll-contain">
           <Panel title={`${t("Actions")} · ${t(role)}`}>
-            {isV3 && escrow.state === "ArrivedCleared" && timelock?.finalDisputeDeadline ? (
-              <p className="mb-3 bg-sky/30 px-3 py-2.5 font-serif text-xs leading-relaxed text-navy">
-                {t("Importer dispute window closes")}: {new Date(timelock.finalDisputeDeadline).toLocaleString("id-ID")}.
-                {" "}{t(timelock.autoSettlementEnabled
-                  ? "If no dispute is opened, settlement continues automatically."
-                  : "If no dispute is opened, Start timelock becomes available after this window.")}
-              </p>
-            ) : null}
             {/* The contract's own isReleaseEligible, surfaced. Saying "not yet"
                 with the time is the difference between a disabled button and a
                 raw "timelock not elapsed" revert. */}
@@ -987,7 +962,7 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
               {escrow.state === "ArrivedCleared" ? (
                 <button
                   type="button"
-                  disabled={busy || !permissions.release || (isV3 && Number(timelock?.disputeSecondsRemaining) > 0)}
+                  disabled={busy || !permissions.release}
                   onClick={() => run(startTimelock)}
                   className={`${railBtn} bg-teal/10 text-teal hover:bg-teal/20`}
                 >
@@ -1026,7 +1001,7 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
                   grants, from the party whose funds are frozen. */}
               <button
                 type="button"
-                disabled={busy || terminal || !permissions.refund || !deadlinePassed || (isV3 && escrow.state === "Disputed")}
+                disabled={busy || terminal || !permissions.refund || !deadlinePassed}
                 title={
                   !permissions.refund
                     ? t("Only the importer can claim a refund")
@@ -1042,8 +1017,7 @@ export default function EscrowDetail({ escrow, walletAddress, particleOwnerAddre
               </button>
               <button
                 type="button"
-                disabled={busy || terminal || escrow.state === "Disputed" || !permissions.dispute ||
-                  (isV3 && (role !== ROLE.IMPORTER || !timelock?.canDispute))}
+                disabled={busy || terminal || escrow.state === "Disputed" || !permissions.dispute}
                 onClick={() => run(openDispute)}
                 className={`${railBtn} bg-state-pending/10 text-state-pending hover:bg-state-pending/20`}
               >

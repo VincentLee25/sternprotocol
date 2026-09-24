@@ -17,8 +17,6 @@ const {
   getActivity,
   getVerifiers,
   getV2Readiness,
-  getNewEscrowReadiness,
-  advanceReadyV3Settlements,
   verifyAndSubmitAll,
   chainNow,
   getProvider
@@ -173,8 +171,7 @@ app.get("/health", async (_req, res, next) => {
       contracts: {
         legacy: config.legacyContractAddress || null,
         v2: config.v2ContractAddress || null,
-        ...(config.v3ContractAddress ? { v3: config.v3ContractAddress } : {}),
-        newEscrowContract: config.v3ContractAddress || config.v2ContractAddress || null
+        newEscrowContract: config.v2ContractAddress || null
       },
       // Whether the e-BL is being verified for real or falling back to the
       // placeholder check. Worth having on /health: it is the difference
@@ -305,9 +302,6 @@ app.get("/verifiers", async (_req, res, next) => {
 });
 app.get("/contracts/v2/readiness", async (_req, res, next) => {
   try { res.json(await getV2Readiness()); } catch (error) { next(error); }
-});
-app.get("/contracts/new/readiness", async (_req, res, next) => {
-  try { res.json(await getNewEscrowReadiness()); } catch (error) { next(error); }
 });
 
 
@@ -581,10 +575,8 @@ app.get("/negotiation/:escrowId", async (req, res, next) => {
 app.get("/negotiation/:escrowId/verify/:proposalId", async (req, res, next) => {
   try {
     const agreement = await negotiation.acceptedAgreement(req.params.escrowId, req.params.proposalId);
-    const amountToExporter = agreement.outcome === "release_to_exporter"
-      ? agreement.contractValue : agreement.outcome === "refund_to_importer" ? "0" : agreement.amountToExporter;
     res.json({ agreementId: agreement.proposalId, outcome: agreement.outcome,
-      amountToExporter, agreementCid: agreement.agreementCid });
+      amountToExporter: agreement.amountToExporter, agreementCid: agreement.agreementCid });
   } catch (error) { next(error); }
 });
 
@@ -676,20 +668,6 @@ app.get("/oracle/evidence/:contractId", async (req, res, next) => {
       .filter(([, item]) => item.discrepancyAfterCommit)
       .map(([milestone, item]) => ({ milestone, ...item }));
 
-    let v3Window = null;
-    if (String(req.params.contractId).startsWith("v3:")) {
-      try { v3Window = await getTimelock(req.params.contractId); } catch { /* Evidence stays readable during an RPC outage. */ }
-    }
-    if (v3Window?.disputeDeadlineUnix) {
-      for (const entry of Object.values(comparison)) {
-        entry.challengeDeadline = v3Window.disputeDeadline;
-        entry.challengeDeadlineUnix = v3Window.disputeDeadlineUnix;
-      }
-    }
-    const committedDiscrepanciesInWindow = Object.entries(comparison)
-      .filter(([, item]) => item.discrepancyAfterCommit)
-      .map(([milestone, item]) => ({ milestone, ...item }));
-
     // Against block.timestamp, not this machine's clock: the contract decides
     // whether a window is open, and a few seconds of drift here either hides a
     // dispute the user could still raise, or offers one that reverts.
@@ -704,30 +682,18 @@ app.get("/oracle/evidence/:contractId", async (req, res, next) => {
     try {
       const now = await chainNow(getProvider());
       chainNowUnix = now;
-      actionable = v3Window
-        ? Boolean(v3Window.canDispute && committedDiscrepanciesInWindow.length)
-        : committedDiscrepancies.some(
-            (item) => item.challengeDeadlineUnix && now <= Number(item.challengeDeadlineUnix)
-          );
+      actionable = committedDiscrepancies.some(
+        (item) => item.challengeDeadlineUnix && now <= Number(item.challengeDeadlineUnix)
+      );
     } catch {
       actionable = false;
     }
 
-    const exceptionReasons = [
-      ...status.discrepancies.map(item => item.label || item.field || item.source || "Evidence check failed"),
-      ...(status.verification.eblCheckable === false ? ["Bill of lading could not be checked"] : []),
-      ...(status.verification.customsDocsAttached && status.verification.customsDocsCheckable === false
-        ? ["Attached customs documents could not be checked"] : []),
-      ...Object.entries(status.clauses?.milestones || {})
-        .filter(([, value]) => value.blocked)
-        .map(([milestone]) => `Interpretive condition pending or not met: ${milestone}`)
-    ];
     res.json({
       ...status,
-      exception: { flagged: exceptionReasons.length > 0, reasons: exceptionReasons },
       onchain,
       comparison,
-      committedDiscrepancies: committedDiscrepanciesInWindow,
+      committedDiscrepancies,
       // The chain's clock, so the browser can stop using its own.
       //
       // Every challengeDeadline in this payload is block.timestamp + the
@@ -745,9 +711,7 @@ app.get("/oracle/evidence/:contractId", async (req, res, next) => {
       disputeDemo: {
         actionable,
         reason: actionable
-          ? v3Window
-            ? "An evidence exception is flagged. The importer may choose to open a dispute within the trade dispute window."
-            : "A committed on-chain proof conflicts with the current source result and the challenge window is still open. The user may open a dispute."
+          ? "A committed on-chain proof conflicts with the current source result and the challenge window is still open. The user may open a dispute."
           : committedDiscrepancies.length > 0
             ? "A committed on-chain proof conflicts with the current source result, but the applicable challenge window has closed."
             : "No committed proof currently conflicts with the current source result."
@@ -894,19 +858,6 @@ async function start() {
     const server = app.listen(config.port, () => {
       console.log(`STERN oracle gateway listening on http://localhost:${config.port}`);
     });
-    if (config.v3ContractAddress && config.arbiterPrivateKey) {
-      let running = false;
-      const tick = async () => {
-        if (running) return;
-        running = true;
-        try { await advanceReadyV3Settlements(); }
-        catch (error) { console.error(`V3 settlement keeper: ${error.shortMessage || error.message}`); }
-        finally { running = false; }
-      };
-      const interval = setInterval(tick, 15000);
-      server.on("close", () => clearInterval(interval));
-      tick();
-    }
     server.on("error", async (error) => {
       if (error.code === "EADDRINUSE") {
         console.error(`Port ${config.port} is already in use. Stop the existing backend process or set PORT to another value.`);

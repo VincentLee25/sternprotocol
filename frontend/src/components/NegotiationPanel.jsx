@@ -213,7 +213,7 @@ export default function NegotiationPanel({ escrowId, walletAddress, accessToken,
       {!splitExecutable ? (
         // Said before anyone proposes a split, not after both have signed one.
         <p className="mt-3 border-l-2 border-state-pending pl-3 font-serif text-sm leading-relaxed text-state-pending">
-          {t("This legacy escrow can only release or refund in full. A partial split is available on V2 and V3 escrows.")}{" "}
+          {t("This legacy escrow can only release or refund in full. A partial split is available on V2 escrows.")}{" "}
           <code className="font-mono text-xs">resolveDisputeByAgreement()</code>.
         </p>
       ) : null}

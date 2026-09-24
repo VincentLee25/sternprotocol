@@ -7,7 +7,6 @@ import {
   arbitratedBy,
   signOpsMessage,
   resolveDisputeAsArbiter,
-  resolveDisputeSplitAsArbiter,
   settleByAgreementAsArbiter
 } from "../lib/opsAuth.js";
 import ClausePanel from "../components/ClausePanel.jsx";
@@ -67,24 +66,28 @@ function OpsLogin({ onOpen, onExit }) {
   }
 
   return (
-    <div className="stern-workspace-shell stern-ops stern-ops-login flex min-h-dvh items-center justify-center p-5 sm:p-8">
-      <div className="stern-ops-access w-full max-w-[560px] p-6 sm:p-9">
-        <div className="mb-10 flex items-center justify-between gap-4"><span className="stern-ops-wordmark">STERN</span><div className="flex gap-2"><LanguageToggle compact /><ThemeToggle /></div></div>
+    <div className="stern-workspace-shell flex min-h-dvh items-center justify-center p-5 sm:p-8">
+      <div className="stern-workspace-card w-full max-w-md rounded-doc bg-surface p-6 shadow-card sm:p-8">
+        <div className="mb-6 flex justify-end gap-2"><LanguageToggle compact /><ThemeToggle /></div>
         <button
           type="button"
           onClick={onExit}
-          className="stern-ops-back mb-8"
+          className="mb-6 flex cursor-pointer items-center gap-1.5 text-sm text-ink-dim transition-colors duration-150 hover:text-navy"
         >
           <ArrowLeft size={14} aria-hidden="true" />
           {t("Back to STERN")}
         </button>
 
-        <p className="stern-ops-kicker">{t("Operations")}</p>
-        <h1 className="stern-ops-access-title">{t("Arbiter console")}</h1>
-        <p className="stern-ops-access-copy">{t("Open the escrows appointed to your institutional key, review interpretive clauses, and sign an accountable decision.")}</p>
+        <p className="text-2xs uppercase tracking-macro text-teal">{t("Operations")}</p>
+        <h1 className="mt-3 text-[30px] font-medium leading-tight tracking-display text-navy">
+          {t("Arbiter & admin console")}
+        </h1>
+        <p className="mt-3 font-serif text-sm leading-relaxed text-ink-dim">
+          {t("Institutional keys sign in here, not through Particle. Signature checks stay on plain ecrecover, and an arbiter needs a key it is accountable for rather than one recoverable by email.")}
+        </p>
 
         <form onSubmit={submit} className="mt-7">
-          <label htmlFor="opskey" className="stern-ops-field-label">
+          <label htmlFor="opskey" className="text-2xs uppercase text-ink-dim">
             {t("Private key")}
           </label>
           <input
@@ -95,11 +98,11 @@ function OpsLogin({ onOpen, onExit }) {
             placeholder="0x…"
             spellCheck="false"
             autoComplete="off"
-            className="stern-ops-key-input"
+            className="mt-2 w-full rounded-panel border border-sky bg-surface-soft px-3.5 py-2.5 text-sm text-navy placeholder:text-ink-faint focus:border-teal focus:outline-none"
           />
 
           {error ? (
-            <p role="alert" className="stern-ops-alert stern-ops-alert-error mt-4">
+            <p role="alert" className="mt-3 rounded-panel border border-state-disputed/45 bg-state-disputed/10 px-3.5 py-2.5 font-serif text-xs leading-relaxed text-state-disputed">
               {t(error)}
             </p>
           ) : null}
@@ -107,7 +110,7 @@ function OpsLogin({ onOpen, onExit }) {
           <button
             type="submit"
             disabled={busy || !key.trim()}
-            className="stern-ops-primary-action mt-5 w-full"
+            className="mt-5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-navy py-3 text-sm font-medium text-white transition-opacity duration-150 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <KeyRound size={14} aria-hidden="true" />}
             {t(busy ? "Checking roles on chain…" : "Open console")}
@@ -116,12 +119,12 @@ function OpsLogin({ onOpen, onExit }) {
 
         {/* Stated plainly rather than buried. An operator should know exactly
             what happens to the key they just typed. */}
-        <div className="stern-ops-access-note mt-8">
-          <p className="flex items-center gap-1.5 text-xs font-semibold text-navy">
+        <div className="mt-7 rounded-doc border border-state-pending/40 bg-state-pending/[0.08] p-4">
+          <p className="flex items-center gap-1.5 text-2xs uppercase text-state-pending">
             <AlertTriangle size={12} aria-hidden="true" />
             {t("What happens to this key")}
           </p>
-          <ul className="mt-2.5 space-y-1.5 text-sm leading-relaxed text-ink-dim">
+          <ul className="mt-2.5 space-y-1.5 font-serif text-xs leading-relaxed text-ink-dim">
             <li>{t("Held in memory for this tab only. A reload wipes it.")}</li>
             <li>{t("Never stored, never put in a URL, never sent to the backend.")}</li>
             <li>{t("Signing happens locally in your browser.")}</li>
@@ -183,30 +186,30 @@ function OpsDashboard({ session, onClose, onExit }) {
   }
 
   return (
-    <div className="stern-workspace-shell stern-ops min-h-dvh p-5 sm:p-6 lg:p-10">
-      <div className="stern-workspace-page mx-auto max-w-[1320px]">
-      <header className="stern-ops-masthead mb-8">
+    <div className="stern-workspace-shell min-h-dvh p-5 sm:p-6 lg:p-10">
+      <div className="stern-workspace-page mx-auto max-w-[1480px]">
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="stern-ops-kicker">{t("Operations console")}</p>
-          <h1 className="stern-ops-title">
+          <p className="text-2xs uppercase text-ink-faint">{t("Operations console")}</p>
+          <h1 className="mt-1.5 text-[28px] font-bold leading-none tracking-display text-navy">
             {t(session.isAdmin ? "Arbiter & admin" : "Arbiter")}
           </h1>
-          <p className="stern-ops-identity">{session.address}</p>
+          <p className="mt-2 font-mono text-xs text-ink-dim">{session.address}</p>
         </div>
-        <div className="stern-ops-actions">
+        <div className="flex items-center gap-2.5">
           <LanguageToggle compact />
           <ThemeToggle />
           <button
             type="button"
             onClick={onExit}
-            className="stern-ops-quiet-action"
+            className="cursor-pointer rounded-panel border border-sky bg-surface px-5 py-2.5 text-[13px] font-medium text-navy transition-colors duration-150 hover:border-teal/40"
           >
             {t("Back to STERN")}
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="stern-ops-primary-action"
+            className="flex cursor-pointer items-center gap-2 rounded-panel bg-navy px-5 py-2.5 text-[13px] font-medium text-beige transition-colors duration-150 hover:bg-teal-solid"
           >
             <LogOut size={13} aria-hidden="true" />
             {t("End session")}
@@ -215,26 +218,28 @@ function OpsDashboard({ session, onClose, onExit }) {
       </header>
 
       {session.adminCheckFailed ? (
-        <p className="stern-ops-alert stern-ops-alert-warning mb-5">
+        <p className="mb-5 rounded-panel border border-state-pending/40 bg-state-pending/10 px-4 py-3 font-serif text-xs leading-relaxed text-state-pending">
           {t("Signed in, but the admin role could not be checked:")} {session.adminCheckFailed} {t("This is a connectivity problem, not a permissions one.")}
         </p>
       ) : null}
 
       {error ? (
-        <p role="alert" className="stern-ops-alert stern-ops-alert-error mb-5">
+        <p role="alert" className="mb-5 rounded-panel border border-state-disputed/40 bg-state-disputed/10 px-4 py-3 font-serif text-xs text-state-disputed">
           {error}
         </p>
       ) : null}
 
       {!sourceIsLive ? (
-        <p className="stern-ops-alert stern-ops-alert-info mb-5">
+        <p className="mb-5 rounded-panel bg-sky/25 px-4 py-3 font-serif text-xs leading-relaxed text-ink-dim">
           {t("No gateway configured, so this console has nothing live to read. Set VITE_ORACLE_API.")}
         </p>
       ) : null}
 
-      <div className="stern-ops-layout">
-        <section className="stern-ops-ledger">
-          <div className="stern-ops-section-heading"><div><p className="stern-ops-kicker">{t("Appointed cases")}</p><h2>{t("Escrows you arbitrate")}</h2></div><span className="stern-ops-count">{mine.length}</span></div>
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <section className="stern-workspace-card rounded-doc bg-surface p-6 shadow-card">
+          <h2 className="text-2xs uppercase text-ink-faint">
+            {t("Escrows you arbitrate")} ({mine.length})
+          </h2>
 
           {loading ? (
             <p className="mt-3 flex items-center gap-2 font-serif text-sm text-ink-dim">
@@ -283,14 +288,13 @@ function OpsDashboard({ session, onClose, onExit }) {
               </div>
             )
           ) : (
-            <ul className="stern-ops-case-list">
+            <ul className="mt-3 divide-y divide-sky">
               {mine.map((e) => (
                 <li key={e.id}>
                   <button
                     type="button"
                     onClick={() => setSelectedEscrow(e)}
-                    aria-label={`${t("Open escrow")} ${e.id}`}
-                    className="stern-ops-case-row"
+                    className="flex w-full cursor-pointer items-baseline justify-between gap-4 py-3 text-left transition-colors duration-150 hover:bg-sky/15"
                   >
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-navy">{e.commodity}</p>
@@ -315,9 +319,11 @@ function OpsDashboard({ session, onClose, onExit }) {
               authority to decide — sending them to a backend service was the
               console refusing to do the one thing it exists for. */}
           {disputed.length > 0 ? (
-            <div className="stern-ops-decisions">
-              <div className="stern-ops-section-heading"><div><p className="stern-ops-kicker text-state-disputed">{t("Action required")}</p><h3>{t("Awaiting your decision")}</h3></div><span className="stern-ops-count stern-ops-count-alert">{disputed.length}</span></div>
-              <ul className="mt-4 space-y-3">
+            <div className="mt-5 border-t border-sky pt-5">
+              <h3 className="text-2xs uppercase text-state-disputed">
+                {t("Awaiting your decision")} ({disputed.length})
+              </h3>
+              <ul className="mt-3 space-y-4">
                 {disputed.map((e) => (
                   <ResolveCard key={e.id} escrow={e} onResolved={() => load()} />
                 ))}
@@ -326,20 +332,18 @@ function OpsDashboard({ session, onClose, onExit }) {
           ) : null}
         </section>
 
-        <aside className="stern-ops-rail">
-          <section className="stern-ops-rail-section">
-            <p className="stern-ops-kicker">{t("Authority")}</p>
-            <h2>{t("Your roles")}</h2>
-            <ul className="mt-4 space-y-3 text-sm">
+        <aside className="flex flex-col gap-5">
+          <section className="stern-workspace-card rounded-doc bg-surface p-6 shadow-card">
+            <h2 className="text-2xs uppercase text-ink-faint">{t("Your roles")}</h2>
+            <ul className="mt-3 space-y-2 text-sm">
               <Row label={t("Contract admin")} ok={session.isAdmin} />
               <Row label={t("Arbiter on escrows")} ok={mine.length > 0} note={String(mine.length)} />
             </ul>
           </section>
 
           {status ? (
-            <section className="stern-ops-rail-section stern-ops-rail-health">
-              <p className="stern-ops-kicker">{t("Live service")}</p>
-              <h2>{t("Oracle health")}</h2>
+            <section className="stern-workspace-card rounded-doc bg-surface p-6 shadow-card">
+              <h2 className="text-2xs uppercase text-ink-faint">{t("Oracle health")}</h2>
               <dl className="mt-3 space-y-1.5 text-2xs">
                 {status.chainId != null ? <Term label={t("Chain")} value={String(status.chainId)} /> : null}
                 {status.contractAddress ? <Term label={t("Contract")} value={shortAddress(status.contractAddress)} /> : null}
@@ -389,43 +393,43 @@ function OpsEscrowDetail({ escrow, session, onBack, onReviewRecorded }) {
   }, [onReviewRecorded]);
 
   return (
-    <div className="stern-workspace-shell stern-ops min-h-dvh p-5 sm:p-6 lg:p-10">
-      <div className="stern-workspace-page mx-auto max-w-[1180px]">
-        <header className="stern-ops-masthead mb-8">
+    <div className="stern-workspace-shell min-h-dvh p-5 sm:p-6 lg:p-10">
+      <div className="stern-workspace-page mx-auto max-w-[1120px]">
+        <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div>
             <button
               type="button"
               onClick={onBack}
-              className="stern-ops-back"
+              className="flex cursor-pointer items-center gap-1.5 text-sm text-ink-dim transition-colors duration-150 hover:text-navy"
             >
               <ArrowLeft size={14} aria-hidden="true" />
               {t("Back to arbiter escrows")}
             </button>
-            <p className="stern-ops-kicker mt-6">{t("Arbiter review")}</p>
-            <h1 className="stern-ops-title">
+            <p className="mt-5 text-2xs uppercase text-ink-faint">{t("Arbiter review")}</p>
+            <h1 className="mt-1.5 text-[28px] font-bold leading-none tracking-display text-navy">
               {escrow.commodity}
             </h1>
-            <p className="stern-ops-identity">
+            <p className="mt-2 font-mono text-xs text-ink-dim">
               &#8470; {String(escrow.id).padStart(4, "0")} · {escrow.containerRef}
             </p>
           </div>
-          <div className="stern-ops-actions">
+          <div className="flex items-center gap-2.5">
             <LanguageToggle compact />
             <ThemeToggle />
           </div>
         </header>
 
         {error ? (
-          <p role="alert" className="stern-ops-alert stern-ops-alert-error mb-5">
+          <p role="alert" className="mb-5 rounded-panel border border-state-disputed/40 bg-state-disputed/10 px-4 py-3 font-serif text-xs leading-relaxed text-state-disputed">
             {error}
           </p>
         ) : null}
 
-        <div className="stern-ops-detail-layout">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
           <div className="space-y-5">
-            <section className="stern-ops-trade-record">
-              <div className="stern-ops-section-heading"><div><p className="stern-ops-kicker">{t("Trade record")}</p><h2>{t("Review context")}</h2></div></div>
-              <dl className="stern-ops-record-grid">
+            <section className="stern-workspace-card rounded-doc bg-surface p-5 shadow-card lg:p-6">
+              <p className="text-2xs uppercase text-ink-faint">{t("Trade record")}</p>
+              <dl className="mt-4 grid gap-3 sm:grid-cols-2">
                 <Term label={t("Escrow state")} value={t(escrow.state)} />
                 <Term label={t("Escrow value")} value={`${Number(escrow.value).toLocaleString("id-ID")} ${CURRENCY_LABEL}`} />
                 <Term label={t("Container")} value={escrow.containerRef || t("not stated")} />
@@ -441,12 +445,12 @@ function OpsEscrowDetail({ escrow, session, onBack, onReviewRecorded }) {
             />
           </div>
 
-          <aside className="stern-ops-authority">
-            <p className="stern-ops-kicker">{t("Review authority")}</p>
-            <p className="mt-3 text-sm leading-relaxed text-ink-dim">
+          <aside className="stern-workspace-card h-fit rounded-doc bg-surface p-5 shadow-card lg:p-6">
+            <p className="text-2xs uppercase text-ink-faint">{t("Review authority")}</p>
+            <p className="mt-3 font-serif text-sm leading-relaxed text-ink-dim">
               {t("This Ops session can review only clauses that name this arbiter address. Your verdict and written reason are recorded against the pinned instrument.")}
             </p>
-            <p className="stern-ops-identity mt-5">{session.address}</p>
+            <p className="mt-4 font-mono text-2xs text-ink-faint">{session.address}</p>
           </aside>
         </div>
       </div>
@@ -470,7 +474,6 @@ function OpsEscrowDetail({ escrow, session, onBack, onReviewRecorded }) {
 function ResolveCard({ escrow, onResolved }) {
   const { t } = useLanguage();
   const [releaseToExporter, setReleaseToExporter] = useState(false);
-  const [splitBps, setSplitBps] = useState(null);
   const [reasoningCid, setReasoningCid] = useState("");
   const [slashVerifier, setSlashVerifier] = useState(false);
   const [bondFrivolous, setBondFrivolous] = useState(false);
@@ -500,7 +503,7 @@ function ResolveCard({ escrow, onResolved }) {
       // before the institutional arbiter signs. Never trust displayed amounts.
       const verified = await verifyDisputeAgreement(escrow.id, agreement.proposalId);
       const res =
-        (verified.outcome === "split" || String(escrow.id).startsWith("v3:"))
+        verified.outcome === "split"
           ? await settleByAgreementAsArbiter(escrow.id, {
               amountToExporter: verified.amountToExporter,
               agreementCid: verified.agreementCid
@@ -527,16 +530,12 @@ function ResolveCard({ escrow, onResolved }) {
     setBusy(true);
     setError("");
     try {
-      const total = BigInt(escrow.contractValue || 0);
-      const share = splitBps == null ? 0n : total * BigInt(splitBps) / 10000n;
-      if (splitBps != null && (share <= 0n || share >= total)) {
-        throw new Error("Choose a split between 0.01% and 99.99% of the escrow value.");
-      }
-      const res = splitBps != null
-        ? await resolveDisputeSplitAsArbiter(escrow.id, share, reasoningCid)
-        : await resolveDisputeAsArbiter(escrow.id, {
-            releaseToExporter, reasoningCid, slashVerifier, bondFrivolous
-          });
+      const res = await resolveDisputeAsArbiter(escrow.id, {
+        releaseToExporter,
+        reasoningCid,
+        slashVerifier,
+        bondFrivolous
+      });
       setDone(res);
       await onResolved?.();
     } catch (err) {
@@ -548,12 +547,11 @@ function ResolveCard({ escrow, onResolved }) {
 
   if (done) {
     return (
-      <li className="stern-ops-resolution stern-ops-resolution-done">
+      <li className="rounded-panel border border-state-attested/40 bg-state-attested/10 px-4 py-3">
         <p className="font-serif text-sm text-state-attested">
           {done.agreed
             ? t("Settled on the agreement the parties reached themselves.")
-            : splitBps != null ? t("Resolved with a split set by the arbiter.")
-              : t("Resolved. Funds went to the {party}.", { party: t(releaseToExporter ? "exporter" : "importer") })}
+            : t("Resolved. Funds went to the {party}.", { party: t(releaseToExporter ? "exporter" : "importer") })}
         </p>
         <span className="mt-1 block"><TxLink hash={done.transactionHash} /></span>
       </li>
@@ -561,7 +559,7 @@ function ResolveCard({ escrow, onResolved }) {
   }
 
   return (
-    <li className="stern-ops-resolution">
+    <li className="rounded-panel border border-state-disputed/35 bg-state-disputed/[0.05] px-4 py-4">
       <p className="text-sm font-medium text-navy">{escrow.commodity}</p>
       <p className="font-mono text-2xs text-ink-faint">
         &#8470; {String(escrow.id).padStart(4, "0")} ·{" "}
@@ -574,7 +572,7 @@ function ResolveCard({ escrow, onResolved }) {
           the decision rather than beside it. A split the deployed contract
           cannot execute says so instead of offering a button that reverts. */}
       {agreement ? (
-        <div className="stern-ops-agreement mt-4">
+        <div className="mt-3.5 rounded-panel border border-teal/40 bg-teal/[0.06] px-3 py-3">
           <p className="font-mono text-2xs uppercase text-teal">
             {t("The parties agreed")} · {new Date(agreement.agreedAt).toLocaleString("id-ID")}
           </p>
@@ -601,7 +599,7 @@ function ResolveCard({ escrow, onResolved }) {
               type="button"
               onClick={executeAgreement}
               disabled={busy}
-              className="stern-ops-primary-action mt-3 w-full"
+              className="mt-2.5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-panel bg-teal-solid py-2.5 text-xs font-medium text-beige transition-colors duration-150 hover:bg-navy disabled:cursor-not-allowed disabled:opacity-50"
             >
               {busy ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : null}
               {t(busy ? "Signing with your key…" : "Execute their agreement")}
@@ -627,31 +625,17 @@ function ResolveCard({ escrow, onResolved }) {
             <button
               key={String(opt.v)}
               type="button"
-              onClick={() => { setReleaseToExporter(opt.v); setSplitBps(null); }}
-              className={`stern-ops-decision-option ${
-                splitBps == null && releaseToExporter === opt.v
-                  ? "is-active"
-                  : ""
+              onClick={() => setReleaseToExporter(opt.v)}
+              className={`cursor-pointer rounded-panel border px-3 py-2 text-xs font-medium transition-colors duration-150 ${
+                releaseToExporter === opt.v
+                  ? "border-navy bg-navy text-beige"
+                  : "border-sky bg-surface text-navy hover:border-teal/40"
               }`}
             >
               {t(opt.label)}
             </button>
           ))}
-          {String(escrow.id).startsWith("v3:") ? (
-            <button type="button" onClick={() => { setSplitBps(7000); setSlashVerifier(false); setBondFrivolous(false); }}
-              className={`stern-ops-decision-option col-span-2 ${splitBps != null ? "is-active" : ""}`}>
-              {t("Split based on evidence")}
-            </button>
-          ) : null}
         </div>
-        {splitBps != null ? (
-          <label className="mt-3 block text-xs text-navy">
-            {t("Exporter share (%)")}
-            <input type="number" min="0.01" max="99.99" step="0.01" value={(splitBps / 100).toFixed(2)}
-              onChange={event => setSplitBps(Math.round(Number(event.target.value) * 100))}
-              className="stern-ops-key-input mt-1" />
-          </label>
-        ) : null}
       </fieldset>
 
       <label className="mt-3 block text-2xs uppercase text-ink-faint">
@@ -660,11 +644,11 @@ function ResolveCard({ escrow, onResolved }) {
           value={reasoningCid}
           onChange={(event) => setReasoningCid(event.target.value)}
           placeholder={t("bafy… — the contract refuses a decision without one")}
-          className="stern-ops-key-input mt-1 font-mono text-xs normal-case"
+          className="mt-1 block w-full rounded-panel border border-sky bg-surface px-3 py-2 font-mono text-xs normal-case text-navy"
         />
       </label>
 
-      {splitBps == null ? <div className="mt-3 space-y-2">
+      <div className="mt-3 space-y-2">
         <label className="flex items-start gap-2 font-serif text-xs leading-relaxed text-ink-dim">
           <input
             type="checkbox"
@@ -691,7 +675,7 @@ function ResolveCard({ escrow, onResolved }) {
             <span className="block text-ink-faint">{t("Otherwise it returns to whoever raised it")}</span>
           </span>
         </label>
-      </div> : null}
+      </div>
 
       {error ? (
         <p role="alert" className="mt-3 font-serif text-xs leading-relaxed text-state-disputed">
@@ -703,7 +687,7 @@ function ResolveCard({ escrow, onResolved }) {
         type="button"
         onClick={submit}
         disabled={busy || !reasoningCid.trim()}
-        className="stern-ops-primary-action mt-4 w-full"
+        className="mt-3.5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-panel bg-navy py-2.5 text-xs font-medium text-beige transition-colors duration-150 hover:bg-teal-solid disabled:cursor-not-allowed disabled:opacity-50"
       >
         {busy ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : null}
         {t(busy ? "Signing with your key…" : "Sign decision")}
@@ -717,7 +701,11 @@ function Row({ label, ok, note }) {
   return (
     <li className="flex items-center justify-between gap-3">
       <span className="text-navy">{label}</span>
-      <span className={`stern-ops-role-state ${ok ? "is-active" : ""}`}>
+      <span
+        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-mono text-2xs uppercase ${
+          ok ? "bg-state-attested/10 text-state-attested" : "bg-sky/30 text-ink-dim"
+        }`}
+      >
         {ok ? <ShieldCheck size={10} aria-hidden="true" /> : null}
         {note ?? t(ok ? "yes" : "no")}
       </span>
@@ -727,9 +715,9 @@ function Row({ label, ok, note }) {
 
 function Term({ label, value }) {
   return (
-    <div className="stern-ops-term">
-      <dt>{label}</dt>
-      <dd>{value}</dd>
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="font-mono uppercase text-ink-faint">{label}</dt>
+      <dd className="font-mono text-navy">{value}</dd>
     </div>
   );
 }
